@@ -1,3 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 @import "@acl/ui/theme.css";
+@import "@xyflow/react/dist/style.css";
+
+.react-flow.dark {
+  --xy-background-color: var(--color-bg);
+  --xy-background-pattern-color: var(--color-line);
+  --xy-edge-stroke: var(--color-line-strong);
+  --xy-controls-button-background-color: var(--color-panel);
+  --xy-controls-button-background-color-hover: var(--color-panel-2);
+  --xy-controls-button-border-color: var(--color-line);
+  --xy-minimap-background-color: var(--color-panel);
+  --xy-node-boxshadow-selected: none;
+}

@@ -5,6 +5,7 @@ import {
   type MessagesRequest,
   mapRequestText,
   parseUsage,
+  type RedactConfig,
   RedactionVault,
   randomId,
   sessionFromMetadata,
@@ -17,7 +18,6 @@ import { recordEvent } from '../lib/events.ts'
 import { denialMessage, runPipeline } from '../lib/pipeline.ts'
 import { resolveSession } from '../lib/session.ts'
 import { clientResponseHeaders, readCapped, upstreamRequest } from '../lib/upstream.ts'
-import { loadActiveWorkflow } from '../lib/workflow.ts'
 
 const MAX_CAPTURED_RESPONSE = 256 * 1024
 
@@ -48,7 +48,13 @@ export const messages = new Hono<AppEnv>()
       c.env,
       db,
       principal,
-      { kind: 'model_request', text, toolName: null },
+      {
+        kind: 'model_request',
+        text,
+        toolName: null,
+        model: body.model ?? null,
+        resourceIds: session.state?.resourceIds ?? [],
+      },
       {
         eventId,
         sessionId: session.id,
@@ -94,7 +100,13 @@ export const messages = new Hono<AppEnv>()
       return c.json(anthropicError('permission_error', denialMessage(result)), 403)
     }
 
-    const outgoing = await redactIfConfigured(c.env, db, principal.orgId, session.id, body)
+    const outgoing = await redactIfConfigured(
+      c.env,
+      result.redact,
+      principal.orgId,
+      session.id,
+      body,
+    )
     const upstream = await fetch(
       upstreamRequest(c.env, c.req.raw, '/v1/messages', JSON.stringify(outgoing)),
     )
@@ -143,14 +155,12 @@ export const messages = new Hono<AppEnv>()
 
 async function redactIfConfigured(
   env: Env,
-  db: AppEnv['Variables']['db'],
+  step: RedactConfig | null,
   orgId: string,
   sessionId: string | null,
   body: MessagesRequest,
 ): Promise<MessagesRequest> {
-  const { definition } = await loadActiveWorkflow(db, orgId)
-  const step = definition.steps.find((s) => s.type === 'redact' && s.enabled)
-  if (step?.type !== 'redact') return body
+  if (!step) return body
   const stub = sessionId ? sessionStub(env, orgId, sessionId) : null
   const vault = new RedactionVault(stub ? await stub.getVault() : {})
   const before = vault.size

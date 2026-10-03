@@ -1,10 +1,4 @@
-import type {
-  CheckResult,
-  Decision,
-  EventKind,
-  RateLimitRule,
-  WorkflowDefinition,
-} from '@acl/shared'
+import type { CheckResult, Decision, EventKind, PolicyGraph, RateLimitRule } from '@acl/shared'
 import { sql } from 'drizzle-orm'
 import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
@@ -313,7 +307,7 @@ export const workflowVersion = sqliteTable(
     id: text().primaryKey(),
     orgId: text().notNull(),
     version: integer().notNull(),
-    definition: json<WorkflowDefinition>().notNull(),
+    definition: json<PolicyGraph>().notNull(),
     status: text({ enum: ['draft', 'published'] }).notNull(),
     note: text(),
     createdBy: text(),

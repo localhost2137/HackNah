@@ -20,6 +20,8 @@ export const checkResult = z.object({
   stepId: z.string(),
   type: z.string(),
   outcome: checkOutcome,
+  /** The output the request left this node through. */
+  branch: z.string().optional(),
   action: z.enum(['block', 'require_approval', 'log']).optional(),
   reason: z.string().optional(),
   score: z.number().optional(),

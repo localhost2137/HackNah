@@ -28,11 +28,14 @@ Claude Code ──► /v1/messages ──► workflow ──► openrouter.ai (A
 
 - **Auth.** The plugin logs in with the OAuth device flow. It gets a 15-minute JWT bound to a hash of the machine
   fingerprint, plus a rotating refresh token with reuse detection. The same token presented with a different
-  fingerprint is flagged as `mismatch`. The fingerprint step then blocks it or asks for approval.
+  fingerprint is flagged as `mismatch`. The workflow's fingerprint node routes it to a block or an approval.
 - **Sessions.** Claude Code's session id is pinned to the first user and device that use it (`SessionDO`). The
   session also stores the resource scope picked with `/acl resources` and the redaction vault.
-- **Workflow.** There is one versioned pipeline per organization (draft, then publish), evaluated by the shared
-  `evaluate()` function. Every event's payload is kept in R2 so new rules can be replayed against history.
+- **Workflow.** Each organization has one versioned policy graph (draft, then publish), edited with React Flow.
+  Route nodes match on request kind, MCP server, tool, resource, group, device or model, so different tools can
+  take stricter or looser paths. Check nodes (fingerprint, keywords, judge, redact) branch on their result, and
+  every path ends in allow, approval or block. `evaluateGraph()` in `packages/shared` runs it in the gateway and
+  in the editor's dry run, and each event stores the path it took.
 - **Models.** The gateway forwards Anthropic Messages requests to OpenRouter with the organization's
   `OPENROUTER_API_KEY`. Claude Code is only guaranteed to work with Anthropic models there. The judge step can use
   OpenRouter too (`https://openrouter.ai/api/v1/chat/completions`), with the same key.

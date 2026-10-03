@@ -1,14 +1,9 @@
 import { type Db, rateLimit, workflowVersion } from '@acl/db'
-import {
-  defaultWorkflow,
-  type RateLimitRule,
-  type WorkflowDefinition,
-  workflowDefinition,
-} from '@acl/shared'
+import { defaultWorkflow, type PolicyGraph, policyGraph, type RateLimitRule } from '@acl/shared'
 import { and, desc, eq } from 'drizzle-orm'
 import { TtlCache } from './cache.ts'
 
-export type ActiveWorkflow = { version: number | null; definition: WorkflowDefinition }
+export type ActiveWorkflow = { version: number | null; definition: PolicyGraph }
 
 const workflowCache = new TtlCache<ActiveWorkflow>(10_000)
 const rateLimitCache = new TtlCache<RateLimitRule[]>(10_000)
@@ -20,7 +15,7 @@ export function loadActiveWorkflow(db: Db, orgId: string): Promise<ActiveWorkflo
       orderBy: desc(workflowVersion.version),
     })
     if (!row) return { version: null, definition: defaultWorkflow }
-    const parsed = workflowDefinition.safeParse(row.definition)
+    const parsed = policyGraph.safeParse(row.definition)
     return { version: row.version, definition: parsed.success ? parsed.data : defaultWorkflow }
   })
 }

@@ -1,10 +1,16 @@
 import { user, workflowVersion } from '@acl/db'
-import { defaultWorkflow, randomId, workflowDefinition } from '@acl/shared'
+import { defaultWorkflow, policyGraph, randomId, validateGraph } from '@acl/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { audit } from '../audit.ts'
 import { adminMiddleware, orgMiddleware } from '../middleware.ts'
+
+/** Versions saved before the graph editor hold the old linear format; start those from the default. */
+function parseOrDefault(definition: unknown) {
+  const parsed = policyGraph.safeParse(definition)
+  return parsed.success ? parsed.data : defaultWorkflow
+}
 
 export const getWorkflow = createServerFn({ method: 'GET' })
   .middleware([orgMiddleware])
@@ -31,15 +37,13 @@ export const getWorkflow = createServerFn({ method: 'GET' })
       draft,
       versions,
       /** What the editor starts from. */
-      working: workflowDefinition.parse(
-        draft?.definition ?? published?.definition ?? defaultWorkflow,
-      ),
+      working: parseOrDefault(draft?.definition ?? published?.definition),
     }
   })
 
 export const saveDraft = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
-  .validator(z.object({ definition: workflowDefinition }))
+  .validator(z.object({ definition: policyGraph }))
   .handler(async ({ data, context: { db, orgId, user: me } }) => {
     const latest = await db.query.workflowVersion.findFirst({
       where: eq(workflowVersion.orgId, orgId),
@@ -68,6 +72,14 @@ export const publishDraft = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .validator(z.object({ note: z.string().max(500).optional() }))
   .handler(async ({ data, context: { db, orgId, user: me } }) => {
+    const draft = await db.query.workflowVersion.findFirst({
+      where: and(eq(workflowVersion.orgId, orgId), eq(workflowVersion.status, 'draft')),
+    })
+    if (!draft) throw new Error('There is no draft to publish')
+    const parsed = policyGraph.safeParse(draft.definition)
+    if (!parsed.success) throw new Error('The draft is not a valid workflow')
+    const error = validateGraph(parsed.data).find((i) => i.level === 'error')
+    if (error) throw new Error(`Fix the workflow before publishing: ${error.message}`)
     const [row] = await db
       .update(workflowVersion)
       .set({ status: 'published', note: data.note ?? null, createdBy: me.id })

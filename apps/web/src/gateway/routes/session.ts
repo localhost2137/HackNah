@@ -71,7 +71,12 @@ export const pluginApi = new Hono<AppEnv>()
       c.env,
       c.get('db'),
       principal,
-      { kind: 'tool_call', text: args, toolName: body.data.tool_name },
+      {
+        kind: 'tool_call',
+        text: args,
+        toolName: body.data.tool_name,
+        resourceIds: session.state?.resourceIds ?? [],
+      },
       { eventId, sessionId: session.id, summary: `${body.data.tool_name}: ${args.slice(0, 200)}` },
     )
     const event: GatewayEvent = {

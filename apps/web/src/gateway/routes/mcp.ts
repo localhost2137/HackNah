@@ -1,11 +1,5 @@
 import { type Db, mcpServer } from '@acl/db'
-import {
-  type Decision,
-  type GatewayEvent,
-  RedactionVault,
-  randomId,
-  type WorkflowStep,
-} from '@acl/shared'
+import { type Decision, type GatewayEvent, RedactionVault, randomId } from '@acl/shared'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { type AppContext, type AppEnv, clientInfo } from '../context.ts'
@@ -21,7 +15,7 @@ import { recordEvent } from '../lib/events.ts'
 import { runPipeline } from '../lib/pipeline.ts'
 import { enforceRateLimits } from '../lib/rate-limit.ts'
 import { type ResolvedSession, resolveSession } from '../lib/session.ts'
-import { loadActiveWorkflow, loadRateLimits } from '../lib/workflow.ts'
+import { loadRateLimits } from '../lib/workflow.ts'
 import {
   type JsonRpcRequest,
   type JsonRpcResponse,
@@ -240,7 +234,13 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     c.env,
     db,
     principal,
-    { kind: 'tool_call', text: argsText, toolName: fullName },
+    {
+      kind: 'tool_call',
+      text: argsText,
+      toolName: fullName,
+      mcpServerId: server.id,
+      resourceIds: event.resourceIds,
+    },
     { eventId, sessionId: session.id, summary: `${fullName}: ${argsText.slice(0, 200)}` },
   )
   event.checks = result.checks
@@ -251,10 +251,7 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     return toolError(`Blocked by AI Control Layer: ${result.reasons.join('; ') || 'policy'}`)
   }
 
-  const { definition } = await loadActiveWorkflow(db, principal.orgId)
-  const redact = definition.steps.find(
-    (s): s is Extract<WorkflowStep, { type: 'redact' }> => s.type === 'redact' && s.enabled,
-  )
+  const { redact } = result
   const stub = session.id ? sessionStub(c.env, principal.orgId, session.id) : null
   const vault = new RedactionVault(stub ? await stub.getVault() : {})
 

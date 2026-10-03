@@ -5,12 +5,14 @@ import {
   callJudge,
   type Decision,
   type EvaluationInput,
-  evaluate,
+  evaluateGraph,
+  type RedactConfig,
   randomId,
 } from '@acl/shared'
 import { eq } from 'drizzle-orm'
 import type { Principal } from '../context.ts'
 import { approvalsStub } from '../do/approvals.ts'
+import { userGroupIds } from './access.ts'
 import { loadActiveWorkflow } from './workflow.ts'
 
 export type PipelineResult = {
@@ -20,6 +22,7 @@ export type PipelineResult = {
   reasons: string[]
   workflowVersion: number | null
   approvalId: string | null
+  redact: RedactConfig | null
 }
 
 function judgeApiKey(env: Env, endpoint: string): string | undefined {
@@ -28,21 +31,24 @@ function judgeApiKey(env: Env, endpoint: string): string | undefined {
 }
 
 /**
- * Runs the org's shared workflow for one request. If a step asks for approval, this blocks
+ * Runs the org's policy graph for one request. If the path ends in an approval, this blocks
  * until someone decides in the dashboard or the approval times out.
  */
 export async function runPipeline(
   env: Env,
   db: Db,
   principal: Principal,
-  input: Omit<EvaluationInput, 'deviceStatus'>,
+  input: Omit<EvaluationInput, 'deviceStatus' | 'groupIds'>,
   meta: { eventId: string; sessionId: string | null; summary: string },
 ): Promise<PipelineResult> {
-  const workflow = await loadActiveWorkflow(db, principal.orgId)
-  const result = await evaluate(
+  const [workflow, groupIds] = await Promise.all([
+    loadActiveWorkflow(db, principal.orgId),
+    userGroupIds(db, principal),
+  ])
+  const result = await evaluateGraph(
     workflow.definition,
-    { ...input, deviceStatus: principal.deviceStatus },
-    { judge: (step, i) => callJudge(step, i, { apiKey: judgeApiKey(env, step.endpoint) }) },
+    { ...input, groupIds, deviceStatus: principal.deviceStatus },
+    { judge: (check, i) => callJudge(check, i, { apiKey: judgeApiKey(env, check.endpoint) }) },
   )
   const base = {
     checks: result.checks,
@@ -50,17 +56,14 @@ export async function runPipeline(
     reasons: result.reasons,
     workflowVersion: workflow.version,
     approvalId: null,
+    redact: result.redact,
   }
   if (result.decision === 'allow') return { ...base, decision: 'allow' }
   if (result.decision === 'block') return { ...base, decision: 'block' }
 
-  const timeoutMs = workflow.definition.approvalTimeoutSec * 1000
+  const timeoutMs = result.approvalTimeoutSec * 1000
   const now = new Date()
-  const trustsDevice =
-    principal.deviceStatus === 'new' &&
-    result.checks.some(
-      (c) => c.type === 'fingerprint' && c.outcome === 'fail' && c.action === 'require_approval',
-    )
+  const trustsDevice = principal.deviceStatus === 'new' && result.trustsDevice
   const view: ApprovalView = {
     id: randomId('apr'),
     eventId: meta.eventId,
