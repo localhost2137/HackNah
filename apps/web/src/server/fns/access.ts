@@ -12,7 +12,7 @@ import {
 import { randomId } from '@acl/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
-import { and, asc, count, eq, inArray } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { audit } from '../audit.ts'
 import { revokeUserDevices } from '../devices.ts'
@@ -202,7 +202,7 @@ export const listGroups = createServerFn({ method: 'GET' })
   .handler(async ({ context: { db, orgId } }) => {
     const groups = await db.query.group.findMany({
       where: eq(group.orgId, orgId),
-      orderBy: asc(group.name),
+      orderBy: [desc(group.isDefault), asc(group.name)],
     })
     const members = await db
       .select({
@@ -215,7 +215,26 @@ export const listGroups = createServerFn({ method: 'GET' })
       .innerJoin(user, eq(user.id, groupMember.userId))
       .innerJoin(group, eq(group.id, groupMember.groupId))
       .where(eq(group.orgId, orgId))
-    return groups.map((g) => ({ ...g, members: members.filter((m) => m.groupId === g.id) }))
+    const everyone = groups.some((g) => g.isDefault)
+      ? await db
+          .select({ userId: user.id, name: user.name, email: user.email })
+          .from(member)
+          .innerJoin(user, eq(user.id, member.userId))
+          .where(eq(member.organizationId, orgId))
+          .orderBy(asc(user.name))
+      : []
+    const grants = await db
+      .select({ groupId: resourceGrant.subjectId, resourceId: resourceGrant.resourceId })
+      .from(resourceGrant)
+      .innerJoin(resource, eq(resource.id, resourceGrant.resourceId))
+      .where(and(eq(resource.orgId, orgId), eq(resourceGrant.subjectType, 'group')))
+    return groups.map((g) => ({
+      ...g,
+      members: g.isDefault
+        ? everyone.map((m) => ({ ...m, groupId: g.id }))
+        : members.filter((m) => m.groupId === g.id),
+      resourceIds: grants.filter((r) => r.groupId === g.id).map((r) => r.resourceId),
+    }))
   })
 
 export const saveGroup = createServerFn({ method: 'POST' })
@@ -255,6 +274,11 @@ export const deleteGroup = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .validator(z.object({ id: z.string() }))
   .handler(async ({ data, context: { db, orgId, user: me } }) => {
+    const target = await db.query.group.findFirst({
+      where: and(eq(group.id, data.id), eq(group.orgId, orgId)),
+    })
+    if (!target) throw new Error('Group not found')
+    if (target.isDefault) throw new Error('The default group cannot be deleted')
     const [row] = await db
       .delete(group)
       .where(and(eq(group.id, data.id), eq(group.orgId, orgId)))
@@ -281,6 +305,7 @@ export const setGroupMembers = createServerFn({ method: 'POST' })
       where: and(eq(group.id, data.groupId), eq(group.orgId, orgId)),
     })
     if (!g) throw new Error('Group not found')
+    if (g.isDefault) throw new Error('Every member belongs to the default group')
     await assertSubjectsInOrg(
       db,
       orgId,
@@ -304,6 +329,86 @@ export const setGroupMembers = createServerFn({ method: 'POST' })
       orgId,
       actorId: me.id,
       action: 'group.members',
+      target: g.id,
+      data: { added, removed },
+    })
+    return { added: added.length, removed: removed.length }
+  })
+
+const patterns = z.array(z.string().trim().min(1).max(200)).max(100)
+
+export const setGroupPermissions = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(
+    z.object({
+      groupId: z.string(),
+      permissions: z.object({ models: patterns, builtinTools: patterns }),
+    }),
+  )
+  .handler(async ({ data, context: { db, orgId, user: me } }) => {
+    const [row] = await db
+      .update(group)
+      .set({ permissions: data.permissions })
+      .where(and(eq(group.id, data.groupId), eq(group.orgId, orgId)))
+      .returning({ id: group.id })
+    if (!row) throw new Error('Group not found')
+    await audit(db, {
+      orgId,
+      actorId: me.id,
+      action: 'group.permissions',
+      target: row.id,
+      data: data.permissions,
+    })
+    return { ok: true }
+  })
+
+/** Replaces which resources a group is granted. Grants to users are left alone. */
+export const setGroupResources = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(z.object({ groupId: z.string(), resourceIds: z.array(z.string()).max(500) }))
+  .handler(async ({ data, context: { db, orgId, user: me } }) => {
+    const g = await db.query.group.findFirst({
+      where: and(eq(group.id, data.groupId), eq(group.orgId, orgId)),
+    })
+    if (!g) throw new Error('Group not found')
+    const known = new Set(
+      (await db.select({ id: resource.id }).from(resource).where(eq(resource.orgId, orgId))).map(
+        (r) => r.id,
+      ),
+    )
+    if (data.resourceIds.some((id) => !known.has(id))) throw new Error('Unknown resource')
+
+    const existing = (
+      await db
+        .select({ resourceId: resourceGrant.resourceId })
+        .from(resourceGrant)
+        .where(and(eq(resourceGrant.subjectType, 'group'), eq(resourceGrant.subjectId, g.id)))
+    ).map((r) => r.resourceId)
+    const added = data.resourceIds.filter((id) => !existing.includes(id))
+    const removed = existing.filter((id) => !data.resourceIds.includes(id))
+    for (const chunk of chunkRows(removed, 2)) {
+      await db
+        .delete(resourceGrant)
+        .where(
+          and(
+            eq(resourceGrant.subjectType, 'group'),
+            eq(resourceGrant.subjectId, g.id),
+            inArray(resourceGrant.resourceId, chunk),
+          ),
+        )
+    }
+    const rows = added.map((resourceId) => ({
+      resourceId,
+      subjectType: 'group' as const,
+      subjectId: g.id,
+    }))
+    for (const chunk of chunkRows(rows, 4)) {
+      await db.insert(resourceGrant).values(chunk).onConflictDoNothing()
+    }
+    await audit(db, {
+      orgId,
+      actorId: me.id,
+      action: 'group.resources',
       target: g.id,
       data: { added, removed },
     })
