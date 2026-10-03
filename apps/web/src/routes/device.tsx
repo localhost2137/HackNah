@@ -1,15 +1,21 @@
 import { Badge, Button, Card, Field, Input, PageHeader } from '@acl/ui'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { MonitorSmartphone } from 'lucide-react'
 import { useState } from 'react'
 import { z } from 'zod'
 import { FormError } from '#/components/auth-shell.tsx'
 import { timeAgo } from '#/lib/format.ts'
 import { decideDeviceCode, lookupDeviceCode } from '#/server/fns/devices.ts'
+import { getViewer } from '#/server/fns/viewer.ts'
 
 /** Verification page for the plugin's device login (`verification_uri`). */
-export const Route = createFileRoute('/_app/device')({
+export const Route = createFileRoute('/device')({
+  beforeLoad: async ({ location }) => {
+    const viewer = await getViewer()
+    if (!viewer) throw redirect({ to: '/login', search: { redirect: location.href } })
+    if (!viewer.activeOrgId) throw redirect({ to: '/onboarding' })
+  },
   validateSearch: z.object({ code: z.string().optional() }),
   component: DevicePage,
 })

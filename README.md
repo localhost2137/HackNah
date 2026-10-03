@@ -14,6 +14,7 @@ Durable Objects).
 | `packages/shared` | Workflow schema and engine, redaction, crypto, judge client |
 | `packages/db` | Drizzle schema and generated SQL migrations for D1 |
 | `packages/ui` | Tailwind theme and UI primitives |
+| `claude-plugin` | hy-guard Claude Code plugin, mock platform, and backend integration contract |
 
 ## How a request flows
 
@@ -22,7 +23,7 @@ Claude Code ──► /v1/messages ──► workflow ──► openrouter.ai (A
             ──► /mcp          ──► access + rate limit + workflow ──► GitHub / Jira / ... MCP
             ──► /v1/acl/hooks/pre-tool-use (Bash, Edit, ...) ──► workflow
                          │
-                         ├─ pending ──► ApprovalDO ──WebSocket──► dashboard Approvals
+                         ├─ pending ──► ApprovalDO ──WebSocket──► dashboard Logs
                          └─ event ──► Queue ──► D1 (metadata) + R2 (payloads)
 ```
 
@@ -74,16 +75,32 @@ Checks: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
 After changing `packages/db/src/schema.ts`, run `pnpm db:generate` and commit the new file in `packages/db/drizzle`.
 D1 allows at most 100 bound parameters per statement, so split multi-row inserts with `chunkRows` from `@acl/db`.
 
+## Administrator dashboard
+
+The dashboard is restricted to organization owners and admins, including its server functions and live
+stream. Members use Claude Code rather than the admin console. **Logs** is the central place for request
+decisions, session/device context, and legacy approval records. The former Approvals, Sessions, and
+Devices URLs redirect to Logs. Legacy `/device` sign-in remains a standalone authenticated page.
+
 ## Connecting Claude Code
 
-The dashboard's **Connect Claude Code** page shows the exact configuration, filled in with your URL. In short:
+The target client is **hy-guard**, now included in [`claude-plugin`](claude-plugin/README.md). It currently
+runs against its own mock platform; it is **not yet compatible** with the gateway in `apps/web`.
+The dashboard's Claude Code plugin page reflects this status instead of advertising the old `acl` CLI.
 
-- `ANTHROPIC_BASE_URL` points at the Worker, and `apiKeyHelper` returns the gateway token. The OpenRouter key
-  is only in the Worker.
-- One HTTP MCP server, `acl` → `<url>/mcp`, with a `headersHelper` that adds the token and the fingerprint.
-- A `PreToolUse` command hook that POSTs the hook input to `<url>/v1/acl/hooks/pre-tool-use`.
-- Ship it as managed settings and block `api.anthropic.com` and `openrouter.ai` at the egress, so nothing
-  bypasses the gateway.
+Read the [backend guide](claude-plugin/docs/BACKEND_GUIDE.md) and
+[wire contract](claude-plugin/docs/BACKEND_CONTRACT.md) before integrating. The main gaps are:
+
+- Discovery, request-bound DPoP proofs, shared nonce/replay state, and signed responses.
+- OAuth authorization code + PKCE and device-key-bound tokens (the current gateway uses device codes).
+- Versioned `/v1/policy` and batched `/v1/events`, plus server-side tool-policy enforcement.
+- Plugin confirmation, Touch ID presence proofs, and fresh-sign-in browser challenges. These differ from
+  the current workflow's administrator approval queue; that queue remains available in Logs until migrated.
+- A compatible `/llm/*` streaming gateway; the existing model endpoint is `/v1/messages`.
+
+Keep device/session identity and revocation in the backend: these are security inputs, even though there
+are no standalone device or session dashboard screens. Do not copy the mock's auto-approval shortcuts.
+Use the plugin's isolated test profile as documented there; do not change a user's main Claude profile.
 
 ## Deploying
 
@@ -109,8 +126,7 @@ D1 migrations and deploys. It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_A
 
 ## Not here yet
 
-- The Claude Code plugin itself (`/acl login`, `/acl resources`, and the `acl token` / `acl headers` /
-  `acl hook` helpers). The gateway endpoints it needs exist.
+- Integration of the included hy-guard plugin with the real backend (see the contract above).
 - Email invitations. Members are added by email once they have signed up.
 - Proof-of-possession tokens (DPoP-style key binding) on top of the fingerprint binding.
 - Device-bound dashboard sessions (DBSC, `@dbsc-toolkit/better-auth`).

@@ -10,12 +10,13 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as AdminRequiredRouteImport } from './routes/admin-required'
+import { Route as DeviceRouteImport } from './routes/device'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
-import { Route as AppDeviceRouteImport } from './routes/_app/device'
 import { Route as AppDevicesRouteImport } from './routes/_app/devices'
 import { Route as AppEventsRouteImport } from './routes/_app/events'
 import { Route as AppIntegrationsRouteImport } from './routes/_app/integrations'
@@ -34,6 +35,16 @@ import { Route as ApiOauthStartServerIdRouteImport } from './routes/api/oauth/st
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRequiredRoute = AdminRequiredRouteImport.update({
+  id: '/admin-required',
+  path: '/admin-required',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeviceRoute = DeviceRouteImport.update({
+  id: '/device',
+  path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -59,11 +70,6 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppApprovalsRoute = AppApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDeviceRoute = AppDeviceRouteImport.update({
-  id: '/device',
-  path: '/device',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDevicesRoute = AppDevicesRouteImport.update({
@@ -144,11 +150,12 @@ const ApiOauthStartServerIdRoute = ApiOauthStartServerIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/admin-required': typeof AdminRequiredRoute
+  '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/approvals': typeof AppApprovalsRoute
-  '/device': typeof AppDeviceRoute
   '/devices': typeof AppDevicesRoute
   '/events': typeof AppEventsRoute
   '/integrations': typeof AppIntegrationsRoute
@@ -166,11 +173,12 @@ export interface FileRoutesByFullPath {
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRoutesByTo {
+  '/admin-required': typeof AdminRequiredRoute
+  '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/approvals': typeof AppApprovalsRoute
-  '/device': typeof AppDeviceRoute
   '/devices': typeof AppDevicesRoute
   '/events': typeof AppEventsRoute
   '/integrations': typeof AppIntegrationsRoute
@@ -191,11 +199,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/admin-required': typeof AdminRequiredRoute
+  '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/_app/approvals': typeof AppApprovalsRoute
-  '/_app/device': typeof AppDeviceRoute
   '/_app/devices': typeof AppDevicesRoute
   '/_app/events': typeof AppEventsRoute
   '/_app/integrations': typeof AppIntegrationsRoute
@@ -217,11 +226,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin-required'
+    | '/device'
     | '/login'
     | '/onboarding'
     | '/signup'
     | '/approvals'
-    | '/device'
     | '/devices'
     | '/events'
     | '/integrations'
@@ -239,11 +249,12 @@ export interface FileRouteTypes {
     | '/api/oauth/start/$serverId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/admin-required'
+    | '/device'
     | '/login'
     | '/onboarding'
     | '/signup'
     | '/approvals'
-    | '/device'
     | '/devices'
     | '/events'
     | '/integrations'
@@ -263,11 +274,12 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/admin-required'
+    | '/device'
     | '/login'
     | '/onboarding'
     | '/signup'
     | '/_app/approvals'
-    | '/_app/device'
     | '/_app/devices'
     | '/_app/events'
     | '/_app/integrations'
@@ -288,6 +300,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  AdminRequiredRoute: typeof AdminRequiredRoute
+  DeviceRoute: typeof DeviceRoute
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
@@ -304,6 +318,20 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin-required': {
+      id: '/admin-required'
+      path: '/admin-required'
+      fullPath: '/admin-required'
+      preLoaderRoute: typeof AdminRequiredRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/device': {
+      id: '/device'
+      path: '/device'
+      fullPath: '/device'
+      preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -339,13 +367,6 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/approvals'
       preLoaderRoute: typeof AppApprovalsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/device': {
-      id: '/_app/device'
-      path: '/device'
-      fullPath: '/device'
-      preLoaderRoute: typeof AppDeviceRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/devices': {
@@ -458,7 +479,6 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
-  AppDeviceRoute: typeof AppDeviceRoute
   AppDevicesRoute: typeof AppDevicesRoute
   AppEventsRoute: typeof AppEventsRoute
   AppIntegrationsRoute: typeof AppIntegrationsRoute
@@ -475,7 +495,6 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppApprovalsRoute: AppApprovalsRoute,
-  AppDeviceRoute: AppDeviceRoute,
   AppDevicesRoute: AppDevicesRoute,
   AppEventsRoute: AppEventsRoute,
   AppIntegrationsRoute: AppIntegrationsRoute,
@@ -494,6 +513,8 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  AdminRequiredRoute: AdminRequiredRoute,
+  DeviceRoute: DeviceRoute,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,

@@ -4,10 +4,10 @@ import { aliasedTable, and, desc, eq, gt, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { decideApproval as decide } from '#/gateway/control.ts'
 import { env } from '../env.ts'
-import { adminMiddleware, orgMiddleware } from '../middleware.ts'
+import { adminMiddleware } from '../middleware.ts'
 
 export const listApprovals = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .validator(z.object({ status: z.enum(['pending', 'history']) }))
   .handler(async ({ data, context: { db, orgId } }) => {
     const decider = aliasedTable(user, 'decider')

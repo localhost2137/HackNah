@@ -124,8 +124,12 @@ function MembersPage() {
                   </div>
                 </TD>
                 <TD className="text-xs">
-                  <Link to="/devices" className="hover:text-accent-strong">
-                    {m.devices}
+                  <Link
+                    to="/events"
+                    search={{ user: m.userId, range: '30d' }}
+                    className="hover:text-accent-strong"
+                  >
+                    View logs
                   </Link>
                 </TD>
                 <TD className="text-xs text-muted">{timeAgo(m.joinedAt)}</TD>

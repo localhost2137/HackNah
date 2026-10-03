@@ -14,7 +14,6 @@ import { z } from 'zod'
 import { DecisionBadge, KindLabel, RiskMeter } from '#/components/event-bits.tsx'
 import { Segmented } from '#/components/filters.tsx'
 import { num, pct, timeAgo } from '#/lib/format.ts'
-import { useLive } from '#/lib/live.tsx'
 import { getOverview, type TimeRange, timeRange } from '#/server/fns/traffic.ts'
 
 const overviewQuery = (range: TimeRange) =>
@@ -35,7 +34,6 @@ function Overview() {
   const { range } = Route.useSearch()
   const navigate = Route.useNavigate()
   const { data } = useQuery(overviewQuery(range))
-  const live = useLive()
   if (!data) return null
 
   const fmtTick = (iso: string) =>
@@ -62,7 +60,7 @@ function Overview() {
           />
         }
       />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Requests" value={num(data.total)} />
         <Stat
           label="Blocked"
@@ -71,25 +69,7 @@ function Overview() {
           delta={`${pct(data.blocked, data.total)} of traffic`}
         />
         <Stat label="Approved manually" value={num(data.approved)} />
-        <Stat
-          label="Pending approvals"
-          value={live.pendingApprovals.length}
-          tone={live.pendingApprovals.length ? 'warn' : 'neutral'}
-          delta={
-            live.pendingApprovals.length ? (
-              <Link to="/approvals" className="text-accent-strong hover:underline">
-                Review now
-              </Link>
-            ) : (
-              'Queue is empty'
-            )
-          }
-        />
-        <Stat
-          label="Active sessions"
-          value={num(data.activeSessions)}
-          delta={`${num(data.tokens)} tokens`}
-        />
+        <Stat label="Tokens" value={num(data.tokens)} />
       </div>
 
       <Card className="mt-4">

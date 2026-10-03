@@ -9,18 +9,15 @@ import {
 } from '@tanstack/react-router'
 import {
   Activity,
-  BadgeCheck,
   Boxes,
   Gauge,
   KeyRound,
   LayoutDashboard,
   ListChecks,
   LogOut,
-  MonitorSmartphone,
   Plug,
   Settings,
   ShieldCheck,
-  TerminalSquare,
   Users,
   UsersRound,
 } from 'lucide-react'
@@ -35,7 +32,8 @@ export const Route = createFileRoute('/_app')({
     if (!viewer) throw redirect({ to: '/login', search: { redirect: location.href } })
     const org = viewer.orgs.find((o) => o.id === viewer.activeOrgId)
     if (!org) throw redirect({ to: '/onboarding', search: { redirect: location.href } })
-    return { viewer, org, isAdmin: org.role === 'owner' || org.role === 'admin' }
+    if (org.role !== 'owner' && org.role !== 'admin') throw redirect({ to: '/admin-required' })
+    return { viewer, org, isAdmin: true }
   },
   component: AppLayout,
 })
@@ -44,17 +42,13 @@ type NavItem = {
   to: string
   label: string
   icon: React.ComponentType<{ className?: string }>
-  badge?: 'approvals'
 }
 
 const nav: { title?: string; items: NavItem[] }[] = [
   {
     items: [
       { to: '/', label: 'Overview', icon: LayoutDashboard },
-      { to: '/events', label: 'Events', icon: Activity },
-      { to: '/approvals', label: 'Approvals', icon: BadgeCheck, badge: 'approvals' },
-      { to: '/sessions', label: 'Sessions', icon: TerminalSquare },
-      { to: '/devices', label: 'Devices', icon: MonitorSmartphone },
+      { to: '/events', label: 'Logs', icon: Activity },
     ],
   },
   {
@@ -77,7 +71,7 @@ const nav: { title?: string; items: NavItem[] }[] = [
     title: 'Organization',
     items: [
       { to: '/settings', label: 'Settings', icon: Settings },
-      { to: '/settings/connect', label: 'Connect Claude Code', icon: KeyRound },
+      { to: '/settings/connect', label: 'Claude Code plugin', icon: KeyRound },
     ],
   },
 ]
@@ -147,11 +141,6 @@ function Sidebar() {
               >
                 <item.icon className="size-4 shrink-0" />
                 <span className="flex-1">{item.label}</span>
-                {item.badge === 'approvals' && live.pendingApprovals.length > 0 ? (
-                  <span className="rounded bg-warn px-1.5 text-[10px] leading-4 font-semibold text-black">
-                    {live.pendingApprovals.length}
-                  </span>
-                ) : null}
               </Link>
             ))}
           </div>

@@ -252,18 +252,18 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
 export const defaultWorkflow: PolicyGraph = {
   fallback: 'block',
   nodes: [
-    { id: 'start', type: 'trigger', position: { x: 0, y: 120 } },
+    { id: 'start', type: 'trigger', position: { x: 0, y: 100 } },
     {
       id: 'fingerprint',
       type: 'check',
-      position: { x: 240, y: 100 },
+      position: { x: 320, y: 100 },
       enabled: true,
       check: { type: 'fingerprint' },
     },
     {
       id: 'keywords',
       type: 'check',
-      position: { x: 520, y: 40 },
+      position: { x: 660, y: 0 },
       enabled: true,
       check: {
         type: 'keywords',
@@ -275,7 +275,7 @@ export const defaultWorkflow: PolicyGraph = {
     {
       id: 'allow',
       type: 'decision',
-      position: { x: 820, y: 0 },
+      position: { x: 1000, y: 0 },
       action: 'allow',
       timeoutSec: 300,
       reason: '',
@@ -283,7 +283,7 @@ export const defaultWorkflow: PolicyGraph = {
     {
       id: 'approve',
       type: 'decision',
-      position: { x: 520, y: 220 },
+      position: { x: 660, y: 340 },
       action: 'require_approval',
       timeoutSec: 300,
       reason: 'Request from a new device',
@@ -291,7 +291,7 @@ export const defaultWorkflow: PolicyGraph = {
     {
       id: 'block',
       type: 'decision',
-      position: { x: 820, y: 160 },
+      position: { x: 1000, y: 220 },
       action: 'block',
       timeoutSec: 300,
       reason: '',

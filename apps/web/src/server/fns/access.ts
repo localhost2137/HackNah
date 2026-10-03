@@ -16,7 +16,7 @@ import { and, asc, count, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { audit } from '../audit.ts'
 import { revokeUserDevices } from '../devices.ts'
-import { adminMiddleware, orgMiddleware } from '../middleware.ts'
+import { adminMiddleware } from '../middleware.ts'
 
 const subject = z.object({ type: z.enum(['user', 'group']), id: z.string() })
 type Subject = z.infer<typeof subject>
@@ -26,7 +26,7 @@ type Subject = z.infer<typeof subject>
 // ---------------------------------------------------------------------------
 
 export const listResources = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .handler(async ({ context: { db, orgId } }) => {
     const rows = await db
       .select({ resource, serverName: mcpServer.name, serverSlug: mcpServer.slug })
@@ -198,7 +198,7 @@ async function assertSubjectsInOrg(
 // ---------------------------------------------------------------------------
 
 export const listGroups = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .handler(async ({ context: { db, orgId } }) => {
     const groups = await db.query.group.findMany({
       where: eq(group.orgId, orgId),
@@ -315,7 +315,7 @@ export const setGroupMembers = createServerFn({ method: 'POST' })
 // ---------------------------------------------------------------------------
 
 export const listMembers = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .handler(async ({ context: { db, orgId } }) => {
     const rows = await db
       .select({

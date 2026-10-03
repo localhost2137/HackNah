@@ -1,7 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 @import "@acl/ui/theme.css";
-@import "@xyflow/react/dist/style.css";
 
 .react-flow.dark {
   --xy-background-color: var(--color-bg);
@@ -12,4 +11,82 @@
   --xy-controls-button-border-color: var(--color-line);
   --xy-minimap-background-color: var(--color-panel);
   --xy-node-boxshadow-selected: none;
+}
+
+.workflow-canvas .react-flow__controls {
+  border: 1px solid var(--color-line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px #0004;
+}
+
+.workflow-canvas .react-flow__controls-button {
+  width: 34px;
+  height: 34px;
+  color: var(--color-fg);
+}
+
+.workflow-canvas .react-flow__minimap {
+  border: 1px solid var(--color-line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.workflow-canvas .react-flow__handle {
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--color-panel);
+  transition: box-shadow 150ms;
+}
+
+.workflow-canvas .react-flow__handle:hover {
+  box-shadow: 0 0 0 5px rgb(124 108 255 / 0.25);
+}
+
+.workflow-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 4;
+  filter: drop-shadow(0 0 4px var(--color-accent));
+}
+
+/* Keep the connector in place as its hit area grows into an add button. */
+.workflow-canvas .react-flow__handle.workflow-output {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: none;
+}
+.workflow-canvas .react-flow__handle.workflow-output:hover,
+.workflow-canvas .react-flow__handle.workflow-output-active,
+.workflow-canvas .react-flow__handle.workflow-output:focus-visible {
+  width: 26px;
+  height: 26px;
+  color: var(--color-bg);
+  outline: none;
+  box-shadow: 0 0 0 4px var(--color-panel);
+}
+.workflow-canvas .workflow-output:hover svg,
+.workflow-canvas .workflow-output:focus-visible svg {
+  opacity: 1;
+}
+
+.workflow-lens.react-flow {
+  position: fixed;
+  z-index: 1000;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border: 1.5px solid rgb(230 232 239 / 0.9);
+  border-radius: 50%;
+  background: var(--color-bg);
+  box-shadow:
+    0 0 0 1px #0a0b10,
+    0 2px 8px #0005;
+  pointer-events: none;
+}
+.workflow-lens-scene {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
 }

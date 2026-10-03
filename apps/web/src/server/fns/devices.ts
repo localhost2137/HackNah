@@ -8,7 +8,7 @@ import { audit } from '../audit.ts'
 import { adminMiddleware, orgMiddleware } from '../middleware.ts'
 
 export const listDevices = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .handler(async ({ context: { db, orgId, isAdmin, user: me } }) => {
     return db
       .select({ device, userName: user.name, userEmail: user.email })

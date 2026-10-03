@@ -3,10 +3,10 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
 import { env } from '../env.ts'
-import { adminMiddleware, orgMiddleware } from '../middleware.ts'
+import { adminMiddleware } from '../middleware.ts'
 
 export const getConnectInfo = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .handler(async ({ context: { db, orgId } }) => {
     const org = await db.query.organization.findFirst({ where: eq(organization.id, orgId) })
     return {

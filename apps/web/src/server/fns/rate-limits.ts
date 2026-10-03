@@ -4,10 +4,10 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { audit } from '../audit.ts'
-import { adminMiddleware, orgMiddleware } from '../middleware.ts'
+import { adminMiddleware } from '../middleware.ts'
 
 export const listRateLimits = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .handler(({ context: { db, orgId } }) =>
     db.query.rateLimit.findMany({
       where: eq(rateLimit.orgId, orgId),

@@ -4,7 +4,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, count, desc, eq, gte, inArray, like, lt, or, type SQL, sql, sum } from 'drizzle-orm'
 import { z } from 'zod'
 import { env } from '../env.ts'
-import { orgMiddleware } from '../middleware.ts'
+import { adminMiddleware } from '../middleware.ts'
 
 export const timeRange = z.enum(['1h', '24h', '7d', '30d'])
 export type TimeRange = z.infer<typeof timeRange>
@@ -25,7 +25,7 @@ const bucketMs: Record<TimeRange, number> = {
 const BLOCKED_DECISIONS = ['block', 'declined', 'rate_limited'] as const
 
 export const getOverview = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .validator(z.object({ range: timeRange }))
   .handler(async ({ data, context: { db, orgId } }) => {
     const since = new Date(Date.now() - rangeMs[data.range])
@@ -145,7 +145,7 @@ export const eventsSearch = z.object({
 export type EventsSearch = z.infer<typeof eventsSearch>
 
 export const listEvents = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .validator(
     eventsSearch.extend({
       cursor: z.number().optional(),
@@ -200,7 +200,7 @@ export const listEvents = createServerFn({ method: 'GET' })
   })
 
 export const getEvent = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .validator(z.object({ id: z.string() }))
   .handler(async ({ data, context: { db, orgId } }) => {
     const [row] = await db
@@ -244,7 +244,7 @@ function toDisplay(value: unknown): string | null {
 }
 
 export const listSessions = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .validator(z.object({ user: z.string().optional(), active: z.boolean().optional() }))
   .handler(async ({ data, context: { db, orgId } }) => {
     return db

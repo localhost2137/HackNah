@@ -22,7 +22,8 @@ export const Route = createFileRoute('/api/live')({
         const membership = await db.query.member.findFirst({
           where: and(eq(member.organizationId, orgId), eq(member.userId, session.user.id)),
         })
-        if (!membership) return new Response('Forbidden', { status: 403 })
+        if (!membership || !['owner', 'admin'].includes(membership.role))
+          return new Response('Forbidden', { status: 403 })
         return openLiveSocket(env, orgId, request)
       },
     },

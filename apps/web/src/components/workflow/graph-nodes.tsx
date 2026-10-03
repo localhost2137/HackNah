@@ -16,13 +16,16 @@ import {
   Hand,
   type LucideIcon,
   Play,
+  Plus,
   Route,
   ScanSearch,
   ShieldOff,
 } from 'lucide-react'
+import { type PointerEvent, useEffect, useRef } from 'react'
 import { checkSummary } from './step-form.tsx'
 
 export type FlowNodeData = {
+  onAdd?: (handle: string, anchor: { x: number; y: number }) => void
   node: PolicyNode
   issues: GraphIssue[]
   /** Set while a dry run is shown: whether the request went through this node. */
@@ -31,14 +34,14 @@ export type FlowNodeData = {
 export type FlowNode = Node<FlowNodeData>
 
 export const handleColor: Record<string, string> = {
-  next: 'var(--color-accent)',
-  match: 'var(--color-accent)',
-  else: 'var(--color-subtle)',
-  pass: 'var(--color-ok)',
-  fail: 'var(--color-bad)',
-  mismatch: 'var(--color-bad)',
-  new: 'var(--color-warn)',
-  error: 'var(--color-warn)',
+  next: '#9a8dff',
+  match: '#9a8dff',
+  else: '#8b91a5',
+  pass: '#2fd18b',
+  fail: '#ff5c72',
+  mismatch: '#ff5c72',
+  new: '#f5b84a',
+  error: '#f5b84a',
 }
 
 export const checkIcons: Record<string, LucideIcon> = {
@@ -117,6 +120,62 @@ function describe(node: PolicyNode): {
 
 function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
   const { node, issues, onPath } = data
+  const pointerStart = useRef({ x: 0, y: 0 })
+  const lens = useRef<HTMLDivElement | null>(null)
+  const clearLens = () => {
+    lens.current?.remove()
+    lens.current = null
+  }
+  useEffect(
+    () => () => {
+      lens.current?.remove()
+    },
+    [],
+  )
+  const moveLens = (event: PointerEvent<HTMLDivElement>) => {
+    if (!data.onAdd || event.pointerType === 'touch' || event.buttons) {
+      clearLens()
+      return
+    }
+    const canvas = event.currentTarget.closest('.react-flow')
+    const viewport = canvas?.querySelector('.react-flow__viewport')
+    if (!canvas || !viewport) return
+    if (!lens.current) {
+      const glass = document.createElement('div')
+      glass.className = 'workflow-canvas react-flow dark workflow-lens'
+      glass.setAttribute('aria-hidden', 'true')
+      glass.inert = true
+      const scene = document.createElement('div')
+      scene.className = 'workflow-lens-scene'
+      const copy = viewport.cloneNode(true) as HTMLElement
+      // Decorative snapshot only: never duplicate accessible controls or document IDs.
+      for (const element of copy.querySelectorAll('[id]')) element.removeAttribute('id')
+      for (const icon of copy.querySelectorAll<SVGElement>('.workflow-output svg'))
+        icon.style.opacity = '1'
+      // A cloned element cannot inherit :hover. Preserve the active connector's
+      // enlarged state explicitly so the lens magnifies the growing dot and +.
+      const handleId = event.currentTarget.getAttribute('data-handleid')
+      for (const handle of copy.querySelectorAll<HTMLElement>('.workflow-output')) {
+        if (
+          handle.getAttribute('data-handleid') === handleId &&
+          handle.closest('.react-flow__node')?.getAttribute('data-id') === node.id
+        )
+          handle.classList.add('workflow-output-active')
+      }
+      scene.appendChild(copy)
+      glass.appendChild(scene)
+      document.body.appendChild(glass)
+      lens.current = glass
+    }
+    const box = canvas.getBoundingClientRect()
+    const glass = lens.current
+    glass.style.left = `${event.clientX - 18}px`
+    glass.style.top = `${event.clientY - 18}px`
+    const scene = glass.firstElementChild as HTMLElement
+    scene.style.width = `${box.width}px`
+    scene.style.height = `${box.height}px`
+    scene.style.transform = `translate(${18 - (event.clientX - box.left) * 1.35}px, ${18 - (event.clientY - box.top) * 1.35}px) scale(1.35)`
+  }
   const { icon: Icon, title, subtitle, tone } = describe(node)
   const outputs = nodeOutputs(node)
   const hasError = issues.some((i) => i.level === 'error')
@@ -124,7 +183,7 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
   return (
     <div
       className={cn(
-        'w-56 rounded-lg border bg-panel text-left shadow-lg transition-opacity',
+        'w-60 rounded-xl border bg-panel text-left shadow-xl transition-opacity',
         selected ? 'border-accent' : hasError ? 'border-bad' : 'border-line-strong',
         onPath === false && 'opacity-35',
         onPath === true && 'ring-2 ring-accent/60',
@@ -133,17 +192,13 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
       title={issues.map((i) => i.message).join('\n') || undefined}
     >
       {node.type !== 'trigger' ? (
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="!size-2.5 !border-2 !border-panel !bg-line-strong"
-        />
+        <Handle type="target" position={Position.Left} className="!bg-muted" />
       ) : null}
-      <div className="flex items-start gap-2 px-3 py-2">
-        <Icon className={cn('mt-0.5 size-3.5 shrink-0', tone)} />
+      <div className="flex items-start gap-3 px-4 py-4">
+        <Icon className={cn('mt-0.5 size-5 shrink-0', tone)} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12px] font-medium">{title}</div>
-          <div className="line-clamp-2 text-[11px] text-muted">{subtitle}</div>
+          <div className="text-[15px] font-semibold leading-snug">{title}</div>
+          <div className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">{subtitle}</div>
         </div>
         {hasError || hasWarning ? (
           <span
@@ -152,17 +207,66 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
         ) : null}
       </div>
       {outputs.length > 0 ? (
-        <div className="border-t border-line py-1">
+        <div className="border-t border-line bg-panel-2/60 py-2 rounded-b-xl">
           {outputs.map((h) => (
-            <div key={h} className="relative px-3 py-0.5 text-right text-[10px] text-muted">
-              {outputLabels[h] ?? h}
+            <div key={h} className="relative px-4 py-1.5 text-right text-[12px] font-medium">
+              <span style={{ color: handleColor[h] }}>
+                {h === 'next'
+                  ? 'Continue'
+                  : h === 'pass'
+                    ? 'Passed'
+                    : h === 'fail'
+                      ? 'Failed'
+                      : h === 'new'
+                        ? 'New device'
+                        : h === 'mismatch'
+                          ? 'Device mismatch'
+                          : h === 'match'
+                            ? 'Matches'
+                            : h === 'else'
+                              ? 'Otherwise'
+                              : (outputLabels[h] ?? h)}
+              </span>
               <Handle
                 id={h}
                 type="source"
                 position={Position.Right}
-                className="!size-2.5 !border-2 !border-panel"
+                className={data.onAdd ? 'workflow-output' : undefined}
+                role={data.onAdd ? 'button' : undefined}
+                tabIndex={data.onAdd ? 0 : undefined}
+                aria-label={`Add step after ${title}: ${outputLabels[h] ?? h}`}
+                onPointerEnter={moveLens}
+                onPointerMove={moveLens}
+                onPointerLeave={clearLens}
+                onPointerCancel={clearLens}
+                onBlur={clearLens}
+                onPointerDown={(e) => {
+                  clearLens()
+                  pointerStart.current = { x: e.clientX, y: e.clientY }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (
+                    Math.hypot(
+                      e.clientX - pointerStart.current.x,
+                      e.clientY - pointerStart.current.y,
+                    ) > 5
+                  )
+                    return
+                  const box = e.currentTarget.getBoundingClientRect()
+                  data.onAdd?.(h, { x: box.right, y: box.top + box.height / 2 })
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' && e.key !== ' ') return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const box = e.currentTarget.getBoundingClientRect()
+                  data.onAdd?.(h, { x: box.right, y: box.top + box.height / 2 })
+                }}
                 style={{ background: handleColor[h] }}
-              />
+              >
+                {data.onAdd ? <Plus className="pointer-events-none size-3.5 opacity-0" /> : null}
+              </Handle>
             </div>
           ))}
         </div>

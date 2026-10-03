@@ -1,15 +1,14 @@
 import {
-  type CheckType,
-  checkLabels,
   type EvaluationResult,
   type GraphIssue,
+  nodeOutputs,
   type PolicyEdge,
   type PolicyGraph,
   type PolicyNode,
   policyGraph,
   validateGraph,
 } from '@acl/shared'
-import { Badge, Button, Card, cn, Dialog, Field, Input, PageHeader, Select } from '@acl/ui'
+import { Badge, Button, Card, Dialog, Field, Input, PageHeader, Select } from '@acl/ui'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -20,14 +19,15 @@ import {
   Controls,
   type Edge,
   type EdgeChange,
+  MarkerType,
   MiniMap,
   type NodeChange,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
 } from '@xyflow/react'
-import { Ban, CircleCheck, Hand, Route as RouteIcon } from 'lucide-react'
-import { type DragEvent, useEffect, useMemo, useState } from 'react'
+import { Ban, CircleCheck, Hand, Maximize2, Plus, Route as RouteIcon, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
 import { DryRun } from '#/components/workflow/dry-run.tsx'
 import {
@@ -37,6 +37,7 @@ import {
   nodeTypes,
 } from '#/components/workflow/graph-nodes.tsx'
 import { Inspector, type PickerOptions } from '#/components/workflow/inspector.tsx'
+import { type PaletteItem, recommendSteps } from '#/components/workflow/recommendations.ts'
 import { newCheck } from '#/components/workflow/step-form.tsx'
 import { timeAgo } from '#/lib/format.ts'
 import { listGroups, listResources } from '#/server/fns/access.ts'
@@ -53,23 +54,7 @@ export const Route = createFileRoute('/_app/workflow')({
   component: WorkflowPage,
 })
 
-type PaletteItem =
-  | { kind: 'match' }
-  | { kind: 'check'; check: CheckType }
-  | { kind: 'decision'; action: 'allow' | 'block' | 'require_approval' }
-
-const palette: { label: string; item: PaletteItem }[] = [
-  { label: 'Route', item: { kind: 'match' } },
-  ...(Object.keys(checkLabels) as CheckType[]).map((check) => ({
-    label: checkLabels[check],
-    item: { kind: 'check' as const, check },
-  })),
-  { label: 'Allow', item: { kind: 'decision', action: 'allow' } },
-  { label: 'Require approval', item: { kind: 'decision', action: 'require_approval' } },
-  { label: 'Block', item: { kind: 'decision', action: 'block' } },
-]
-
-const DRAG_TYPE = 'application/x-acl-node'
+type InsertionPoint = { source: string; handle: string }
 
 function shortId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 7)}`
@@ -191,7 +176,7 @@ function WorkflowPage() {
     <>
       <PageHeader
         title="Workflow"
-        description="Every prompt and tool call walks this graph from the start node. Routes send different tools, servers or groups down stricter or looser paths; each path ends in allow, approval or block."
+        description="Follow each request from left to right. Choose what gets allowed, blocked, or sent for approval."
         actions={
           isAdmin ? (
             <>
@@ -329,7 +314,37 @@ function Editor({
   const [selectedEdges, setSelectedEdges] = useState<Set<string>>(new Set())
   const [measured, setMeasured] = useState<Record<string, FlowNode['measured']>>({})
   const [tab, setTab] = useState<Tab>('inspect')
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [pickerPosition, setPickerPosition] = useState({ left: 24, top: 24 })
+  const [stepSearch, setStepSearch] = useState('')
+  const [otherOpen, setOtherOpen] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (paletteOpen) {
+      setStepSearch('')
+      setOtherOpen(false)
+      searchRef.current?.focus()
+    }
+  }, [paletteOpen])
+  const [insertion, setInsertion] = useState<InsertionPoint | null>(null)
   const [run, setRun] = useState<EvaluationResult | null>(null)
+
+  const canvasRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => flow.fitView({ padding: 0.12, duration: 200 }))
+    })
+    observer.observe(canvas)
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
+  }, [flow])
 
   const trigger = graph.nodes.find((n) => n.type === 'trigger')
   const path = useMemo(() => {
@@ -357,6 +372,23 @@ function Editor({
     deletable: isAdmin && n.type !== 'trigger',
     data: {
       node: n,
+      onAdd: isAdmin
+        ? (handle: string, anchor: { x: number; y: number }) => {
+            const box = canvasRef.current?.getBoundingClientRect()
+            if (box) {
+              const x = anchor.x - box.left
+              const left = x + 300 < box.width ? x + 16 : x - 296
+              setPickerPosition({
+                left: Math.max(12, Math.min(left, box.width - 292)),
+                top: Math.max(12, Math.min(anchor.y - box.top - 60, box.height - 252)),
+              })
+            }
+            setStepSearch('')
+            setOtherOpen(false)
+            setInsertion({ source: n.id, handle })
+            setPaletteOpen(true)
+          }
+        : undefined,
       issues: issuesByNode.get(n.id) ?? [],
       onPath: path ? path.nodes.has(n.id) : null,
     },
@@ -371,9 +403,18 @@ function Editor({
       target: e.target,
       selected: selectedEdges.has(e.id),
       animated: onPath === true,
+      type: 'smoothstep',
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: 20,
+        height: 20,
+        color: handleColor[e.sourceHandle] ?? '#8b91a5',
+      },
+      interactionWidth: 24,
+      pathOptions: { borderRadius: 18, offset: 30 },
       style: {
         stroke: handleColor[e.sourceHandle] ?? 'var(--color-line-strong)',
-        strokeWidth: onPath ? 2.5 : 1.5,
+        strokeWidth: onPath ? 3.5 : 2.5,
         opacity: path && !onPath ? 0.25 : 1,
       },
     }
@@ -387,7 +428,10 @@ function Editor({
     if (changes.some((c) => c.type === 'select')) {
       const sel = next.find((n) => n.selected)?.id ?? null
       setSelectedId(sel)
-      if (sel) setTab('inspect')
+      if (sel) {
+        setTab('inspect')
+        setPanelOpen(true)
+      }
     }
     if (changes.some((c) => c.type === 'position' || c.type === 'remove')) {
       const byId = new Map(next.map((n) => [n.id, n]))
@@ -438,21 +482,63 @@ function Editor({
     })
   }
 
-  const addNode = (item: PaletteItem, position: { x: number; y: number }) => {
+  const insertionSource = graph.nodes.find((n) => n.id === insertion?.source)
+  const existingConnection = graph.edges.find(
+    (e) => e.source === insertion?.source && e.sourceHandle === insertion?.handle,
+  )
+  const suggestions = useMemo(
+    () => (insertion ? recommendSteps(graph, insertion.source, insertion.handle) : []),
+    [graph, insertion],
+  )
+  const search = stepSearch.trim().toLowerCase()
+  const matchesSearch = suggestions.filter((s) =>
+    `${s.label} ${s.reason} ${s.item.kind === 'match' ? 'condition if branch' : s.item.kind === 'check' ? s.item.check : s.item.action}`
+      .toLowerCase()
+      .includes(search),
+  )
+  const renderChoice = (choice: (typeof suggestions)[number]) => (
+    <PaletteButton
+      key={choice.label}
+      label={choice.label}
+      item={choice.item}
+      reason={choice.reason}
+      disabled={!isAdmin || !insertionSource || choice.disabled}
+      onAdd={() => addNode(choice.item)}
+    />
+  )
+  const addNode = (item: PaletteItem) => {
+    if (!insertion || !insertionSource) return
+    const position = { x: insertionSource.position.x + 340, y: insertionSource.position.y }
     const node = createNode(item, position)
-    setGraph({ ...graph, nodes: [...graph.nodes, node] })
+    const continuation = node.type === 'match' ? 'match' : node.type === 'check' ? 'pass' : null
+    if (existingConnection && !continuation) return
+    const nextEdges = graph.edges.filter((e) => e.id !== existingConnection?.id)
+    nextEdges.push({
+      id: shortId('e'),
+      source: insertion.source,
+      sourceHandle: insertion.handle,
+      target: node.id,
+    })
+    if (existingConnection && continuation)
+      nextEdges.push({ ...existingConnection, source: node.id, sourceHandle: continuation })
+    setGraph({
+      ...graph,
+      nodes: [
+        ...graph.nodes.map((n) =>
+          n.position.x >= position.x
+            ? { ...n, position: { ...n.position, x: n.position.x + 340 } }
+            : n,
+        ),
+        node,
+      ],
+      edges: nextEdges,
+    })
     setSelectedId(node.id)
     setTab('inspect')
-  }
-
-  const onDrop = (e: DragEvent) => {
-    e.preventDefault()
-    const raw = e.dataTransfer.getData(DRAG_TYPE)
-    if (!raw) return
-    addNode(
-      JSON.parse(raw) as PaletteItem,
-      flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }),
-    )
+    setPanelOpen(true)
+    setPaletteOpen(false)
+    setRun(null)
+    requestAnimationFrame(() => flow.fitView({ padding: 0.12, duration: 200 }))
   }
 
   const selected = graph.nodes.find((n) => n.id === selectedId) ?? null
@@ -467,108 +553,230 @@ function Editor({
     setSelectedId(null)
   }
 
+  const arrange = () => {
+    // Longest-path columns keep every connection moving left to right.
+    const depths = new Map(graph.nodes.map((n) => [n.id, 0]))
+    for (let pass = 0; pass < graph.nodes.length; pass++) {
+      let changed = false
+      for (const edge of graph.edges) {
+        const depth = (depths.get(edge.source) ?? 0) + 1
+        if (depth > (depths.get(edge.target) ?? 0)) {
+          depths.set(edge.target, depth)
+          changed = true
+        }
+      }
+      if (!changed) break
+    }
+    const rows = new Map<number, number>()
+    const positions = new Map<string, { x: number; y: number }>()
+    for (const node of [...graph.nodes].sort((a, b) => a.position.y - b.position.y)) {
+      const depth = depths.get(node.id) ?? 0
+      const y = rows.get(depth) ?? 0
+      positions.set(node.id, { x: depth * 340, y })
+      rows.set(depth, y + (measured[node.id]?.height ?? 200) + 80)
+    }
+    setGraph({
+      ...graph,
+      nodes: graph.nodes.map((n) => ({ ...n, position: positions.get(n.id)! })),
+    })
+    requestAnimationFrame(() => flow.fitView({ padding: 0.12, duration: 250 }))
+  }
+
   return (
-    <div className="grid h-[calc(100vh-230px)] min-h-[520px] grid-cols-[176px_minmax(0,1fr)_360px] gap-3">
-      <Card className="flex flex-col gap-1 overflow-y-auto p-2">
-        <div className="px-1 pb-1 text-[11px] font-medium tracking-wide text-subtle uppercase">
-          {isAdmin ? 'Drag onto the canvas' : 'Read only'}
-        </div>
-        {palette.map(({ label, item }) => (
-          <PaletteButton
-            key={label}
-            label={label}
-            item={item}
-            disabled={!isAdmin}
-            onAdd={() => {
-              const box = document.querySelector('.react-flow')?.getBoundingClientRect()
-              // Cascade click-added nodes so they don't stack on top of each other.
-              const offset = (graph.nodes.length % 6) * 24
-              const center = box
-                ? { x: box.left + box.width / 2 + offset, y: box.top + box.height / 3 + offset }
-                : { x: 0, y: 0 }
-              addNode(item, flow.screenToFlowPosition(center))
-            }}
-          />
-        ))}
-      </Card>
-
-      <Card className="overflow-hidden">
-        <ReactFlow<FlowNode>
-          colorMode="dark"
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          isValidConnection={isValidConnection}
-          onDrop={onDrop}
-          onDragOver={(e) => {
-            e.preventDefault()
-            e.dataTransfer.dropEffect = 'move'
-          }}
-          onPaneClick={() => setSelectedId(null)}
-          nodesDraggable={isAdmin}
-          nodesConnectable={isAdmin}
-          deleteKeyCode={isAdmin ? ['Backspace', 'Delete'] : null}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background gap={20} />
-          <Controls showInteractive={false} />
-          <MiniMap pannable zoomable style={{ width: 160, height: 100 }} />
-        </ReactFlow>
-      </Card>
-
-      <Card className="flex flex-col overflow-hidden">
-        <div className="flex border-b border-line text-xs">
-          {(['inspect', 'test', 'history'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={cn(
-                'flex-1 px-3 py-2 capitalize',
-                tab === t ? 'border-b-2 border-accent text-fg' : 'text-muted hover:text-fg',
-              )}
+    <div className="flex min-h-[560px] h-[calc(100dvh-190px)] flex-col overflow-hidden rounded-xl border border-line-strong bg-panel">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+        <div className="flex items-center gap-3">
+          {isAdmin ? (
+            <Button
+              variant={paletteOpen ? 'primary' : 'ghost'}
+              onClick={() => {
+                setPickerPosition({ left: 16, top: 16 })
+                const source = selected && nodeOutputs(selected).length ? selected : trigger
+                if (source) setInsertion({ source: source.id, handle: nodeOutputs(source)[0]! })
+                setPaletteOpen(!paletteOpen)
+              }}
             >
-              {t === 'test' ? 'Dry run' : t}
-            </button>
+              <Plus className="size-4" /> Add step
+            </Button>
+          ) : (
+            <Badge>Read only</Badge>
+          )}
+          <span className="hidden text-xs text-muted lg:inline">
+            {graph.nodes.length} steps · {graph.edges.length} connections
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isAdmin ? (
+            <Button variant="ghost" onClick={arrange}>
+              Arrange steps
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={() => flow.fitView({ padding: 0.12, duration: 250 })}>
+            <Maximize2 className="size-4" /> Fit chart
+          </Button>
+          {(['inspect', 'test', 'history'] as const).map((t) => (
+            <Button
+              key={t}
+              variant={panelOpen && tab === t ? 'primary' : 'ghost'}
+              onClick={() => {
+                setTab(t)
+                setPaletteOpen(false)
+                setPanelOpen(!(panelOpen && tab === t))
+              }}
+            >
+              {t === 'inspect' ? 'Details' : t === 'test' ? 'Test request' : 'History'}
+            </Button>
           ))}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {tab === 'inspect' ? (
-            selected ? (
-              <Inspector
-                key={selected.id}
-                node={selected}
-                issues={issuesByNode.get(selected.id) ?? []}
-                options={options}
-                readOnly={!isAdmin}
-                onChange={updateNode}
-                onDelete={() => deleteNode(selected.id)}
+      </div>
+
+      <div className="relative flex min-h-0 flex-1">
+        {paletteOpen ? (
+          <aside
+            role="dialog"
+            aria-label="Choose next step"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setPaletteOpen(false)
+                e.stopPropagation()
+              }
+            }}
+            style={pickerPosition}
+            className="absolute z-20 flex w-[280px] max-w-[calc(100%-24px)] max-h-[min(380px,calc(100%-24px))] flex-col overflow-hidden rounded-xl border border-line-strong bg-panel shadow-[0_16px_64px_#000a]"
+          >
+            <div className="flex items-center gap-2 border-b border-line p-2">
+              <Input
+                ref={searchRef}
+                aria-label="Search steps"
+                placeholder="Search…"
+                value={stepSearch}
+                onChange={(e) => setStepSearch(e.target.value)}
               />
-            ) : (
-              <GraphHelp issues={issues} />
-            )
-          ) : tab === 'test' ? (
-            <DryRun graph={graph} options={options} onResult={setRun} />
-          ) : (
-            <VersionList
-              versions={versions}
-              publishedId={publishedId}
-              canLoad={isAdmin}
-              onLoad={(g) => {
-                setGraph(g)
-                setSelectedId(null)
-                setRun(null)
-                window.requestAnimationFrame(() => flow.fitView({ padding: 0.2 }))
-              }}
-            />
-          )}
+              <button
+                type="button"
+                aria-label="Close step picker"
+                onClick={() => setPaletteOpen(false)}
+                className="rounded p-1 text-muted hover:bg-panel-2 hover:text-fg"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="min-h-0 overflow-y-auto p-1">
+              {search ? (
+                matchesSearch.length ? (
+                  matchesSearch.map(renderChoice)
+                ) : (
+                  <p className="p-3 text-sm text-muted">No matching elements.</p>
+                )
+              ) : (
+                <>
+                  {suggestions.filter((s) => s.recommended).map(renderChoice)}
+                  <button
+                    type="button"
+                    aria-expanded={otherOpen}
+                    className="mt-1 flex w-full items-center justify-between rounded-lg border-t border-line px-3 py-2 text-sm text-muted hover:bg-panel-2 hover:text-fg"
+                    onClick={() => setOtherOpen(!otherOpen)}
+                  >
+                    <span>Other elements</span>
+                    <span aria-hidden="true">{otherOpen ? '−' : '+'}</span>
+                  </button>
+                  {otherOpen ? suggestions.filter((s) => !s.recommended).map(renderChoice) : null}
+                </>
+              )}
+            </div>
+          </aside>
+        ) : null}
+        <div ref={canvasRef} className="workflow-canvas min-w-0 flex-1">
+          <ReactFlow<FlowNode>
+            colorMode="dark"
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            isValidConnection={isValidConnection}
+            onPaneClick={() => {
+              setSelectedId(null)
+              setPaletteOpen(false)
+            }}
+            nodesDraggable={isAdmin}
+            nodesConnectable={isAdmin}
+            connectOnClick={false}
+            deleteKeyCode={isAdmin ? ['Backspace', 'Delete'] : null}
+            fitView
+            fitViewOptions={{ padding: 0.12 }}
+            minZoom={0.25}
+            maxZoom={1.8}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background gap={24} size={1} color="#343b50" />
+            <Controls showInteractive={false} />
+            {graph.nodes.length > 10 ? (
+              <MiniMap
+                pannable
+                zoomable
+                nodeColor="#69728b"
+                maskColor="rgba(10,11,16,0.65)"
+                style={{ width: 140, height: 85 }}
+              />
+            ) : null}
+          </ReactFlow>
         </div>
-      </Card>
+
+        {panelOpen && !paletteOpen ? (
+          <aside className="absolute inset-y-0 right-0 z-10 flex w-[340px] max-w-full flex-col overflow-hidden border-l border-line-strong bg-panel shadow-2xl">
+            <div className="flex items-center border-b border-line text-xs">
+              <span className="flex-1 px-4 py-3 font-medium">
+                {tab === 'inspect'
+                  ? 'Step settings'
+                  : tab === 'test'
+                    ? 'Try an example request'
+                    : 'Saved versions'}
+              </span>
+              <button
+                type="button"
+                aria-label="Close details"
+                onClick={() => setPanelOpen(false)}
+                className="p-3 text-muted hover:text-fg"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {tab === 'inspect' ? (
+                selected ? (
+                  <Inspector
+                    key={selected.id}
+                    node={selected}
+                    issues={issuesByNode.get(selected.id) ?? []}
+                    options={options}
+                    readOnly={!isAdmin}
+                    onChange={updateNode}
+                    onDelete={() => deleteNode(selected.id)}
+                  />
+                ) : (
+                  <GraphHelp issues={issues} />
+                )
+              ) : tab === 'test' ? (
+                <DryRun graph={graph} options={options} onResult={setRun} />
+              ) : (
+                <VersionList
+                  versions={versions}
+                  publishedId={publishedId}
+                  canLoad={isAdmin}
+                  onLoad={(g) => {
+                    setGraph(g)
+                    setSelectedId(null)
+                    setRun(null)
+                    window.requestAnimationFrame(() => flow.fitView({ padding: 0.2 }))
+                  }}
+                />
+              )}
+            </div>
+          </aside>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -576,11 +784,13 @@ function Editor({
 const paletteIcons = { match: RouteIcon, allow: CircleCheck, block: Ban, require_approval: Hand }
 
 function PaletteButton({
+  reason,
   label,
   item,
   disabled,
   onAdd,
 }: {
+  reason: string
   label: string
   item: PaletteItem
   disabled: boolean
@@ -595,17 +805,15 @@ function PaletteButton({
   return (
     <button
       type="button"
-      draggable={!disabled}
       disabled={disabled}
-      onDragStart={(e) => {
-        e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(item))
-        e.dataTransfer.effectAllowed = 'move'
-      }}
+      title={disabled ? reason : undefined}
       onClick={onAdd}
-      className="flex items-center gap-2 rounded-md border border-line bg-panel-2 px-2 py-1.5 text-left text-xs hover:border-line-strong disabled:cursor-default disabled:opacity-50"
+      className="flex items-center gap-2 rounded-lg border border-transparent bg-transparent px-3 py-2 text-left text-sm hover:border-line-strong hover:bg-panel-2 disabled:cursor-default disabled:opacity-50"
     >
       {Icon ? <Icon className="size-3.5 shrink-0 text-muted" /> : null}
-      <span className="leading-tight">{label}</span>
+      <span className="leading-tight">
+        <span className="block font-medium">{label}</span>
+      </span>
     </button>
   )
 }
@@ -614,9 +822,8 @@ function GraphHelp({ issues }: { issues: GraphIssue[] }) {
   return (
     <div className="flex flex-col gap-3 p-4 text-xs text-muted">
       <p>
-        Select a node to configure it. Drag from an output on the right of a node to another node to
-        connect them; each output connects once. Select a node or edge and press Delete to remove
-        it.
+        Click a step to configure it. Click + beside a branch to add the next step; it connects
+        automatically. Select a step or connection and press Delete to remove it.
       </p>
       <p>
         <span className="text-fg">Routes</span> check who and what the request is (server, tool,

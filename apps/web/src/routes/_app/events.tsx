@@ -21,6 +21,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { Radio } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { ApprovalRecords } from '#/components/approval-records.tsx'
 import {
   CheckList,
   DecisionBadge,
@@ -69,6 +70,7 @@ function EventsPage() {
   const navigate = Route.useNavigate()
   const live = useLive()
   const [follow, setFollow] = useState(true)
+  const [approvalsOpen, setApprovalsOpen] = useState(false)
   const filters = filterKey(search)
 
   const query = useInfiniteQuery({
@@ -201,7 +203,7 @@ function EventsPage() {
   return (
     <>
       <PageHeader
-        title="Events"
+        title="Logs"
         description="Every prompt and tool call that went through the gateway, with the checks that ran on it."
         actions={
           <Button
@@ -213,6 +215,21 @@ function EventsPage() {
           </Button>
         }
       />
+      <details
+        className="mb-4 rounded-lg border border-line bg-panel"
+        onToggle={(e) => setApprovalsOpen(e.currentTarget.open)}
+      >
+        <summary className="cursor-pointer px-4 py-3 text-sm text-muted">
+          Approval records
+          {live.pendingApprovals.length ? ` · ${live.pendingApprovals.length} pending` : ''}
+        </summary>
+        {approvalsOpen ? (
+          <div className="border-t border-line p-4">
+            <ApprovalRecords />
+          </div>
+        ) : null}
+      </details>
+
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Segmented<TimeRange>
           value={search.range}

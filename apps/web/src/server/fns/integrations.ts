@@ -6,10 +6,10 @@ import { z } from 'zod'
 import { refreshServerTools } from '#/gateway/control.ts'
 import { audit } from '../audit.ts'
 import { env } from '../env.ts'
-import { adminMiddleware, orgMiddleware } from '../middleware.ts'
+import { adminMiddleware } from '../middleware.ts'
 
 export const listMcpServers = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .handler(async ({ context: { db, orgId, user: me } }) => {
     const servers = await db.query.mcpServer.findMany({
       where: eq(mcpServer.orgId, orgId),
@@ -165,7 +165,7 @@ export const deleteMcpServer = createServerFn({ method: 'POST' })
 
 /** Stores a pasted token: the org-wide one (admins) or the caller's own. */
 export const setBearerCredential = createServerFn({ method: 'POST' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .validator(
     z.object({
       serverId: z.string(),
@@ -213,7 +213,7 @@ export const setBearerCredential = createServerFn({ method: 'POST' })
   })
 
 export const disconnectCredential = createServerFn({ method: 'POST' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .validator(z.object({ serverId: z.string(), shared: z.boolean() }))
   .handler(async ({ data, context: { db, orgId, user: me, isAdmin } }) => {
     if (data.shared && !isAdmin) throw new Error('Only admins can remove the shared credential')
@@ -237,7 +237,7 @@ export const disconnectCredential = createServerFn({ method: 'POST' })
   })
 
 export const refreshMcpTools = createServerFn({ method: 'POST' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .validator(z.object({ serverId: z.string() }))
   .handler(async ({ data, context: { db, orgId, user: me } }) => {
     const server = await db.query.mcpServer.findFirst({

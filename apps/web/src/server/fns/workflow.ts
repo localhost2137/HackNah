@@ -4,7 +4,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { audit } from '../audit.ts'
-import { adminMiddleware, orgMiddleware } from '../middleware.ts'
+import { adminMiddleware } from '../middleware.ts'
 
 /** Versions saved before the graph editor hold the old linear format; start those from the default. */
 function parseOrDefault(definition: unknown) {
@@ -13,7 +13,7 @@ function parseOrDefault(definition: unknown) {
 }
 
 export const getWorkflow = createServerFn({ method: 'GET' })
-  .middleware([orgMiddleware])
+  .middleware([adminMiddleware])
   .handler(async ({ context: { db, orgId } }) => {
     const versions = await db
       .select({
