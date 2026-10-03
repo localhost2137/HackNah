@@ -22,6 +22,7 @@ import {
   ShieldOff,
 } from 'lucide-react'
 import { type PointerEvent, useEffect, useRef } from 'react'
+import { createGlassOptics, GLASS_OVERSCAN, GLASS_RADIUS } from './glass-optics.ts'
 import { checkSummary } from './step-form.tsx'
 
 export type FlowNodeData = {
@@ -145,6 +146,7 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
       glass.className = 'workflow-canvas react-flow dark workflow-lens'
       glass.setAttribute('aria-hidden', 'true')
       glass.inert = true
+      const optics = createGlassOptics(glass)
       const scene = document.createElement('div')
       scene.className = 'workflow-lens-scene'
       const copy = viewport.cloneNode(true) as HTMLElement
@@ -163,18 +165,19 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
           handle.classList.add('workflow-output-active')
       }
       scene.appendChild(copy)
-      glass.appendChild(scene)
+      optics.appendChild(scene)
+      glass.appendChild(optics)
       document.body.appendChild(glass)
       lens.current = glass
     }
     const box = canvas.getBoundingClientRect()
     const glass = lens.current
-    glass.style.left = `${event.clientX - 18}px`
-    glass.style.top = `${event.clientY - 18}px`
-    const scene = glass.firstElementChild as HTMLElement
+    glass.style.left = `${event.clientX - GLASS_RADIUS}px`
+    glass.style.top = `${event.clientY - GLASS_RADIUS}px`
+    const scene = glass.querySelector<HTMLElement>('.workflow-lens-scene')!
     scene.style.width = `${box.width}px`
     scene.style.height = `${box.height}px`
-    scene.style.transform = `translate(${18 - (event.clientX - box.left) * 1.35}px, ${18 - (event.clientY - box.top) * 1.35}px) scale(1.35)`
+    scene.style.transform = `translate(${GLASS_RADIUS + GLASS_OVERSCAN - (event.clientX - box.left) * 1.35}px, ${GLASS_RADIUS + GLASS_OVERSCAN - (event.clientY - box.top) * 1.35}px) scale(1.35)`
   }
   const { icon: Icon, title, subtitle, tone } = describe(node)
   const outputs = nodeOutputs(node)
