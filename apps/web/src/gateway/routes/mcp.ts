@@ -1,5 +1,11 @@
 import { type Db, mcpServer } from '@acl/db'
-import { type Decision, type GatewayEvent, RedactionVault, randomId } from '@acl/shared'
+import {
+  type Decision,
+  type GatewayEvent,
+  RedactionVault,
+  randomId,
+  toolTierFromAnnotations,
+} from '@acl/shared'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { type AppContext, type AppEnv, clientInfo } from '../context.ts'
@@ -240,6 +246,10 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
       toolName: fullName,
       mcpServerId: server.id,
       resourceIds: event.resourceIds,
+      toolTier: toolTierFromAnnotations(
+        (server.tools as McpTool[]).find((t) => t.name === toolName)?.annotations,
+      ),
+      toolArguments: args,
     },
     { eventId, sessionId: session.id, summary: `${fullName}: ${argsText.slice(0, 200)}` },
   )

@@ -1,16 +1,54 @@
-import type { CheckResult, EventKind } from './events.ts'
+import type { ApprovalMethod, CheckResult, EventKind } from './events.ts'
 import {
+  type CheckConfig,
   type CheckNode,
+  type CheckType,
   type Condition,
   type JudgeCheck,
+  type KeyStorage,
   type MatchNode,
   nodeOutputs,
+  type OsPostureKey,
   type PolicyGraph,
   type PolicyNode,
   type RedactConfig,
+  type ToolTier,
 } from './workflow.ts'
 
 export type DeviceStatus = 'trusted' | 'new' | 'mismatch' | 'revoked'
+
+export type PostureStatus = 'ok' | 'stale' | 'missing' | 'invalid' | 'unknown' | 'compromised'
+
+/**
+ * What the device and session report alongside a request: the plugin's `TrustSignals`
+ * (claude-plugin/contract/types.ts) in camelCase. Every field is optional; a check whose signal
+ * is absent is skipped and follows `pass`, except posture, which leaves through `unknown`.
+ */
+export type RequestSignals = {
+  keyStorage?: KeyStorage
+  /** A Touch ID proof was valid for this exact request. */
+  presenceVerified?: boolean
+  /** The device has a registered Touch ID key. */
+  presenceCapable?: boolean
+  /** The owner approved this exact action in the browser after a fresh sign-in. */
+  approvedChallenge?: boolean
+  /** The person accepted the confirmation dialog. Reported by the client, not verifiable. */
+  confirmed?: boolean
+  ipKnown?: boolean
+  travelKmh?: number | null
+  /** Minutes since the session read untrusted content; null if it never did. */
+  untrustedContentMinutesAgo?: number | null
+  /** What was read, e.g. "example.com (WebFetch)". */
+  untrustedSource?: string | null
+  hookCorrelated?: boolean
+  userIdleMinutes?: number | null
+  postureStatus?: PostureStatus
+  postureScore?: number | null
+  postureReason?: string | null
+  osPosture?: Partial<Record<OsPostureKey, boolean | null>> | null
+  /** The tool's definition differs from the one an admin pinned. */
+  definitionChanged?: boolean
+}
 
 export type EvaluationInput = {
   kind: EventKind
@@ -22,6 +60,10 @@ export type EvaluationInput = {
   resourceIds?: string[]
   groupIds?: string[]
   model?: string | null
+  toolTier?: ToolTier | null
+  /** The parsed arguments of a tool call, for argument rules. */
+  toolArguments?: unknown
+  signals?: RequestSignals
 }
 
 export type JudgeVerdict = { score: number; reason: string }
@@ -39,6 +81,8 @@ export type EvaluationResult = {
   reasons: string[]
   /** Set when the decision is `pending`. */
   approvalTimeoutSec: number
+  /** Who has to approve a `pending` request; null otherwise. */
+  approvalMethod: ApprovalMethod | null
   /** Approving this request also trusts the new device it came from. */
   trustsDevice: boolean
   /** The redaction applied on the way, if the path went through an enabled redact node. */
@@ -63,19 +107,22 @@ export async function evaluateGraph(
 
   const finish = (
     action: 'allow' | 'block' | 'require_approval',
-    entry: { stepId: string; reason?: string; timeoutSec?: number },
+    entry: { stepId: string; reason?: string; timeoutSec?: number; method?: ApprovalMethod },
   ): EvaluationResult => {
     checks.push({
       stepId: entry.stepId,
       type: 'decision',
       outcome: action === 'allow' ? 'pass' : 'fail',
       action: action === 'allow' ? undefined : action,
+      method: entry.method,
       reason: entry.reason || undefined,
       durationMs: 0,
     })
     const failed = checks.filter((c) => c.outcome === 'fail' && c.type !== 'decision')
     const reasons = failed.map((c) => c.reason ?? c.type)
     if (action !== 'allow' && entry.reason) reasons.push(entry.reason)
+    const pendingMethod = action === 'require_approval' ? (entry.method ?? 'admin') : null
+    if (pendingMethod && pendingMethod !== 'admin') reasons.push(approvalAsk[pendingMethod])
     const decisionRisk = action === 'block' ? 1 : action === 'require_approval' ? 0.7 : 0
     const riskScore = Math.min(
       1,
@@ -87,6 +134,7 @@ export async function evaluateGraph(
       riskScore,
       reasons,
       approvalTimeoutSec: entry.timeoutSec ?? 300,
+      approvalMethod: pendingMethod,
       trustsDevice: action === 'require_approval' && trustsDevice,
       redact,
     }
@@ -96,10 +144,16 @@ export async function evaluateGraph(
   let from = 'start'
   for (let hop = 0; node && hop < MAX_HOPS; hop++) {
     if (node.type === 'decision') {
-      return finish(node.action, {
+      if (node.action !== 'require_approval')
+        return finish(node.action, { stepId: node.id, reason: node.reason })
+      const approval = resolveApproval(node.method, input.signals)
+      if (approval.satisfied)
+        return finish('allow', { stepId: node.id, reason: approval.satisfied, method: node.method })
+      return finish('require_approval', {
         stepId: node.id,
         reason: node.reason,
         timeoutSec: node.timeoutSec,
+        method: approval.method,
       })
     }
 
@@ -139,6 +193,213 @@ export async function evaluateGraph(
   })
 }
 
+const approvalAsk: Record<Exclude<ApprovalMethod, 'admin'>, string> = {
+  confirm: 'Needs confirmation in Claude Code',
+  touchid: 'Needs Touch ID on the device',
+  browser: 'Needs a fresh sign-in in the browser',
+}
+
+/**
+ * Whether the request already carries the proof an approval asks for. An admin approval never
+ * does. A browser approval of this exact action outranks the other device-side levels, and a
+ * device without Touch ID is asked in the browser instead.
+ */
+function resolveApproval(
+  method: ApprovalMethod,
+  signals: RequestSignals = {},
+): { method: ApprovalMethod; satisfied?: string } {
+  if (method === 'admin') return { method }
+  if (signals.approvedChallenge)
+    return { method, satisfied: 'Approved in the browser after a fresh sign-in' }
+  if (method === 'touchid') {
+    if (signals.presenceVerified) return { method, satisfied: 'Touch ID verified' }
+    if (signals.presenceCapable === false) return { method: 'browser' }
+  }
+  if (method === 'confirm' && signals.confirmed)
+    return { method, satisfied: 'Confirmed in Claude Code' }
+  return { method }
+}
+
+const noSignal: Outcome = {
+  outcome: 'skipped',
+  branch: 'pass',
+  reason: 'No signal from this client',
+}
+const notAToolCall: Outcome = { outcome: 'skipped', branch: 'pass', reason: 'Not a tool call' }
+const passed: Outcome = { outcome: 'pass', branch: 'pass' }
+
+const osPostureNames: Record<OsPostureKey, string> = {
+  fv: 'FileVault',
+  sip: 'System Integrity Protection',
+  gk: 'Gatekeeper',
+  fw: 'Firewall',
+}
+
+type Runner<T extends CheckType> = (
+  check: Extract<CheckConfig, { type: T }>,
+  input: EvaluationInput,
+  deps: EngineDeps,
+) => Outcome | Promise<Outcome>
+
+/** What each check block does. Its outputs are declared in `blocks.ts`. */
+const runners: { [T in CheckType]: Runner<T> } = {
+  fingerprint: (_, input) => {
+    if (input.deviceStatus === 'mismatch' || input.deviceStatus === 'revoked')
+      return {
+        outcome: 'fail',
+        branch: 'mismatch',
+        reason:
+          input.deviceStatus === 'revoked'
+            ? 'Device has been revoked'
+            : 'Token presented from a different device',
+      }
+    if (input.deviceStatus === 'new')
+      return { outcome: 'fail', branch: 'new', reason: 'Request from an unrecognized device' }
+    return passed
+  },
+  keywords: (check, input) => {
+    const hit = matchKeywords(input.text, check.patterns, check.mode, check.caseSensitive)
+    if (hit) return { outcome: 'fail', branch: 'fail', reason: `Matched keyword "${hit}"` }
+    return passed
+  },
+  judge: async (check, input, deps) => {
+    if (!deps.judge) throw new Error('judge unavailable')
+    const verdict = await deps.judge(check, input)
+    const failed = verdict.score >= check.threshold
+    return {
+      outcome: failed ? 'fail' : 'pass',
+      branch: failed ? 'fail' : 'pass',
+      score: verdict.score,
+      reason: verdict.reason,
+    }
+  },
+  // Redaction rewrites the request before forwarding; it never blocks.
+  redact: () => passed,
+  arguments: (check, input) => {
+    const name = input.toolName
+    if (input.kind !== 'tool_call' || !name) return notAToolCall
+    const args =
+      input.toolArguments && typeof input.toolArguments === 'object'
+        ? (input.toolArguments as Record<string, unknown>)
+        : {}
+    for (const rule of check.rules) {
+      if (!toolMatches(rule.tool, name)) continue
+      const value = args[rule.argument]
+      const values = Array.isArray(value) ? value : value === undefined ? [] : [value]
+      const re = new RegExp(rule.pattern)
+      const bad = values.find((v) => !re.test(typeof v === 'string' ? v : JSON.stringify(v)))
+      if (bad !== undefined)
+        return {
+          outcome: 'fail',
+          branch: 'fail',
+          reason:
+            rule.message ||
+            `Argument ${rule.argument}=${typeof bad === 'string' ? bad : JSON.stringify(bad)} is not allowed`,
+        }
+    }
+    return passed
+  },
+  untrusted_content: (check, input) => {
+    const minutes = input.signals?.untrustedContentMinutesAgo
+    if (minutes === undefined) return noSignal
+    if (minutes === null || minutes >= check.windowMinutes) return passed
+    const source = input.signals?.untrustedSource
+    return {
+      outcome: 'fail',
+      branch: 'tainted',
+      reason: `Possible prompt injection: the session read untrusted content${source ? ` (${source})` : ''} ${minutes} min ago`,
+    }
+  },
+  tool_pinning: (_, input) => {
+    const changed = input.signals?.definitionChanged
+    if (changed === undefined) return noSignal
+    if (!changed) return passed
+    return {
+      outcome: 'fail',
+      branch: 'changed',
+      reason: 'Tool definition changed since an admin pinned it (possible tool poisoning)',
+    }
+  },
+  posture: (check, input) => {
+    const {
+      postureStatus: status = 'missing',
+      postureScore: score,
+      postureReason,
+    } = input.signals ?? {}
+    if (status === 'compromised' || status === 'invalid')
+      return {
+        outcome: 'fail',
+        branch: 'compromised',
+        reason: postureReason || `EDR posture ${status}`,
+      }
+    if (score != null && score < check.minScore)
+      return {
+        outcome: 'fail',
+        branch: 'low',
+        reason: `Posture score ${score} is below ${check.minScore}`,
+      }
+    // An unreachable EDR or a missing score is unknown, never healthy.
+    if (status !== 'ok' || score == null)
+      return {
+        outcome: 'fail',
+        branch: 'unknown',
+        reason:
+          postureReason ||
+          (status === 'stale'
+            ? 'EDR posture is outdated'
+            : status === 'missing'
+              ? 'No EDR posture from this device'
+              : 'EDR posture could not be confirmed'),
+      }
+    return passed
+  },
+  os_posture: (check, input) => {
+    const reported = input.signals?.osPosture
+    if (!reported) return noSignal
+    const off = check.require.filter((key) => reported[key] === false)
+    if (off.length === 0) return passed
+    return {
+      outcome: 'fail',
+      branch: 'fail',
+      reason: `${off.map((key) => osPostureNames[key]).join(', ')} off`,
+    }
+  },
+  network: (check, input) => {
+    const { ipKnown, travelKmh } = input.signals ?? {}
+    if (ipKnown === undefined && travelKmh === undefined) return noSignal
+    if (travelKmh != null && travelKmh > check.maxTravelKmh)
+      return {
+        outcome: 'fail',
+        branch: 'travel',
+        reason: `Impossible travel: ${Math.round(travelKmh)} km/h since the previous request`,
+      }
+    if (ipKnown === false)
+      return {
+        outcome: 'fail',
+        branch: 'new_network',
+        reason: 'First request from this network',
+      }
+    return passed
+  },
+  hook: (_, input) => {
+    if (input.kind !== 'tool_call') return notAToolCall
+    const correlated = input.signals?.hookCorrelated
+    if (correlated === undefined) return noSignal
+    if (correlated) return passed
+    return {
+      outcome: 'fail',
+      branch: 'fail',
+      reason: 'Tool call not started by Claude Code (no matching hook record)',
+    }
+  },
+  idle: (check, input) => {
+    const minutes = input.signals?.userIdleMinutes
+    if (minutes === undefined) return noSignal
+    if (minutes === null || minutes < check.maxMinutes) return passed
+    return { outcome: 'fail', branch: 'idle', reason: `User idle for ${minutes} min` }
+  },
+}
+
 async function runCheck(
   node: CheckNode,
   input: EvaluationInput,
@@ -147,40 +408,8 @@ async function runCheck(
   if (!node.enabled) return { outcome: 'skipped', reason: 'disabled', branch: 'pass' }
   const check = node.check
   try {
-    switch (check.type) {
-      case 'fingerprint':
-        if (input.deviceStatus === 'mismatch' || input.deviceStatus === 'revoked')
-          return {
-            outcome: 'fail',
-            branch: 'mismatch',
-            reason:
-              input.deviceStatus === 'revoked'
-                ? 'Device has been revoked'
-                : 'Token presented from a different device',
-          }
-        if (input.deviceStatus === 'new')
-          return { outcome: 'fail', branch: 'new', reason: 'Request from an unrecognized device' }
-        return { outcome: 'pass', branch: 'pass' }
-      case 'keywords': {
-        const hit = matchKeywords(input.text, check.patterns, check.mode, check.caseSensitive)
-        if (hit) return { outcome: 'fail', branch: 'fail', reason: `Matched keyword "${hit}"` }
-        return { outcome: 'pass', branch: 'pass' }
-      }
-      case 'judge': {
-        if (!deps.judge) throw new Error('judge unavailable')
-        const verdict = await deps.judge(check, input)
-        const failed = verdict.score >= check.threshold
-        return {
-          outcome: failed ? 'fail' : 'pass',
-          branch: failed ? 'fail' : 'pass',
-          score: verdict.score,
-          reason: verdict.reason,
-        }
-      }
-      case 'redact':
-        // Redaction rewrites the request before forwarding; it never blocks.
-        return { outcome: 'pass', branch: 'pass' }
-    }
+    const run = runners[check.type] as Runner<CheckType>
+    return await run(check, input, deps)
   } catch (err) {
     const outputs = nodeOutputs(node)
     return {
@@ -202,13 +431,8 @@ export function conditionHolds(c: Condition, input: EvaluationInput): boolean {
       return c.values.includes(input.kind)
     case 'mcpServer':
       return input.mcpServerId != null && c.values.includes(input.mcpServerId)
-    case 'tool': {
-      const name = input.toolName
-      if (!name) return false
-      // MCP tools are named `<server>__<tool>`; patterns may target either form.
-      const bare = name.slice(name.lastIndexOf('__') + 2)
-      return c.values.some((p) => globMatch(p, name) || globMatch(p, bare))
-    }
+    case 'tool':
+      return input.toolName != null && c.values.some((p) => toolMatches(p, input.toolName!))
     case 'resource':
       return (input.resourceIds ?? []).some((id) => c.values.includes(id))
     case 'group':
@@ -217,7 +441,28 @@ export function conditionHolds(c: Condition, input: EvaluationInput): boolean {
       return c.values.includes(input.deviceStatus as (typeof c.values)[number])
     case 'model':
       return input.model != null && c.values.some((p) => globMatch(p, input.model!))
+    case 'tier':
+      return input.toolTier != null && c.values.includes(input.toolTier)
+    case 'keyStorage': {
+      const storage = input.signals?.keyStorage
+      return storage != null && c.values.includes(storage)
+    }
   }
+}
+
+/** MCP tools are named `<server>__<tool>`; a pattern may target either form. */
+function toolMatches(pattern: string, name: string): boolean {
+  return globMatch(pattern, name) || globMatch(pattern, name.slice(name.lastIndexOf('__') + 2))
+}
+
+/**
+ * The tier of an MCP tool from its annotations, as the plugin derives it: `destructiveHint` →
+ * destructive, `readOnlyHint` → read, otherwise write.
+ */
+export function toolTierFromAnnotations(annotations: unknown): ToolTier {
+  const hints = (annotations ?? {}) as { destructiveHint?: boolean; readOnlyHint?: boolean }
+  if (hints.destructiveHint) return 'destructive'
+  return hints.readOnlyHint ? 'read' : 'write'
 }
 
 /** Whole-string match where `*` is the only wildcard. */

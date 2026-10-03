@@ -1,29 +1,40 @@
 import {
-  type Condition,
-  checkLabels,
+  type BlockId,
+  type BlockOutput,
+  blockId,
+  blockOf,
   type GraphIssue,
-  nodeOutputs,
-  outputLabels,
   type PolicyNode,
+  type Tone,
 } from '@acl/shared'
 import { cn } from '@acl/ui'
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react'
 import {
+  Activity,
   Ban,
+  Braces,
   CircleCheck,
   Fingerprint,
   Gavel,
+  Globe,
   Hand,
+  Keyboard,
+  Laptop,
+  LogIn,
   type LucideIcon,
+  MessageCircleQuestion,
+  Pin,
   Play,
   Plus,
   Route,
+  ScanFace,
   ScanSearch,
+  ShieldAlert,
   ShieldOff,
+  Webhook,
 } from 'lucide-react'
 import { type PointerEvent, useEffect, useRef } from 'react'
 import { createGlassOptics, GLASS_OVERSCAN, GLASS_RADIUS } from './glass-optics.ts'
-import { checkSummary } from './step-form.tsx'
 
 export type FlowNodeData = {
   onAdd?: (handle: string, anchor: { x: number; y: number }) => void
@@ -34,88 +45,51 @@ export type FlowNodeData = {
 }
 export type FlowNode = Node<FlowNodeData>
 
-export const handleColor: Record<string, string> = {
-  next: '#9a8dff',
-  match: '#9a8dff',
-  else: '#8b91a5',
-  pass: '#2fd18b',
-  fail: '#ff5c72',
-  mismatch: '#ff5c72',
-  new: '#f5b84a',
-  error: '#f5b84a',
+export const toneColor: Record<Tone, string> = {
+  ok: '#2fd18b',
+  bad: '#ff5c72',
+  warn: '#f5b84a',
+  neutral: '#8b91a5',
+  accent: '#9a8dff',
 }
 
-export const checkIcons: Record<string, LucideIcon> = {
+export const blockIcons: Record<BlockId, LucideIcon> = {
+  trigger: Play,
+  route: Route,
   fingerprint: Fingerprint,
+  posture: Activity,
+  os_posture: Laptop,
+  network: Globe,
   keywords: ScanSearch,
   judge: Gavel,
   redact: ShieldOff,
+  arguments: Braces,
+  tool_pinning: Pin,
+  untrusted_content: ShieldAlert,
+  hook: Webhook,
+  idle: Keyboard,
+  allow: CircleCheck,
+  block: Ban,
+  approve_admin: Hand,
+  approve_confirm: MessageCircleQuestion,
+  approve_touchid: ScanFace,
+  approve_browser: LogIn,
 }
 
-const fieldLabels: Record<Condition['field'], string> = {
-  kind: 'Kind',
-  mcpServer: 'MCP server',
-  tool: 'Tool',
-  resource: 'Resource',
-  group: 'Group',
-  deviceStatus: 'Device',
-  model: 'Model',
-}
-
-export function conditionText(c: Condition, names: Record<string, string> = {}): string {
-  const values = c.values.map((v) => names[v] ?? v)
-  return `${fieldLabels[c.field]}: ${values.join(', ') || '—'}`
-}
-
-function describe(node: PolicyNode): {
-  icon: LucideIcon
-  title: string
-  subtitle: string
-  tone: string
-} {
+function titleTone(node: PolicyNode): string {
   switch (node.type) {
     case 'trigger':
-      return {
-        icon: Play,
-        title: 'Request comes in',
-        subtitle: 'Prompt, tool result or tool call',
-        tone: 'text-accent-strong',
-      }
+      return 'text-accent-strong'
     case 'match':
-      return {
-        icon: Route,
-        title: node.label || 'Route',
-        subtitle:
-          node.conditions.length === 0
-            ? 'No conditions'
-            : node.conditions
-                .map((c) => conditionText(c))
-                .join(node.mode === 'all' ? ' and ' : ' or '),
-        tone: 'text-info',
-      }
+      return 'text-info'
     case 'check':
-      return {
-        icon: checkIcons[node.check.type] ?? ScanSearch,
-        title: checkLabels[node.check.type],
-        subtitle: node.enabled ? checkSummary(node.check) : 'Disabled: follows pass',
-        tone: 'text-fg',
-      }
+      return 'text-fg'
     case 'decision':
       return node.action === 'allow'
-        ? { icon: CircleCheck, title: 'Allow', subtitle: 'Forward the request', tone: 'text-ok' }
+        ? 'text-ok'
         : node.action === 'block'
-          ? {
-              icon: Ban,
-              title: 'Block',
-              subtitle: node.reason || 'Deny the request',
-              tone: 'text-bad',
-            }
-          : {
-              icon: Hand,
-              title: 'Require approval',
-              subtitle: `Wait up to ${node.timeoutSec}s for an admin`,
-              tone: 'text-warn',
-            }
+          ? 'text-bad'
+          : 'text-warn'
   }
 }
 
@@ -179,8 +153,13 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
     scene.style.height = `${box.height}px`
     scene.style.transform = `translate(${GLASS_RADIUS + GLASS_OVERSCAN - (event.clientX - box.left) * 1.35}px, ${GLASS_RADIUS + GLASS_OVERSCAN - (event.clientY - box.top) * 1.35}px) scale(1.35)`
   }
-  const { icon: Icon, title, subtitle, tone } = describe(node)
-  const outputs = nodeOutputs(node)
+  const block = blockOf(node)
+  const Icon = blockIcons[blockId(node)]
+  const title = (node.type === 'match' && node.label) || block.label
+  const subtitle =
+    node.type === 'check' && !node.enabled ? 'Disabled: follows pass' : block.summary(node)
+  const tone = titleTone(node)
+  const outputs: BlockOutput[] = block.outputs
   const hasError = issues.some((i) => i.level === 'error')
   const hasWarning = issues.some((i) => i.level === 'warning')
   return (
@@ -211,25 +190,9 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
       </div>
       {outputs.length > 0 ? (
         <div className="border-t border-line bg-panel-2/60 py-2 rounded-b-xl">
-          {outputs.map((h) => (
+          {outputs.map(({ id: h, label, tone: outputTone }) => (
             <div key={h} className="relative px-4 py-1.5 text-right text-[12px] font-medium">
-              <span style={{ color: handleColor[h] }}>
-                {h === 'next'
-                  ? 'Continue'
-                  : h === 'pass'
-                    ? 'Passed'
-                    : h === 'fail'
-                      ? 'Failed'
-                      : h === 'new'
-                        ? 'New device'
-                        : h === 'mismatch'
-                          ? 'Device mismatch'
-                          : h === 'match'
-                            ? 'Matches'
-                            : h === 'else'
-                              ? 'Otherwise'
-                              : (outputLabels[h] ?? h)}
-              </span>
+              <span style={{ color: toneColor[outputTone] }}>{label}</span>
               <Handle
                 id={h}
                 type="source"
@@ -237,7 +200,7 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
                 className={data.onAdd ? 'workflow-output' : undefined}
                 role={data.onAdd ? 'button' : undefined}
                 tabIndex={data.onAdd ? 0 : undefined}
-                aria-label={`Add step after ${title}: ${outputLabels[h] ?? h}`}
+                aria-label={`Add step after ${title}: ${label}`}
                 onPointerEnter={moveLens}
                 onPointerMove={moveLens}
                 onPointerLeave={clearLens}
@@ -266,7 +229,7 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
                   const box = e.currentTarget.getBoundingClientRect()
                   data.onAdd?.(h, { x: box.right, y: box.top + box.height / 2 })
                 }}
-                style={{ background: handleColor[h] }}
+                style={{ background: toneColor[outputTone] }}
               >
                 {data.onAdd ? <Plus className="pointer-events-none size-3.5 opacity-0" /> : null}
               </Handle>

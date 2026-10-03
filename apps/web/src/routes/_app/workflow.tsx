@@ -1,4 +1,7 @@
 import {
+  type BlockGroup,
+  type BlockSpec,
+  blockOutput,
   type EvaluationResult,
   type GraphIssue,
   nodeOutputs,
@@ -26,19 +29,18 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from '@xyflow/react'
-import { Ban, CircleCheck, Hand, Maximize2, Plus, Route as RouteIcon, X } from 'lucide-react'
+import { Maximize2, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
 import { DryRun } from '#/components/workflow/dry-run.tsx'
 import {
-  checkIcons,
+  blockIcons,
   type FlowNode,
-  handleColor,
   nodeTypes,
+  toneColor,
 } from '#/components/workflow/graph-nodes.tsx'
 import { Inspector, type PickerOptions } from '#/components/workflow/inspector.tsx'
-import { type PaletteItem, recommendSteps } from '#/components/workflow/recommendations.ts'
-import { newCheck } from '#/components/workflow/step-form.tsx'
+import { recommendSteps, type Suggestion } from '#/components/workflow/recommendations.ts'
 import { timeAgo } from '#/lib/format.ts'
 import { listGroups, listResources } from '#/server/fns/access.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
@@ -60,35 +62,8 @@ function shortId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 7)}`
 }
 
-function createNode(item: PaletteItem, position: { x: number; y: number }): PolicyNode {
-  switch (item.kind) {
-    case 'match':
-      return {
-        id: shortId('route'),
-        type: 'match',
-        position,
-        label: '',
-        mode: 'all',
-        conditions: [],
-      }
-    case 'check':
-      return {
-        id: shortId(item.check),
-        type: 'check',
-        position,
-        enabled: true,
-        check: newCheck(item.check),
-      }
-    case 'decision':
-      return {
-        id: shortId(item.action === 'require_approval' ? 'approve' : item.action),
-        type: 'decision',
-        position,
-        action: item.action,
-        timeoutSec: 300,
-        reason: '',
-      }
-  }
+function createNode(block: BlockSpec, position: { x: number; y: number }): PolicyNode {
+  return { id: shortId(block.id.replace('_', '-')), position, ...block.create() } as PolicyNode
 }
 
 /** Key order differs between what the editor builds and what the server parsed. */
@@ -394,8 +369,12 @@ function Editor({
     },
   }))
 
+  const nodesById = new Map(graph.nodes.map((n) => [n.id, n]))
   const edges: Edge[] = graph.edges.map((e) => {
     const onPath = path?.edges.has(`${e.source}:${e.sourceHandle}`)
+    const source = nodesById.get(e.source)
+    const tone = source ? blockOutput(source, e.sourceHandle)?.tone : undefined
+    const color = toneColor[tone ?? 'neutral']
     return {
       id: e.id,
       source: e.source,
@@ -408,12 +387,12 @@ function Editor({
         type: MarkerType.ArrowClosed,
         width: 20,
         height: 20,
-        color: handleColor[e.sourceHandle] ?? '#8b91a5',
+        color,
       },
       interactionWidth: 24,
       pathOptions: { borderRadius: 18, offset: 30 },
       style: {
-        stroke: handleColor[e.sourceHandle] ?? 'var(--color-line-strong)',
+        stroke: tone ? color : 'var(--color-line-strong)',
         strokeWidth: onPath ? 3.5 : 2.5,
         opacity: path && !onPath ? 0.25 : 1,
       },
@@ -491,26 +470,25 @@ function Editor({
     [graph, insertion],
   )
   const search = stepSearch.trim().toLowerCase()
-  const matchesSearch = suggestions.filter((s) =>
-    `${s.label} ${s.reason} ${s.item.kind === 'match' ? 'condition if branch' : s.item.kind === 'check' ? s.item.check : s.item.action}`
-      .toLowerCase()
-      .includes(search),
+  const matchesSearch = suggestions.filter(({ block }) =>
+    `${block.label} ${block.group} ${block.id} ${block.description}`.toLowerCase().includes(search),
   )
-  const renderChoice = (choice: (typeof suggestions)[number]) => (
+  const renderChoice = (choice: Suggestion) => (
     <PaletteButton
-      key={choice.label}
-      label={choice.label}
-      item={choice.item}
+      key={choice.block.id}
+      block={choice.block}
       reason={choice.reason}
       disabled={!isAdmin || !insertionSource || choice.disabled}
-      onAdd={() => addNode(choice.item)}
+      onAdd={() => addNode(choice.block)}
     />
   )
-  const addNode = (item: PaletteItem) => {
+  const others = suggestions.filter((s) => !s.recommended)
+  const otherGroups = [...new Set(others.map((s) => s.block.group))]
+  const addNode = (block: BlockSpec) => {
     if (!insertion || !insertionSource) return
     const position = { x: insertionSource.position.x + 340, y: insertionSource.position.y }
-    const node = createNode(item, position)
-    const continuation = node.type === 'match' ? 'match' : node.type === 'check' ? 'pass' : null
+    const node = createNode(block, position)
+    const continuation = block.through
     if (existingConnection && !continuation) return
     const nextEdges = graph.edges.filter((e) => e.id !== existingConnection?.id)
     nextEdges.push({
@@ -680,7 +658,13 @@ function Editor({
                     <span>Other elements</span>
                     <span aria-hidden="true">{otherOpen ? '−' : '+'}</span>
                   </button>
-                  {otherOpen ? suggestions.filter((s) => !s.recommended).map(renderChoice) : null}
+                  {otherOpen
+                    ? otherGroups.map((group) => (
+                        <PaletteGroup key={group} group={group}>
+                          {others.filter((s) => s.block.group === group).map(renderChoice)}
+                        </PaletteGroup>
+                      ))
+                    : null}
                 </>
               )}
             </div>
@@ -781,38 +765,38 @@ function Editor({
   )
 }
 
-const paletteIcons = { match: RouteIcon, allow: CircleCheck, block: Ban, require_approval: Hand }
+function PaletteGroup({ group, children }: { group: BlockGroup; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col">
+      <div className="px-3 pt-2 pb-1 text-[11px] font-medium text-subtle">{group}</div>
+      {children}
+    </div>
+  )
+}
 
 function PaletteButton({
   reason,
-  label,
-  item,
+  block,
   disabled,
   onAdd,
 }: {
   reason: string
-  label: string
-  item: PaletteItem
+  block: BlockSpec
   disabled: boolean
   onAdd: () => void
 }) {
-  const Icon =
-    item.kind === 'match'
-      ? paletteIcons.match
-      : item.kind === 'decision'
-        ? paletteIcons[item.action]
-        : checkIcons[item.check]
+  const Icon = blockIcons[block.id]
   return (
     <button
       type="button"
       disabled={disabled}
-      title={disabled ? reason : undefined}
+      title={reason || block.description}
       onClick={onAdd}
-      className="flex items-center gap-2 rounded-lg border border-transparent bg-transparent px-3 py-2 text-left text-sm hover:border-line-strong hover:bg-panel-2 disabled:cursor-default disabled:opacity-50"
+      className="flex w-full items-center gap-2 rounded-lg border border-transparent bg-transparent px-3 py-2 text-left text-sm hover:border-line-strong hover:bg-panel-2 disabled:cursor-default disabled:opacity-50"
     >
-      {Icon ? <Icon className="size-3.5 shrink-0 text-muted" /> : null}
+      <Icon className="size-3.5 shrink-0 text-muted" />
       <span className="leading-tight">
-        <span className="block font-medium">{label}</span>
+        <span className="block font-medium">{block.label}</span>
       </span>
     </button>
   )
@@ -827,9 +811,11 @@ function GraphHelp({ issues }: { issues: GraphIssue[] }) {
       </p>
       <p>
         <span className="text-fg">Routes</span> check who and what the request is (server, tool,
-        resource, group, device, model) and leave through <span className="text-fg">match</span> or{' '}
-        <span className="text-fg">else</span>. <span className="text-fg">Checks</span> inspect the
-        content. Every path should end in a decision.
+        tier, resource, group, device, model) and leave through{' '}
+        <span className="text-fg">match</span> or <span className="text-fg">else</span>.{' '}
+        <span className="text-fg">Checks</span> inspect the content, the device and the session.
+        Every path should end in an outcome: allow, block, or an approval by an admin, Touch ID, a
+        browser sign-in or a confirmation.
       </p>
       {issues.length > 0 ? (
         <ul className="flex flex-col gap-1">

@@ -13,6 +13,13 @@ export const decision = z.enum([
 ])
 export type Decision = z.infer<typeof decision>
 
+/**
+ * How a held request gets approved. `admin` waits for an administrator in the dashboard; the
+ * others ask the person at the device (plugin approval levels `confirm`, `touchid`, `browser`).
+ */
+export const approvalMethod = z.enum(['admin', 'confirm', 'touchid', 'browser'])
+export type ApprovalMethod = z.infer<typeof approvalMethod>
+
 export const checkOutcome = z.enum(['pass', 'fail', 'error', 'skipped'])
 export type CheckOutcome = z.infer<typeof checkOutcome>
 
@@ -23,6 +30,8 @@ export const checkResult = z.object({
   /** The output the request left this node through. */
   branch: z.string().optional(),
   action: z.enum(['block', 'require_approval', 'log']).optional(),
+  /** Set on a decision that asks for approval. */
+  method: approvalMethod.optional(),
   reason: z.string().optional(),
   score: z.number().optional(),
   durationMs: z.number(),
@@ -84,6 +93,7 @@ export type ApprovalView = {
   kind: EventKind
   summary: string
   reasons: string[]
+  method?: ApprovalMethod
   createdAt: string
   expiresAt: string
 }

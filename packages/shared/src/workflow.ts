@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { eventKind } from './events.ts'
+import { blockOf } from './blocks.ts'
+import { approvalMethod, eventKind } from './events.ts'
 
 export const fingerprintCheck = z.object({ type: z.literal('fingerprint') })
 
@@ -31,15 +32,80 @@ export const redactCheck = z.object({
 })
 export type RedactConfig = z.infer<typeof redactCheck>
 
+export const argumentRule = z.object({
+  /** Glob on the tool name; MCP tools match with or without the server prefix. */
+  tool: z.string().min(1).default('*'),
+  argument: z.string().min(1),
+  /** Regular expression every value of that argument has to match. */
+  pattern: z.string().min(1),
+  /** Shown when the argument is refused. */
+  message: z.string().max(200).default(''),
+})
+export type ArgumentRule = z.infer<typeof argumentRule>
+
+export const argumentsCheck = z.object({
+  type: z.literal('arguments'),
+  rules: z.array(argumentRule).max(50).default([]),
+})
+
+/** Prompt-injection guard: has the session read untrusted content recently? */
+export const untrustedContentCheck = z.object({
+  type: z.literal('untrusted_content'),
+  windowMinutes: z.number().int().min(1).max(1440).default(10),
+})
+
+export const toolPinningCheck = z.object({ type: z.literal('tool_pinning') })
+
+export const postureCheck = z.object({
+  type: z.literal('posture'),
+  /** EDR score (0 to 100) below which the request leaves through `low`. */
+  minScore: z.number().int().min(0).max(100).default(50),
+})
+
+/** FileVault, System Integrity Protection, Gatekeeper, firewall. */
+export const osPostureKey = z.enum(['fv', 'sip', 'gk', 'fw'])
+export type OsPostureKey = z.infer<typeof osPostureKey>
+
+export const osPostureCheck = z.object({
+  type: z.literal('os_posture'),
+  require: z.array(osPostureKey).default(['fv', 'sip']),
+})
+
+export const networkCheck = z.object({
+  type: z.literal('network'),
+  maxTravelKmh: z.number().int().min(100).max(5000).default(900),
+})
+
+export const hookCheck = z.object({ type: z.literal('hook') })
+
+export const idleCheck = z.object({
+  type: z.literal('idle'),
+  maxMinutes: z.number().int().min(1).max(1440).default(30),
+})
+
 export const checkConfig = z.discriminatedUnion('type', [
   fingerprintCheck,
   keywordsCheck,
   judgeCheck,
   redactCheck,
+  argumentsCheck,
+  untrustedContentCheck,
+  toolPinningCheck,
+  postureCheck,
+  osPostureCheck,
+  networkCheck,
+  hookCheck,
+  idleCheck,
 ])
 export type CheckConfig = z.infer<typeof checkConfig>
 export type CheckType = CheckConfig['type']
 export type JudgeCheck = z.infer<typeof judgeCheck>
+
+export const toolTier = z.enum(['read', 'write', 'destructive'])
+export type ToolTier = z.infer<typeof toolTier>
+
+export const keyStorage = z.enum(['secure_enclave', 'software', 'tpm'])
+export type KeyStorage = z.infer<typeof keyStorage>
 
 const patterns = z.array(z.string().min(1))
 
@@ -56,6 +122,9 @@ export const condition = z.discriminatedUnion('field', [
   }),
   /** Glob patterns on the model id. */
   z.object({ field: z.literal('model'), values: patterns }),
+  z.object({ field: z.literal('tier'), values: z.array(toolTier) }),
+  /** Where the device keeps its signing key. */
+  z.object({ field: z.literal('keyStorage'), values: z.array(keyStorage) }),
 ])
 export type Condition = z.infer<typeof condition>
 export type ConditionField = Condition['field']
@@ -88,6 +157,8 @@ export const decisionNode = z.object({
   ...nodeBase,
   type: z.literal('decision'),
   action: decisionAction,
+  /** Who approves when the action is `require_approval`. */
+  method: approvalMethod.default('admin'),
   /** How long an approval waits for someone to decide. */
   timeoutSec: z.number().int().min(10).max(3600).default(300),
   /** Shown to the user when this decision blocks or holds the request. */
@@ -122,38 +193,9 @@ export const policyGraph = z.object({
 })
 export type PolicyGraph = z.infer<typeof policyGraph>
 
-/** The outputs a node exposes, in display order. */
+/** The ids of the outputs a node exposes, in display order. */
 export function nodeOutputs(node: PolicyNode): string[] {
-  switch (node.type) {
-    case 'trigger':
-      return ['next']
-    case 'match':
-      return ['match', 'else']
-    case 'decision':
-      return []
-    case 'check':
-      switch (node.check.type) {
-        case 'fingerprint':
-          return ['pass', 'new', 'mismatch']
-        case 'keywords':
-          return ['pass', 'fail']
-        case 'judge':
-          return ['pass', 'fail', 'error']
-        case 'redact':
-          return ['pass']
-      }
-  }
-}
-
-export const outputLabels: Record<string, string> = {
-  next: 'next',
-  match: 'match',
-  else: 'else',
-  pass: 'pass',
-  fail: 'fail',
-  error: 'error',
-  new: 'new device',
-  mismatch: 'mismatch',
+  return blockOf(node).outputs.map((o) => o.id)
 }
 
 export type GraphIssue = { level: 'error' | 'warning'; nodeId?: string; message: string }
@@ -233,12 +275,15 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
     if (n.type === 'match' && n.conditions.some((c) => c.values.length === 0)) {
       issues.push({ level: 'error', nodeId: n.id, message: 'A condition has no values' })
     }
-    const open = nodeOutputs(n).filter((h) => !used.has(`${n.id}:${h}`))
+    if (n.type === 'check' && n.check.type === 'arguments' && n.check.rules.length === 0) {
+      issues.push({ level: 'warning', nodeId: n.id, message: 'No argument rules: always passes' })
+    }
+    const open = blockOf(n).outputs.filter((o) => !used.has(`${n.id}:${o.id}`))
     if (open.length && reachable.has(n.id)) {
       issues.push({
         level: 'warning',
         nodeId: n.id,
-        message: `${open.map((h) => outputLabels[h] ?? h).join(', ')} → ${graph.fallback}`,
+        message: `${open.map((o) => o.label).join(', ')} → ${graph.fallback}`,
       })
     }
   }
@@ -277,6 +322,7 @@ export const defaultWorkflow: PolicyGraph = {
       type: 'decision',
       position: { x: 1000, y: 0 },
       action: 'allow',
+      method: 'admin',
       timeoutSec: 300,
       reason: '',
     },
@@ -285,6 +331,7 @@ export const defaultWorkflow: PolicyGraph = {
       type: 'decision',
       position: { x: 660, y: 340 },
       action: 'require_approval',
+      method: 'admin',
       timeoutSec: 300,
       reason: 'Request from a new device',
     },
@@ -293,6 +340,7 @@ export const defaultWorkflow: PolicyGraph = {
       type: 'decision',
       position: { x: 1000, y: 220 },
       action: 'block',
+      method: 'admin',
       timeoutSec: 300,
       reason: '',
     },
@@ -305,20 +353,6 @@ export const defaultWorkflow: PolicyGraph = {
     { id: 'e5', source: 'keywords', sourceHandle: 'pass', target: 'allow' },
     { id: 'e6', source: 'keywords', sourceHandle: 'fail', target: 'block' },
   ],
-}
-
-export const checkLabels: Record<CheckType, string> = {
-  fingerprint: 'Device fingerprint',
-  keywords: 'Dangerous keywords',
-  judge: 'Judge model',
-  redact: 'Redact secrets and PII',
-}
-
-/** Labels for the `type` stored on each entry of an event's `checks`. */
-export const stepLabels: Record<string, string> = {
-  ...checkLabels,
-  match: 'Route',
-  decision: 'Decision',
 }
 
 export const rateLimitRule = z.object({

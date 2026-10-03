@@ -33,6 +33,10 @@ function judgeApiKey(env: Env, endpoint: string): string | undefined {
 /**
  * Runs the org's policy graph for one request. If the path ends in an approval, this blocks
  * until someone decides in the dashboard or the approval times out.
+ *
+ * Device-side approvals (confirm, Touch ID, browser) pass on their own when the request carries
+ * the proof in `input.signals`. Until the gateway issues the plugin's challenges, a request
+ * without that proof waits in the same queue, labelled with the method it asked for.
  */
 export async function runPipeline(
   env: Env,
@@ -73,6 +77,7 @@ export async function runPipeline(
     kind: input.kind,
     summary: meta.summary,
     reasons: result.reasons,
+    method: result.approvalMethod ?? 'admin',
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + timeoutMs).toISOString(),
   }

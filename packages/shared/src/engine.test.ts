@@ -15,6 +15,7 @@ const decision = (id: string, action: 'allow' | 'block' | 'require_approval'): P
   type: 'decision',
   position: at,
   action,
+  method: 'admin',
   timeoutSec: 60,
   reason: '',
 })

@@ -1,4 +1,5 @@
 export * from './anthropic.ts'
+export * from './blocks.ts'
 export * from './crypto.ts'
 export * from './engine.ts'
 export * from './events.ts'

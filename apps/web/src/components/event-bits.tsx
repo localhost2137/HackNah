@@ -1,5 +1,5 @@
 import type { CheckResult, Decision, EventKind } from '@acl/shared'
-import { stepLabels } from '@acl/shared'
+import { approvalLabels, stepLabels } from '@acl/shared'
 import { Badge, cn } from '@acl/ui'
 import { Bot, Wrench } from 'lucide-react'
 import { decisionMeta, riskTone } from '#/lib/format.ts'
@@ -67,7 +67,9 @@ export function CheckList({ checks }: { checks: CheckResult[] }) {
                 <Badge tone={c.branch === 'match' ? 'accent' : 'neutral'}>{c.branch}</Badge>
               ) : c.type === 'decision' ? (
                 <Badge tone={c.action === 'block' ? 'bad' : c.action ? 'warn' : 'ok'}>
-                  {c.action?.replace('_', ' ') ?? 'allow'}
+                  {c.action === 'require_approval' && c.method
+                    ? approvalLabels[c.method]
+                    : (c.action?.replace('_', ' ') ?? 'allow')}
                 </Badge>
               ) : (
                 <Badge tone={outcomeTone[c.outcome]}>

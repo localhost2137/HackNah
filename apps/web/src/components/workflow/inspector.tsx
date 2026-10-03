@@ -1,8 +1,9 @@
-import type { Condition, GraphIssue, MatchNode, PolicyNode } from '@acl/shared'
-import { checkLabels } from '@acl/shared'
+import type { BlockId, Condition, GraphIssue, MatchNode, PolicyNode } from '@acl/shared'
+import { blockOf, blocks, inputLabels, palette } from '@acl/shared'
 import { Button, Field, Input, Select, Switch } from '@acl/ui'
 import { Plus, Trash2, X } from 'lucide-react'
-import { CheckboxGroup, CheckForm } from './step-form.tsx'
+import { toneColor } from './graph-nodes.tsx'
+import { CheckboxGroup, FieldForm } from './step-form.tsx'
 
 export type Option = { value: string; label: string }
 export type PickerOptions = { servers: Option[]; resources: Option[]; groups: Option[] }
@@ -15,6 +16,8 @@ const fields: { value: Condition['field']; label: string }[] = [
   { value: 'group', label: 'User group' },
   { value: 'deviceStatus', label: 'Device status' },
   { value: 'model', label: 'Model' },
+  { value: 'tier', label: 'Tool tier' },
+  { value: 'keyStorage', label: 'Device key storage' },
 ]
 
 const kinds: Option[] = [
@@ -28,18 +31,17 @@ const deviceStatuses: Option[] = [
   { value: 'mismatch', label: 'Mismatch' },
 ]
 
-function nodeTitle(node: PolicyNode): string {
-  switch (node.type) {
-    case 'trigger':
-      return 'Request comes in'
-    case 'match':
-      return 'Route'
-    case 'check':
-      return checkLabels[node.check.type]
-    case 'decision':
-      return 'Decision'
-  }
-}
+const tiers: Option[] = [
+  { value: 'read', label: 'Read' },
+  { value: 'write', label: 'Write' },
+  { value: 'destructive', label: 'Destructive' },
+]
+
+const keyStorages: Option[] = [
+  { value: 'secure_enclave', label: 'Secure Enclave' },
+  { value: 'tpm', label: 'TPM' },
+  { value: 'software', label: 'Software key' },
+]
 
 export function Inspector({
   node,
@@ -60,7 +62,7 @@ export function Inspector({
     <div className="flex flex-col">
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold">{nodeTitle(node)}</div>
+          <div className="text-[13px] font-semibold">{blockOf(node).label}</div>
           <div className="font-mono text-[11px] text-subtle">{node.id}</div>
         </div>
         {!readOnly && node.type !== 'trigger' ? (
@@ -94,65 +96,89 @@ function NodeForm({
   options: PickerOptions
   onChange: (node: PolicyNode) => void
 }) {
-  switch (node.type) {
-    case 'trigger':
-      return (
-        <p className="text-xs text-muted">
-          Every prompt, tool result and tool call starts here. Connect it to routes that send
-          different tools down stricter or looser paths.
-        </p>
-      )
-    case 'match':
-      return <MatchForm node={node} options={options} onChange={onChange} />
-    case 'check':
-      return (
+  const block = blockOf(node)
+  return (
+    <>
+      <p className="text-xs text-muted">{block.description}</p>
+      {node.type === 'check' ? (
+        <label className="flex items-center gap-2 text-xs">
+          <Switch
+            checked={node.enabled}
+            onCheckedChange={(enabled) => onChange({ ...node, enabled })}
+          />
+          Enabled
+        </label>
+      ) : null}
+      {node.type === 'match' ? (
+        <MatchForm node={node} options={options} onChange={onChange} />
+      ) : node.type === 'check' ? (
+        <FieldForm
+          fields={block.fields}
+          value={node.check}
+          onChange={(patch) =>
+            onChange({ ...node, check: { ...node.check, ...patch } } as PolicyNode)
+          }
+        />
+      ) : (
         <>
-          <label className="flex items-center gap-2 text-xs">
-            <Switch
-              checked={node.enabled}
-              onCheckedChange={(enabled) => onChange({ ...node, enabled })}
-            />
-            Enabled
-          </label>
-          <CheckForm check={node.check} onChange={(check) => onChange({ ...node, check })} />
-        </>
-      )
-    case 'decision':
-      return (
-        <>
-          <Field label="Action">
-            <Select
-              value={node.action}
-              onChange={(e) => onChange({ ...node, action: e.target.value as typeof node.action })}
-            >
-              <option value="allow">Allow</option>
-              <option value="require_approval">Require approval</option>
-              <option value="block">Block</option>
-            </Select>
-          </Field>
-          {node.action === 'require_approval' ? (
-            <Field label="Approval timeout (seconds)" hint="Declined when nobody decides in time.">
-              <Input
-                type="number"
-                min={10}
-                max={3600}
-                value={node.timeoutSec}
-                onChange={(e) => onChange({ ...node, timeoutSec: Number(e.target.value) })}
-              />
+          {node.type === 'decision' ? (
+            <Field label="Outcome">
+              <Select
+                value={block.id}
+                onChange={(e) =>
+                  onChange({
+                    ...node,
+                    ...blocks[e.target.value as BlockId].create(),
+                    reason: node.reason,
+                  } as PolicyNode)
+                }
+              >
+                {palette
+                  .filter((b) => b.nodeType === 'decision')
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.label}
+                    </option>
+                  ))}
+              </Select>
             </Field>
           ) : null}
-          {node.action !== 'allow' ? (
-            <Field label="Reason" hint="Shown to the user and in the approval queue.">
-              <Input
-                value={node.reason}
-                maxLength={200}
-                onChange={(e) => onChange({ ...node, reason: e.target.value })}
-              />
-            </Field>
-          ) : null}
+          <FieldForm
+            fields={block.fields}
+            value={node}
+            onChange={(patch) => onChange({ ...node, ...patch } as PolicyNode)}
+          />
         </>
-      )
-  }
+      )}
+      <BlockInterface node={node} />
+    </>
+  )
+}
+
+/** What the block reads, and where each output usually leads. */
+function BlockInterface({ node }: { node: PolicyNode }) {
+  const block = blockOf(node)
+  if (block.inputs.length === 0 && block.outputs.length === 0) return null
+  return (
+    <dl className="flex flex-col gap-3 border-t border-line pt-4 text-xs">
+      {block.inputs.length > 0 ? (
+        <div>
+          <dt className="mb-1 font-medium text-fg">Reads</dt>
+          <dd className="text-muted">{block.inputs.map((i) => inputLabels[i]).join(' · ')}</dd>
+        </div>
+      ) : null}
+      {block.outputs.map((output) => (
+        <div key={output.id}>
+          <dt className="mb-1 font-medium" style={{ color: toneColor[output.tone] }}>
+            {output.label}
+          </dt>
+          <dd className="text-muted">
+            Usually followed by {output.next.map((id) => blocks[id].label).join(', ')}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
 }
 
 function MatchForm({
@@ -235,6 +261,12 @@ function ConditionRow({
       break
     case 'deviceStatus':
       editor = picker(deviceStatuses, '')
+      break
+    case 'tier':
+      editor = picker(tiers, '')
+      break
+    case 'keyStorage':
+      editor = picker(keyStorages, '')
       break
     case 'mcpServer':
       editor = picker(options.servers, 'No MCP servers connected yet.')
