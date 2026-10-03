@@ -40,8 +40,8 @@ Claude Code ──► /v1/messages ──► workflow ──► openrouter.ai (A
 - **Models.** The gateway forwards Anthropic Messages requests to OpenRouter with the organization's
   `OPENROUTER_API_KEY`. Claude Code is only guaranteed to work with Anthropic models there. The judge step can use
   OpenRouter too (`https://openrouter.ai/api/v1/chat/completions`), with the same key.
-- **Dashboard login.** Email and password, or OIDC single sign-on per organization (Settings → Single sign-on).
-  People on the organization's email domain must use SSO and join as members; admins keep password login as a
+- **Dashboard login.** Email and password, or OIDC single sign-on (Settings → Single sign-on).
+  People on the configured email domain must use SSO and join as members; admins keep password login as a
   fallback. Removing a member also revokes their Claude Code devices.
 - **Access.** Admins group MCP tools into resources (tool glob patterns) and grant them to users or groups.
   Admins can use every resource. Checks are D1 queries, cached for 10 seconds.
@@ -62,11 +62,11 @@ pnpm db:migrate                                    # applies packages/db/drizzle
 pnpm dev                                           # http://localhost:3000 (dashboard and gateway)
 ```
 
-Sign up, then create an organization. Whoever creates an organization becomes its admin. Local data lives in
+This is a single-tenant installation. The first account becomes admin automatically; later accounts need access granted by an admin or SSO. Local data lives in
 `apps/web/.wrangler/state`; delete that folder and run `pnpm db:migrate` again to start over.
 
-For local test data, run `pnpm db:seed` after migrations. This creates **Demo Organization**, 48 sample
-traffic events, and `admin@demo.test` and `member@demo.test` accounts with their
+For local test data, run `pnpm db:seed` after migrations. This adds 48 sample
+traffic events to the existing instance, plus `admin@demo.test` and `member@demo.test` accounts with their
 respective roles. Both use password `LocalDemo123!`. The seed always targets local D1 and preserves
 existing fixtures when rerun. These credentials are for local development only.
 
@@ -77,12 +77,18 @@ D1 allows at most 100 bound parameters per statement, so split multi-row inserts
 
 ## Administrator dashboard
 
-The dashboard is restricted to organization admins, including its server functions and live
+The dashboard is restricted to admins, including its server functions and live
 stream. Members use Claude Code rather than the admin console. **Logs** is the central place for request
 decisions, session/device context, and legacy approval records. The former Approvals, Sessions, and
 Devices URLs redirect to Logs. Legacy `/device` sign-in remains a standalone authenticated page.
 Migration `0002_admin_role.sql` converts existing owners and pending owner invitations to admin; apply
-it before deploying this version.
+it before deploying this version. Migration `0003_single_tenant.sql` enforces one internal scope and
+bootstraps the first admin. Existing scope IDs stay intact to preserve logs and policy links. Installations
+with multiple existing scopes fail migration instead of silently merging data. Organization creation,
+switching, and settings are removed.
+
+In development, **Fill admin credentials** fills the login form with the seeded admin account.
+It is excluded from production builds.
 
 ## Connecting Claude Code
 

@@ -60,7 +60,7 @@ function MembersPage() {
     <>
       <PageHeader
         title="Members"
-        description="People in this organization. Admins manage policy and decide approvals; members only get the resources granted to them."
+        description="Admins manage policy. Members use assigned resources."
         actions={
           isAdmin ? (
             <Button variant="primary" onClick={() => setAdding(true)}>
@@ -76,7 +76,7 @@ function MembersPage() {
               <TH>Member</TH>
               <TH>Role</TH>
               <TH>Groups</TH>
-              <TH>Trusted devices</TH>
+              <TH>Activity</TH>
               <TH>Joined</TH>
               {isAdmin ? <TH /> : null}
             </tr>

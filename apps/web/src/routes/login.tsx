@@ -19,6 +19,7 @@ function LoginPage() {
   const navigate = useNavigate()
   const [mode, setMode] = useState<'password' | 'sso'>(ssoError ? 'sso' : 'password')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(
     ssoError ? `Single sign-on failed (${ssoError.replaceAll('_', ' ')})` : null,
   )
@@ -43,7 +44,7 @@ function LoginPage() {
     setPending(false)
     if (error?.status === 403) {
       setMode('sso')
-      return setError(error.message ?? 'Your organization requires single sign-on')
+      return setError(error.message ?? 'This instance requires single sign-on')
     }
     if (error) return setError(error.message ?? 'Sign in failed')
     await navigate({ href: target })
@@ -88,12 +89,32 @@ function LoginPage() {
         <form onSubmit={onPassword} className="flex flex-col gap-4">
           {emailField}
           <Field label="Password">
-            <Input name="password" type="password" autoComplete="current-password" required />
+            <Input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </Field>
           <FormError message={error} />
           <Button type="submit" variant="primary" disabled={pending}>
             {pending ? 'Signing in…' : 'Sign in'}
           </Button>
+          {import.meta.env.DEV ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setEmail('admin@demo.test')
+                setPassword('LocalDemo123!')
+                setError(null)
+              }}
+            >
+              Fill admin credentials
+            </Button>
+          ) : null}
           <Button onClick={() => switchMode('sso')}>Continue with SSO</Button>
           <p className="text-center text-xs text-muted">
             No account?{' '}

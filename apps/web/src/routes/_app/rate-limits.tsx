@@ -140,7 +140,7 @@ function RateLimitsPage() {
                     {r.limit} / {windowLabel(r.windowSec)}
                   </TD>
                   <TD className="text-xs text-muted">
-                    {r.per === 'user' ? 'each user' : 'whole organization'}
+                    {r.per === 'user' ? 'each user' : 'whole instance'}
                   </TD>
                   <TD>
                     <Switch
@@ -264,7 +264,7 @@ function RateLimitsPage() {
                 onChange={(e) => setDraft({ ...draft, per: e.target.value as Draft['per'] })}
               >
                 <option value="user">Separately for each user</option>
-                <option value="org">For the whole organization</option>
+                <option value="org">For the whole instance</option>
               </Select>
             </Field>
             <FormError message={save.error?.message ?? null} />

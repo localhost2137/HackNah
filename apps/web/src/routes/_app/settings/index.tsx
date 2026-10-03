@@ -23,10 +23,9 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
-import { authClient } from '#/lib/auth-client.ts'
 import { dateTime, timeAgo } from '#/lib/format.ts'
 import { getConnectInfo, listAuditLog } from '#/server/fns/settings.ts'
 import { deleteSsoProvider, getSsoProvider, saveSsoProvider } from '#/server/fns/sso.ts'
@@ -50,78 +49,22 @@ export const Route = createFileRoute('/_app/settings/')({
 })
 
 function SettingsPage() {
-  const { isAdmin, org: active } = Route.useRouteContext()
-  const router = useRouter()
   const { data: info } = useQuery(infoQuery)
-  const [name, setName] = useState(active.name)
-
-  const rename = useMutation({
-    mutationFn: async () => {
-      const res = await authClient.organization.update({
-        organizationId: active.id,
-        data: { name },
-      })
-      if (res.error) throw new Error(res.error.message ?? 'Could not rename')
-    },
-    onSuccess: () => router.invalidate(),
-  })
 
   return (
     <>
-      <PageHeader
-        title="Settings"
-        description="Organization details and the audit trail of every admin change."
-      />
+      <PageHeader title="Settings" />
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="flex flex-col gap-4">
           <Card>
-            <CardHeader title="Organization" />
-            <div className="flex flex-col gap-4 p-4">
-              <Field label="Name">
-                <div className="flex gap-2">
-                  <Input
-                    value={name}
-                    disabled={!isAdmin}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                  {isAdmin ? (
-                    <Button
-                      disabled={name === active.name || name.length < 2 || rename.isPending}
-                      onClick={() => rename.mutate()}
-                    >
-                      Save
-                    </Button>
-                  ) : null}
-                </div>
-              </Field>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
-                <dt className="text-muted">Slug</dt>
-                <dd>
-                  <Mono>{info?.org.slug}</Mono>
-                </dd>
-                <dt className="text-muted">Organization ID</dt>
-                <dd>
-                  <Mono>{info?.org.id}</Mono>
-                </dd>
-                <dt className="text-muted">Your role</dt>
-                <dd className="capitalize">{active.role}</dd>
-                <dt className="text-muted">Gateway</dt>
-                <dd>
-                  <Mono>{info?.gatewayUrl}</Mono>
-                </dd>
-                {info?.org.createdAt ? (
-                  <>
-                    <dt className="text-muted">Created</dt>
-                    <dd>{dateTime(info.org.createdAt)}</dd>
-                  </>
-                ) : null}
-              </dl>
-              <FormError message={rename.error?.message ?? null} />
+            <CardHeader title="Gateway" />
+            <div className="p-4 text-xs">
+              <Mono>{info?.gatewayUrl}</Mono>
             </div>
           </Card>
-          {isAdmin ? <SsoCard /> : null}
+          <SsoCard />
         </div>
-        {isAdmin ? <AuditLog /> : null}
+        <AuditLog />
       </div>
     </>
   )
@@ -164,9 +107,7 @@ function SsoCard() {
       />
       <div className="flex flex-col gap-4 p-4 text-xs">
         <p className="text-muted">
-          People with an email on the domain sign in through your identity provider and join this
-          organization as members. Password login is turned off for them; admins keep it as a
-          fallback.
+          Members on this domain use SSO. Admins can also sign in with a password.
         </p>
         <Field label="Redirect URI" hint="Register this in your identity provider's app.">
           <Mono>{data.callbackUrl}</Mono>

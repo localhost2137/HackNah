@@ -14,7 +14,7 @@ export const Route = createFileRoute('/device')({
   beforeLoad: async ({ location }) => {
     const viewer = await getViewer()
     if (!viewer) throw redirect({ to: '/login', search: { redirect: location.href } })
-    if (!viewer.activeOrgId) throw redirect({ to: '/onboarding' })
+    if (!viewer.role) throw redirect({ to: '/admin-required' })
   },
   validateSearch: z.object({ code: z.string().optional() }),
   component: DevicePage,

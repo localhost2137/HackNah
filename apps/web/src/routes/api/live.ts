@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import { openLiveSocket } from '#/gateway/control.ts'
 import { createAuth } from '#/server/auth.ts'
 import { env, getDb } from '#/server/env.ts'
+import { getInstanceId } from '#/server/instance.ts'
 
 /**
  * WebSocket for live events and approvals. Authenticates the dashboard session, then hands
@@ -17,8 +18,8 @@ export const Route = createFileRoute('/api/live')({
           return new Response('Expected WebSocket', { status: 426 })
         const db = getDb()
         const session = await createAuth(db).api.getSession({ headers: request.headers })
-        const orgId = session?.session.activeOrganizationId
-        if (!session || !orgId) return new Response('Unauthorized', { status: 401 })
+        const orgId = await getInstanceId(db)
+        if (!session) return new Response('Unauthorized', { status: 401 })
         const membership = await db.query.member.findFirst({
           where: and(eq(member.organizationId, orgId), eq(member.userId, session.user.id)),
         })

@@ -15,16 +15,16 @@ function insert(table, row) {
   sql.push(
     `INSERT INTO "${table}" (${Object.keys(row)
       .map((key) => `"${key}"`)
-      .join(',')}) VALUES (${Object.values(row).map(quote).join(',')}) ON CONFLICT DO NOTHING;`,
+      .join(',')}) SELECT ${Object.values(row)
+      .map((value) =>
+        value === 'seed-org' ? '(SELECT id FROM organization LIMIT 1)' : quote(value),
+      )
+      .join(
+        ',',
+      )} WHERE ${table === 'member' ? `NOT EXISTS (SELECT 1 FROM member WHERE user_id = ${quote(row.user_id)} AND organization_id = (SELECT id FROM organization LIMIT 1))` : '1'} ON CONFLICT DO NOTHING;`,
   )
 }
 
-insert('organization', {
-  id: 'seed-org',
-  name: 'Demo Organization',
-  slug: 'local-demo',
-  created_at: now,
-})
 for (const role of ['admin', 'member']) {
   const id = `seed-${role}`
   insert('user', {

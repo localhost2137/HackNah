@@ -1,12 +1,5 @@
 import { cn } from '@acl/ui'
-import {
-  createFileRoute,
-  Link,
-  Outlet,
-  redirect,
-  useNavigate,
-  useRouter,
-} from '@tanstack/react-router'
+import { createFileRoute, Link, Outlet, redirect, useNavigate } from '@tanstack/react-router'
 import {
   Activity,
   Boxes,
@@ -30,10 +23,8 @@ export const Route = createFileRoute('/_app')({
   beforeLoad: async ({ location }) => {
     const viewer = await getViewer()
     if (!viewer) throw redirect({ to: '/login', search: { redirect: location.href } })
-    const org = viewer.orgs.find((o) => o.id === viewer.activeOrgId)
-    if (!org) throw redirect({ to: '/onboarding', search: { redirect: location.href } })
-    if (org.role !== 'admin') throw redirect({ to: '/admin-required' })
-    return { viewer, org, isAdmin: true }
+    if (viewer.role !== 'admin') throw redirect({ to: '/admin-required' })
+    return { viewer, isAdmin: true }
   },
   component: AppLayout,
 })
@@ -68,7 +59,7 @@ const nav: { title?: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: 'Organization',
+    title: 'System',
     items: [
       { to: '/settings', label: 'Settings', icon: Settings },
       { to: '/settings/connect', label: 'Claude Code plugin', icon: KeyRound },
@@ -92,15 +83,9 @@ function AppLayout() {
 }
 
 function Sidebar() {
-  const { viewer, org } = Route.useRouteContext()
+  const { viewer } = Route.useRouteContext()
   const navigate = useNavigate()
-  const router = useRouter()
   const live = useLive()
-
-  async function switchOrg(id: string) {
-    await authClient.organization.setActive({ organizationId: id })
-    await router.invalidate()
-  }
 
   return (
     <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-panel">
@@ -109,19 +94,6 @@ function Sidebar() {
           <ShieldCheck className="size-3.5" />
         </span>
         <span className="text-[13px] font-semibold tracking-tight">AI Control Layer</span>
-      </div>
-      <div className="px-3 pb-2">
-        <select
-          value={org.id}
-          onChange={(e) => switchOrg(e.target.value)}
-          className="h-8 w-full rounded-md border border-line bg-panel-2 px-2 text-xs text-fg focus:outline-none"
-        >
-          {viewer.orgs.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </select>
       </div>
       <nav className="flex-1 overflow-y-auto px-2 py-2">
         {nav.map((section, i) => (

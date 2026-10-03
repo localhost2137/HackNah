@@ -6,8 +6,9 @@ import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { organization } from 'better-auth/plugins/organization'
 import { defaultAc, defaultStatements, memberAc } from 'better-auth/plugins/organization/access'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { env } from './env.ts'
+import { getInstanceId } from './instance.ts'
 
 /**
  * Identity providers the SSO plugin may fetch discovery documents, tokens and keys from.
@@ -88,6 +89,18 @@ export function createAuth(db: Db) {
         // Better Auth still recognizes its built-in owner role even with custom roles.
         // Reject it at the API boundary as well as in dashboard validators.
         if (ctx.path.startsWith('/organization/')) {
+          if (
+            [
+              '/organization/create',
+              '/organization/delete',
+              '/organization/update',
+              '/organization/set-active',
+            ].includes(ctx.path)
+          )
+            throw new APIError('FORBIDDEN', { message: 'This is a single-tenant instance.' })
+          const orgId = (ctx.body as { organizationId?: unknown } | undefined)?.organizationId
+          if (orgId !== undefined && orgId !== (await getInstanceId(db)))
+            throw new APIError('FORBIDDEN', { message: 'Invalid instance.' })
           const role = (ctx.body as { role?: unknown } | undefined)?.role
           if (role !== undefined && role !== 'admin' && role !== 'member')
             throw new APIError('BAD_REQUEST', { message: 'Role must be admin or member.' })
@@ -105,7 +118,7 @@ export function createAuth(db: Db) {
           })
           if (enforced && !(await isBreakGlassAdmin(db, email, enforced.organizationId)))
             throw new APIError('FORBIDDEN', {
-              message: 'Your organization requires single sign-on. Use "Continue with SSO".',
+              message: 'This instance requires single sign-on. Use "Continue with SSO".',
             })
         }
       }),
@@ -113,20 +126,15 @@ export function createAuth(db: Db) {
     databaseHooks: {
       session: {
         create: {
-          // Land users in their first organization so every page has an org context.
-          before: async (session) => {
-            const first = await db.query.member.findFirst({
-              where: eq(member.userId, session.userId),
-              orderBy: asc(member.createdAt),
-            })
-            return { data: { ...session, activeOrganizationId: first?.organizationId ?? null } }
-          },
+          before: async (session) => ({
+            data: { ...session, activeOrganizationId: await getInstanceId(db) },
+          }),
         },
       },
     },
     plugins: [
       organization({
-        allowUserToCreateOrganization: true,
+        allowUserToCreateOrganization: false,
         creatorRole: 'admin',
         roles: { admin: defaultAc.newRole(defaultStatements), member: memberAc },
       }),
