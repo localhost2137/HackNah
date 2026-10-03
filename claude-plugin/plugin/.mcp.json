@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "gateway": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bridge/main.mjs", "serve"],
+      "env": {
+        "HY_PLATFORM_URL_CONFIG": "${user_config.platform_url}",
+        "HY_KEY_PROVIDER_CONFIG": "${user_config.key_provider}"
+      }
+    }
+  }
+}

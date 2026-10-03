@@ -1,0 +1,7 @@
+node_modules/
+mock-backend/.data/
+plugin/native/se-signer
+plugin/native/hy-guard
+*.log
+.DS_Store
+plugin/.runtime/

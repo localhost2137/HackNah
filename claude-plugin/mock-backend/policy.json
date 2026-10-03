@@ -1,0 +1,67 @@
+{
+  "version": "2026-10-03.3",
+  "refresh_seconds": 30,
+  "default_action": "allow",
+  "tools": [
+    {
+      "match": "prod_db_*",
+      "action": "hide",
+      "tier": "destructive"
+    },
+    {
+      "match": "email_read_*",
+      "action": "allow",
+      "tier": "read",
+      "untrusted_source": true
+    },
+    {
+      "match": "crm_export_*",
+      "action": "allow",
+      "tier": "write",
+      "approval": "confirm"
+    },
+    {
+      "match": "email_send",
+      "action": "allow",
+      "tier": "write",
+      "approval": "confirm"
+    },
+    {
+      "match": "repo_delete_*",
+      "action": "allow",
+      "tier": "destructive",
+      "approval": "touchid"
+    },
+    {
+      "match": "iam_*",
+      "action": "allow",
+      "tier": "destructive",
+      "approval": "browser"
+    }
+  ],
+  "approval_defaults": {
+    "read": "none",
+    "write": "none",
+    "destructive": "touchid"
+  },
+  "argument_rules": [
+    {
+      "tool": "email_send",
+      "argument": "to",
+      "pattern": "@company\\.com$",
+      "message": "email_send may only send to @company.com addresses"
+    }
+  ],
+  "pinning": "enforce",
+  "pinned": {},
+  "telemetry": {
+    "flush_seconds": 5
+  },
+  "untrusted_content": {
+    "builtin_sources": [
+      "WebFetch",
+      "WebSearch"
+    ],
+    "window_minutes": 10
+  }
+}

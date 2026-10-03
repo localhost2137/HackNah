@@ -1,0 +1,12 @@
+{
+  "name": "hy-local",
+  "owner": { "name": "HackYeah team" },
+  "description": "Local marketplace for developing hy-guard (this repository).",
+  "plugins": [
+    {
+      "name": "hy-guard",
+      "source": "./plugin",
+      "description": "Routes company MCP tools and model traffic through a DPoP-protected security gateway."
+    }
+  ]
+}
