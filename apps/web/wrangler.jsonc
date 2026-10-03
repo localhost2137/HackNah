@@ -1,0 +1,52 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "acl",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "upload_source_maps": true,
+  "vars": {
+    "PUBLIC_URL": "http://localhost:3000",
+    // OpenRouter's Anthropic-compatible API; the gateway appends /v1/messages.
+    "UPSTREAM_BASE_URL": "https://openrouter.ai/api",
+    // Extra OIDC identity provider origins (comma-separated), e.g. a self-hosted Keycloak.
+    "SSO_TRUSTED_ORIGINS": "",
+    "ACCESS_TOKEN_TTL_SEC": "900",
+    "REFRESH_TOKEN_TTL_SEC": "2592000"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "acl",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "../../packages/db/drizzle"
+    }
+  ],
+  "r2_buckets": [{ "binding": "PAYLOADS", "bucket_name": "acl-payloads" }],
+  "queues": {
+    "producers": [{ "binding": "EVENTS", "queue": "acl-events" }],
+    "consumers": [
+      {
+        "queue": "acl-events",
+        // At ~24 columns per event, D1's 100-parameter cap means inserts are chunked anyway.
+        "max_batch_size": 100,
+        "max_batch_timeout": 2,
+        "max_retries": 5,
+        "dead_letter_queue": "acl-events-dlq"
+      }
+    ]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "SESSIONS", "class_name": "SessionDO" },
+      { "name": "APPROVALS", "class_name": "ApprovalDO" },
+      { "name": "RATE_LIMITER", "class_name": "RateLimiterDO" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SessionDO", "ApprovalDO", "RateLimiterDO"] }
+  ]
+  // Secrets (wrangler secret put / .dev.vars):
+  //   OPENROUTER_API_KEY, JWT_SECRET, BETTER_AUTH_SECRET, ENCRYPTION_KEY, JUDGE_API_KEY (optional)
+}

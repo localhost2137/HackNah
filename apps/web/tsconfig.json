@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["./worker-configuration.d.ts", "vite/client"],
+    "paths": {
+      "#/*": ["./src/*"]
+    },
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["src", "vite.config.ts", "worker-configuration.d.ts"]
+}
