@@ -1,0 +1,26 @@
+{
+  "name": "ai-control-layer",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.4.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "db:generate": "pnpm --filter @acl/db generate",
+    "db:migrate": "pnpm --filter @acl/web db:migrate",
+    "db:migrate:remote": "pnpm --filter @acl/web db:migrate:remote",
+    "deploy": "turbo run deploy"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "turbo": "^2.11.0",
+    "typescript": "^6.0.2"
+  }
+}
