@@ -7,7 +7,8 @@
       "!**/routeTree.gen.ts",
       "!**/worker-configuration.d.ts",
       "!**/drizzle",
-      "!.scratch"
+      "!.scratch",
+      "!claude-plugin"
     ]
   },
   "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

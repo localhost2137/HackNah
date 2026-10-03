@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/bridge/main.mjs",
+              "hook"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "WebFetch|WebSearch|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/bridge/main.mjs",
+              "hook"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "modules": [
+    "./ui.tsx"
+  ]
+}

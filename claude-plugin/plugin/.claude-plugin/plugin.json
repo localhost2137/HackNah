@@ -1,0 +1,53 @@
+{
+  "name": "hy-guard",
+  "displayName": "HY Guard",
+  "version": "0.1.0",
+  "description": "Routes company MCP tools through a security gateway. Every request is signed with a device-bound key (DPoP); policy decides which tools the model can see.",
+  "author": {
+    "name": "HackYeah team"
+  },
+  "license": "MIT",
+  "userConfig": {
+    "platform_url": {
+      "type": "string",
+      "title": "Platform URL",
+      "description": "Base URL of the security platform. Endpoints are discovered from <url>/.well-known/hy-platform.",
+      "default": "http://127.0.0.1:8787"
+    },
+    "key_provider": {
+      "type": "string",
+      "title": "Device key storage",
+      "description": "auto = Secure Enclave on macOS, software key elsewhere.",
+      "options": [
+        "auto",
+        "secure-enclave",
+        "software"
+      ],
+      "default": "auto"
+    },
+    "ui_cards": {
+      "type": "string",
+      "title": "Tool-call cards",
+      "description": "Cards in the conversation for hy-guard tool calls: approvals = only calls that needed approval or were blocked; all = every call; off = none.",
+      "options": [
+        "approvals",
+        "all",
+        "off"
+      ],
+      "default": "approvals"
+    },
+    "ui_status_line": {
+      "type": "boolean",
+      "title": "Status line",
+      "description": "Show sign-in, device code and device posture in Claude Code's status line.",
+      "default": false
+    },
+    "ui_band": {
+      "type": "boolean",
+      "title": "Approval band",
+      "description": "Also show a band above the prompt while an approval is pending.",
+      "default": false
+    }
+  },
+  "types": "./types/index.d.ts"
+}

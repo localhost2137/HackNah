@@ -1,0 +1,23 @@
+{
+  "name": "claude-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "hy-guard: Claude Code plugin routing MCP tools and model traffic through a DPoP-protected security gateway, with a mock platform. Lives in golden-sach/claude-plugin.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "mock": "node --watch mock-backend/server.mjs",
+    "mock:auto": "MOCK_AUTO_APPROVE=1 MOCK_TRUST_IP_HEADER=1 node mock-backend/server.mjs",
+    "build:native": "swiftc -O plugin/native/se-signer.swift -o plugin/native/hy-guard",
+    "test": "node scripts/e2e.mjs",
+    "test:se": "HY_KEY_PROVIDER=secure-enclave node scripts/e2e.mjs",
+    "attack": "node scripts/attack.mjs",
+    "zta": "node scripts/zta.mjs",
+    "reset": "bash scripts/reset.sh",
+    "setup-profile": "bash scripts/setup-profile.sh",
+    "validate": "claude plugin validate ./plugin",
+    "test-vectors": "node scripts/build-test-vectors.mjs"
+  }
+}
