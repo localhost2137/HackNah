@@ -13,6 +13,7 @@
     "typecheck": "tsr generate && tsc -p tsconfig.json",
     "test": "vitest run",
     "db:migrate": "wrangler d1 migrations apply acl --local",
+    "db:seed": "node scripts/seed.mjs",
     "db:migrate:remote": "wrangler d1 migrations apply acl --remote",
     "cf-typegen": "wrangler types --strict-vars=false"
   },

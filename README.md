@@ -64,6 +64,11 @@ pnpm dev                                           # http://localhost:3000 (dash
 Sign up, then create an organization. Whoever creates an organization becomes its owner. Local data lives in
 `apps/web/.wrangler/state`; delete that folder and run `pnpm db:migrate` again to start over.
 
+For local test data, run `pnpm db:seed` after migrations. This creates **Demo Organization**, 48 sample
+traffic events, and `owner@demo.test`, `admin@demo.test`, and `member@demo.test` accounts with their
+respective roles. All three use password `LocalDemo123!`. The seed always targets local D1 and preserves
+existing fixtures when rerun. These credentials are for local development only.
+
 Checks: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
 
 After changing `packages/db/src/schema.ts`, run `pnpm db:generate` and commit the new file in `packages/db/drizzle`.
