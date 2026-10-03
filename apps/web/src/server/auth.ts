@@ -29,10 +29,14 @@ const IDP_ORIGINS = [
 /** Over HTTP only sign-in and the callback are reachable; provider admin goes through server fns. */
 const PUBLIC_SSO_PATHS = ['/sign-in/sso', '/sso/callback']
 
+/** The mock identity provider from `pnpm mock:idp`, trusted automatically in development builds. */
+const MOCK_IDP_ORIGIN = 'http://localhost:9400'
+
 function selfHostedIdpOrigins(): string[] {
-  return env.SSO_TRUSTED_ORIGINS.split(',')
+  const configured = env.SSO_TRUSTED_ORIGINS.split(',')
     .map((o) => o.trim())
     .filter(Boolean)
+  return import.meta.env.DEV ? [...configured, MOCK_IDP_ORIGIN] : configured
 }
 
 function idpOrigins(): string[] {

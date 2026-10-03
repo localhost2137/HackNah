@@ -250,5 +250,4 @@ for (const host of ['127.0.0.1', '::1']) {
 }
 
 console.log(`Mock SSO identity provider at ${issuer}
-  Use "Sign in with mock SSO" on the login page (pnpm db:seed registers the provider).
-  Needs SSO_TRUSTED_ORIGINS=${issuer} in apps/web/.dev.vars (restart pnpm dev after adding it).`)
+  Use "Sign in with mock SSO" on the login page (pnpm db:seed registers the provider).`)
