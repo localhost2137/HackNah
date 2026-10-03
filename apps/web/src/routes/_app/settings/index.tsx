@@ -165,7 +165,7 @@ function SsoCard() {
       <div className="flex flex-col gap-4 p-4 text-xs">
         <p className="text-muted">
           People with an email on the domain sign in through your identity provider and join this
-          organization as members. Password login is turned off for them; owners keep it as a
+          organization as members. Password login is turned off for them; admins keep it as a
           fallback.
         </p>
         <Field label="Redirect URI" hint="Register this in your identity provider's app.">

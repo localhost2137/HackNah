@@ -15,11 +15,11 @@ export const Route = createFileRoute('/admin-required')({
 
 function AdminRequired() {
   const { viewer } = Route.useRouteContext()
-  const admins = viewer.orgs.filter((org) => org.role === 'owner' || org.role === 'admin')
+  const admins = viewer.orgs.filter((org) => org.role === 'admin')
   return (
     <AuthShell
       title="Administrator access required"
-      subtitle="This dashboard is for organization owners and admins. Use Claude Code with the hy-guard plugin for agent access."
+      subtitle="This dashboard is for organization admins. Use Claude Code with the hy-guard plugin for agent access."
     >
       <div className="flex flex-col gap-3">
         {admins.map((org) => (

@@ -9,7 +9,7 @@ export type ResourceRow = typeof resource.$inferSelect
 const accessCache = new TtlCache<ResourceRow[]>(10_000)
 
 /**
- * Resources the user may use: everything for owners and admins, otherwise whatever is granted
+ * Resources the user may use: everything for admins, otherwise whatever is granted
  * to the user directly or to one of their groups.
  */
 export function accessibleResources(db: Db, p: Principal): Promise<ResourceRow[]> {
@@ -18,7 +18,7 @@ export function accessibleResources(db: Db, p: Principal): Promise<ResourceRow[]
       where: and(eq(member.organizationId, p.orgId), eq(member.userId, p.userId)),
     })
     if (!membership) return []
-    if (membership.role === 'owner' || membership.role === 'admin')
+    if (membership.role === 'admin')
       return db.query.resource.findMany({ where: eq(resource.orgId, p.orgId) })
 
     const myGroups = db

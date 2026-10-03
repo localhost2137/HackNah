@@ -23,7 +23,7 @@ export const orgMiddleware = createMiddleware({ type: 'function' })
       where: and(eq(member.organizationId, orgId), eq(member.userId, context.user.id)),
     })
     if (!membership) throw redirect({ to: '/onboarding' })
-    const isAdmin = membership.role === 'owner' || membership.role === 'admin'
+    const isAdmin = membership.role === 'admin'
     return next({ context: { orgId, role: membership.role, isAdmin } })
   })
 

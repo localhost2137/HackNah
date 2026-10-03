@@ -4,6 +4,7 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { organization } from 'better-auth/plugins/organization'
+import { defaultAc, defaultStatements, memberAc } from 'better-auth/plugins/organization/access'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { and, asc, eq } from 'drizzle-orm'
 import { env } from './env.ts'
@@ -38,8 +39,8 @@ export function emailDomain(email: string): string {
   return email.slice(email.lastIndexOf('@') + 1).toLowerCase()
 }
 
-/** Owners keep password login so a broken IdP configuration can't lock the org out. */
-async function isBreakGlassOwner(db: Db, email: string, orgId: string | null): Promise<boolean> {
+/** Admins keep password login so a broken IdP configuration can't lock the org out. */
+async function isBreakGlassAdmin(db: Db, email: string, orgId: string | null): Promise<boolean> {
   if (!orgId) return false
   const [row] = await db
     .select({ role: member.role })
@@ -49,7 +50,7 @@ async function isBreakGlassOwner(db: Db, email: string, orgId: string | null): P
       and(
         eq(member.organizationId, orgId),
         eq(user.email, email.toLowerCase()),
-        eq(member.role, 'owner'),
+        eq(member.role, 'admin'),
       ),
     )
     .limit(1)
@@ -84,6 +85,13 @@ export function createAuth(db: Db) {
     session: { expiresIn: 60 * 60 * 12, updateAge: 60 * 60 },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        // Better Auth still recognizes its built-in owner role even with custom roles.
+        // Reject it at the API boundary as well as in dashboard validators.
+        if (ctx.path.startsWith('/organization/')) {
+          const role = (ctx.body as { role?: unknown } | undefined)?.role
+          if (role !== undefined && role !== 'admin' && role !== 'member')
+            throw new APIError('BAD_REQUEST', { message: 'Role must be admin or member.' })
+        }
         const isSsoAdmin =
           ctx.path.startsWith('/sso/') && !PUBLIC_SSO_PATHS.some((p) => ctx.path.startsWith(p))
         if (ctx.request && isSsoAdmin) throw new APIError('NOT_FOUND')
@@ -95,7 +103,7 @@ export function createAuth(db: Db) {
             where: eq(ssoProvider.domain, emailDomain(email)),
             columns: { organizationId: true },
           })
-          if (enforced && !(await isBreakGlassOwner(db, email, enforced.organizationId)))
+          if (enforced && !(await isBreakGlassAdmin(db, email, enforced.organizationId)))
             throw new APIError('FORBIDDEN', {
               message: 'Your organization requires single sign-on. Use "Continue with SSO".',
             })
@@ -119,6 +127,8 @@ export function createAuth(db: Db) {
     plugins: [
       organization({
         allowUserToCreateOrganization: true,
+        creatorRole: 'admin',
+        roles: { admin: defaultAc.newRole(defaultStatements), member: memberAc },
       }),
       sso({
         organizationProvisioning: { defaultRole: 'member' },

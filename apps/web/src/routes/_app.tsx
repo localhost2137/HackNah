@@ -32,7 +32,7 @@ export const Route = createFileRoute('/_app')({
     if (!viewer) throw redirect({ to: '/login', search: { redirect: location.href } })
     const org = viewer.orgs.find((o) => o.id === viewer.activeOrgId)
     if (!org) throw redirect({ to: '/onboarding', search: { redirect: location.href } })
-    if (org.role !== 'owner' && org.role !== 'admin') throw redirect({ to: '/admin-required' })
+    if (org.role !== 'admin') throw redirect({ to: '/admin-required' })
     return { viewer, org, isAdmin: true }
   },
   component: AppLayout,

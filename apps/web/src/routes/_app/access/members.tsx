@@ -47,7 +47,7 @@ function MembersPage() {
     },
   })
   const changeRole = useMutation({
-    mutationFn: (args: { memberId: string; role: 'member' | 'admin' | 'owner' }) =>
+    mutationFn: (args: { memberId: string; role: 'member' | 'admin' }) =>
       updateMemberRole({ data: args }),
     onSuccess: invalidate,
   })
@@ -101,13 +101,12 @@ function MembersPage() {
                       onChange={(e) =>
                         changeRole.mutate({
                           memberId: m.memberId,
-                          role: e.target.value as 'member' | 'admin' | 'owner',
+                          role: e.target.value as 'member' | 'admin',
                         })
                       }
                     >
                       <option value="member">member</option>
                       <option value="admin">admin</option>
-                      <option value="owner">owner</option>
                     </Select>
                   ) : (
                     <Badge tone={m.role === 'member' ? 'neutral' : 'accent'}>{m.role}</Badge>

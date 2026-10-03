@@ -375,7 +375,7 @@ export const addMember = createServerFn({ method: 'POST' })
 
 export const updateMemberRole = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
-  .validator(z.object({ memberId: z.string(), role: z.enum(['member', 'admin', 'owner']) }))
+  .validator(z.object({ memberId: z.string(), role: z.enum(['member', 'admin']) }))
   .handler(async ({ data, context: { db, auth, orgId, user: me } }) => {
     await auth.api.updateMemberRole({
       headers: getRequest().headers,

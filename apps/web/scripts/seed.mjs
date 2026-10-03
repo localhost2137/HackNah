@@ -25,7 +25,7 @@ insert('organization', {
   slug: 'local-demo',
   created_at: now,
 })
-for (const role of ['owner', 'admin', 'member']) {
+for (const role of ['admin', 'member']) {
   const id = `seed-${role}`
   insert('user', {
     id,
@@ -88,7 +88,7 @@ try {
     stdio: 'inherit',
   })
   console.log(
-    `Local demo accounts: owner@demo.test, admin@demo.test, member@demo.test\nPassword: ${password}\nExisting fixtures are preserved on subsequent runs.`,
+    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nExisting fixtures are preserved on subsequent runs.`,
   )
 } finally {
   rmSync(temporary, { recursive: true, force: true })
