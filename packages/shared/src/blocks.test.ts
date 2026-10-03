@@ -24,7 +24,7 @@ async function leave(check: CheckConfig, input: Partial<EvaluationInput> = {}) {
   const graph: PolicyGraph = {
     fallback: 'block',
     nodes: [
-      { id: 'start', type: 'trigger', position: at },
+      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
       { id: 'check', type: 'check', position: at, enabled: true, check },
     ],
     edges: [{ id: 'e', source: 'start', sourceHandle: 'next', target: 'check' }],
@@ -39,7 +39,7 @@ async function approve(method: ApprovalMethod, signals?: RequestSignals) {
   const graph: PolicyGraph = {
     fallback: 'block',
     nodes: [
-      { id: 'start', type: 'trigger', position: at },
+      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
       {
         id: 'approval',
         type: 'decision',
@@ -246,7 +246,7 @@ describe('routing on plugin signals', () => {
   const route = (conditions: Condition[]): PolicyGraph => ({
     fallback: 'block',
     nodes: [
-      { id: 'start', type: 'trigger', position: at },
+      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
       { id: 'route', type: 'match', position: at, label: '', mode: 'all', conditions },
     ],
     edges: [{ id: 'e', source: 'start', sourceHandle: 'next', target: 'route' }],

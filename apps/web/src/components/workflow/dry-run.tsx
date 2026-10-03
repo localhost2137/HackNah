@@ -12,6 +12,7 @@ import {
   type PostureStatus,
   type RequestSignals,
   type ToolTier,
+  triggerHolds,
 } from '@acl/shared'
 import { Badge, Button, Field, Input, Select, Textarea } from '@acl/ui'
 import { Play } from 'lucide-react'
@@ -123,39 +124,44 @@ export function DryRun({
   onResult: (r: EvaluationResult | null) => void
 }) {
   const [form, setForm] = useState(initial)
-  const [result, setResult] = useState<EvaluationResult | null>(null)
+  const [result, setResult] = useState<EvaluationResult | 'not_triggered' | null>(null)
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   // Only ask for the signals the blocks in this graph read.
   const reads = new Set<BlockInput>(graph.nodes.flatMap((n) => blockOf(n).inputs))
   const routesOn = (field: string) =>
-    graph.nodes.some((n) => n.type === 'match' && n.conditions.some((c) => c.field === field))
+    graph.nodes.some(
+      (n) =>
+        (n.type === 'match' || n.type === 'trigger') && n.conditions.some((c) => c.field === field),
+    )
 
   const run = async () => {
     const score = form.judgeScore.trim() ? Number(form.judgeScore) : Number.NaN
     const toolCall = form.kind === 'tool_call'
-    const r = await evaluateGraph(
-      graph,
-      {
-        kind: form.kind,
-        text: form.text,
-        toolName: toolCall ? form.toolName : null,
-        mcpServerId: toolCall ? form.mcpServerId || null : null,
-        model: toolCall ? null : form.model,
-        deviceStatus: form.deviceStatus,
-        groupIds: form.groupIds,
-        resourceIds: form.resourceIds,
-        toolTier: toolCall ? form.tier : null,
-        toolArguments: toolCall ? parseArguments(form.text) : undefined,
-        signals: signalsOf(form),
+    const input: EvaluationInput = {
+      kind: form.kind,
+      text: form.text,
+      toolName: toolCall ? form.toolName : null,
+      mcpServerId: toolCall ? form.mcpServerId || null : null,
+      model: toolCall ? null : form.model,
+      deviceStatus: form.deviceStatus,
+      groupIds: form.groupIds,
+      resourceIds: form.resourceIds,
+      toolTier: toolCall ? form.tier : null,
+      toolArguments: toolCall ? parseArguments(form.text) : undefined,
+      signals: signalsOf(form),
+    }
+    if (!triggerHolds(graph, input)) {
+      setResult('not_triggered')
+      onResult(null)
+      return
+    }
+    const r = await evaluateGraph(graph, input, {
+      judge: async () => {
+        if (!Number.isFinite(score)) throw new Error('simulated outage')
+        return { score, reason: 'Simulated judge verdict' }
       },
-      {
-        judge: async () => {
-          if (!Number.isFinite(score)) throw new Error('simulated outage')
-          return { score, reason: 'Simulated judge verdict' }
-        },
-      },
-    )
+    })
     setResult(r)
     onResult(r)
   }
@@ -363,11 +369,15 @@ export function DryRun({
         </Button>
         {result ? (
           <>
-            <Badge tone={decisionTone[result.decision]} dot>
-              {result.approvalMethod
-                ? `needs ${approvalLabels[result.approvalMethod]}`
-                : result.decision}
-            </Badge>
+            {result === 'not_triggered' ? (
+              <Badge tone="neutral">not started</Badge>
+            ) : (
+              <Badge tone={decisionTone[result.decision]} dot>
+                {result.approvalMethod
+                  ? `needs ${approvalLabels[result.approvalMethod]}`
+                  : result.decision}
+              </Badge>
+            )}
             <Button
               size="sm"
               variant="ghost"
@@ -381,7 +391,14 @@ export function DryRun({
           </>
         ) : null}
       </div>
-      {result ? <CheckList checks={result.checks} /> : null}
+      {result === 'not_triggered' ? (
+        <p className="text-xs text-muted">
+          This request doesn't match the start conditions, so this workflow doesn't run. It's
+          allowed unless another workflow catches it.
+        </p>
+      ) : result ? (
+        <CheckList checks={result.checks} />
+      ) : null}
     </div>
   )
 }

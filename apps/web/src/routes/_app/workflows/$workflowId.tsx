@@ -13,7 +13,7 @@ import {
 } from '@acl/shared'
 import { Badge, Button, Card, Dialog, Field, Input, PageHeader, Select } from '@acl/ui'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -29,7 +29,7 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from '@xyflow/react'
-import { Maximize2, Plus, X } from 'lucide-react'
+import { ArrowLeft, Maximize2, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
 import { DryRun } from '#/components/workflow/dry-run.tsx'
@@ -46,14 +46,20 @@ import { listGroups, listResources } from '#/server/fns/access.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
 import { discardDraft, getWorkflow, publishDraft, saveDraft } from '#/server/fns/workflow.ts'
 
-const workflowQuery = queryOptions({ queryKey: ['workflow'], queryFn: () => getWorkflow() })
+const workflowQuery = (workflowId: string) =>
+  queryOptions({
+    queryKey: ['workflow', workflowId],
+    queryFn: () => getWorkflow({ data: { workflowId } }),
+  })
 const serversQuery = queryOptions({ queryKey: ['mcp-servers'], queryFn: () => listMcpServers() })
 const resourcesQuery = queryOptions({ queryKey: ['resources'], queryFn: () => listResources() })
 const groupsQuery = queryOptions({ queryKey: ['groups'], queryFn: () => listGroups() })
 
-export const Route = createFileRoute('/_app/workflow')({
-  loader: ({ context }) => context.queryClient.ensureQueryData(workflowQuery),
-  component: WorkflowPage,
+export const Route = createFileRoute('/_app/workflows/$workflowId')({
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(workflowQuery(params.workflowId)),
+  // Editor state belongs to one workflow; start over when switching to another.
+  component: () => <WorkflowPage key={Route.useParams().workflowId} />,
 })
 
 type InsertionPoint = { source: string; handle: string }
@@ -88,8 +94,9 @@ function createsCycle(edges: PolicyEdge[], source: string, target: string): bool
 
 function WorkflowPage() {
   const { isAdmin } = Route.useRouteContext()
+  const { workflowId } = Route.useParams()
   const qc = useQueryClient()
-  const { data } = useQuery(workflowQuery)
+  const { data } = useQuery(workflowQuery(workflowId))
   const { data: servers } = useQuery(serversQuery)
   const { data: resources } = useQuery(resourcesQuery)
   const { data: groups } = useQuery(groupsQuery)
@@ -121,15 +128,19 @@ function WorkflowPage() {
     [servers, resources, groups],
   )
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ['workflow'] })
+  const refresh = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ['workflow', workflowId] }),
+      qc.invalidateQueries({ queryKey: ['workflows'] }),
+    ])
   const save = useMutation({
-    mutationFn: (g: PolicyGraph) => saveDraft({ data: { definition: g } }),
+    mutationFn: (g: PolicyGraph) => saveDraft({ data: { workflowId, definition: g } }),
     onSuccess: refresh,
   })
   const publish = useMutation({
     mutationFn: async () => {
-      if (dirty && graph) await saveDraft({ data: { definition: graph } })
-      return publishDraft({ data: { note: note || undefined } })
+      if (dirty && graph) await saveDraft({ data: { workflowId, definition: graph } })
+      return publishDraft({ data: { workflowId, note: note || undefined } })
     },
     onSuccess: async () => {
       setPublishOpen(false)
@@ -138,7 +149,7 @@ function WorkflowPage() {
     },
   })
   const discard = useMutation({
-    mutationFn: () => discardDraft(),
+    mutationFn: () => discardDraft({ data: { workflowId } }),
     onSuccess: async () => {
       setGraph(null)
       await refresh()
@@ -149,9 +160,15 @@ function WorkflowPage() {
 
   return (
     <>
+      <Link
+        to="/workflows"
+        className="mb-2 inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
+      >
+        <ArrowLeft className="size-3.5" /> All workflows
+      </Link>
       <PageHeader
-        title="Workflow"
-        description="Follow each request from left to right. Choose what gets allowed, blocked, or sent for approval."
+        title={data.workflow.name}
+        description="Set which requests start this workflow on its first step, then follow them from left to right to an allow, a block or an approval."
         actions={
           isAdmin ? (
             <>
@@ -188,9 +205,10 @@ function WorkflowPage() {
           {data.published ? (
             <Badge tone="ok">v{data.published.version}</Badge>
           ) : (
-            <Badge tone="neutral">built-in default</Badge>
+            <Badge tone="neutral">not published</Badge>
           )}
         </span>
+        {data.workflow.enabled ? null : <Badge tone="neutral">Disabled</Badge>}
         {data.draft ? <Badge tone="warn">Draft v{data.draft.version}</Badge> : null}
         {dirty ? <Badge tone="accent">Unsaved changes</Badge> : null}
         {errorCount > 0 ? (
@@ -850,7 +868,7 @@ function VersionList({
   if (versions.length === 0) {
     return (
       <p className="p-4 text-xs text-muted">
-        Nothing published yet; the built-in default is active.
+        Nothing saved yet. This workflow doesn't run until a version is published.
       </p>
     )
   }

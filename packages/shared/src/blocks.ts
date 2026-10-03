@@ -215,7 +215,7 @@ const specs: BlockSpec[] = [
     group: 'Routing',
     label: 'Request comes in',
     description:
-      'Every prompt, tool result and tool call starts here. Connect it to routes that send different tools down stricter or looser paths.',
+      'Decides which requests start this workflow. Without conditions every prompt and tool call does. A request that starts no workflow is allowed.',
     inputs: [],
     outputs: [
       {
@@ -227,8 +227,11 @@ const specs: BlockSpec[] = [
     ],
     through: 'next',
     fields: [],
-    create: () => ({ type: 'trigger' }),
-    summary: () => 'Prompt, tool result or tool call',
+    create: () => ({ type: 'trigger', mode: 'all', conditions: [] }),
+    summary: (node) =>
+      node.type !== 'trigger' || node.conditions.length === 0
+        ? 'Every prompt and tool call'
+        : node.conditions.map((c) => conditionText(c)).join(node.mode === 'all' ? ' and ' : ' or '),
   },
   {
     id: 'route',

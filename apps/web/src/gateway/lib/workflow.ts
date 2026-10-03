@@ -1,22 +1,37 @@
-import { type Db, rateLimit, workflowVersion } from '@acl/db'
-import { defaultWorkflow, type PolicyGraph, policyGraph, type RateLimitRule } from '@acl/shared'
-import { and, desc, eq } from 'drizzle-orm'
+import { type Db, rateLimit, workflow, workflowVersion } from '@acl/db'
+import { type ActiveWorkflow, defaultWorkflow, policyGraph, type RateLimitRule } from '@acl/shared'
+import { and, asc, desc, eq } from 'drizzle-orm'
 import { TtlCache } from './cache.ts'
 
-export type ActiveWorkflow = { version: number | null; definition: PolicyGraph }
-
-const workflowCache = new TtlCache<ActiveWorkflow>(10_000)
+const workflowCache = new TtlCache<ActiveWorkflow[]>(10_000)
 const rateLimitCache = new TtlCache<RateLimitRule[]>(10_000)
 
-export function loadActiveWorkflow(db: Db, orgId: string): Promise<ActiveWorkflow> {
+/** Every enabled workflow with a published version, in display order. */
+export function loadActiveWorkflows(db: Db, orgId: string): Promise<ActiveWorkflow[]> {
   return workflowCache.get(orgId, async () => {
-    const row = await db.query.workflowVersion.findFirst({
-      where: and(eq(workflowVersion.orgId, orgId), eq(workflowVersion.status, 'published')),
-      orderBy: desc(workflowVersion.version),
-    })
-    if (!row) return { version: null, definition: defaultWorkflow }
-    const parsed = policyGraph.safeParse(row.definition)
-    return { version: row.version, definition: parsed.success ? parsed.data : defaultWorkflow }
+    const rows = await db
+      .select({
+        id: workflow.id,
+        name: workflow.name,
+        groupIds: workflow.groupIds,
+        version: workflowVersion.version,
+        definition: workflowVersion.definition,
+      })
+      .from(workflow)
+      .innerJoin(
+        workflowVersion,
+        and(eq(workflowVersion.workflowId, workflow.id), eq(workflowVersion.status, 'published')),
+      )
+      .where(and(eq(workflow.orgId, orgId), eq(workflow.enabled, true)))
+      .orderBy(asc(workflow.position), asc(workflow.createdAt), desc(workflowVersion.version))
+    const active = new Map<string, ActiveWorkflow>()
+    for (const row of rows) {
+      if (active.has(row.id)) continue
+      // Versions saved before the graph editor hold the old linear format.
+      const parsed = policyGraph.safeParse(row.definition)
+      active.set(row.id, { ...row, definition: parsed.success ? parsed.data : defaultWorkflow })
+    }
+    return [...active.values()]
   })
 }
 

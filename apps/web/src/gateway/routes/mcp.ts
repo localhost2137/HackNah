@@ -191,7 +191,7 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     decision: 'allow',
     checks: [],
     riskScore: 0,
-    workflowVersion: null,
+    workflows: [],
     inputTokens: null,
     outputTokens: null,
     latencyMs: 0,
@@ -255,7 +255,7 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
   )
   event.checks = result.checks
   event.riskScore = result.riskScore
-  event.workflowVersion = result.workflowVersion
+  event.workflows = result.workflows
   if (result.decision === 'block' || result.decision === 'declined') {
     finish(result.decision)
     return toolError(`Blocked by AI Control Layer: ${result.reasons.join('; ') || 'policy'}`)

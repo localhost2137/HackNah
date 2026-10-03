@@ -22,13 +22,14 @@ import { Route as AppEventsRouteImport } from './routes/_app/events'
 import { Route as AppIntegrationsRouteImport } from './routes/_app/integrations'
 import { Route as AppRateLimitsRouteImport } from './routes/_app/rate-limits'
 import { Route as AppSessionsRouteImport } from './routes/_app/sessions'
-import { Route as AppWorkflowRouteImport } from './routes/_app/workflow'
 import { Route as ApiLiveRouteImport } from './routes/api/live'
 import { Route as AppAccessGroupsRouteImport } from './routes/_app/access/groups'
 import { Route as AppAccessMembersRouteImport } from './routes/_app/access/members'
 import { Route as AppAccessResourcesRouteImport } from './routes/_app/access/resources'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsConnectRouteImport } from './routes/_app/settings/connect'
+import { Route as AppWorkflowsIndexRouteImport } from './routes/_app/workflows/index'
+import { Route as AppWorkflowsWorkflowIdRouteImport } from './routes/_app/workflows/$workflowId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiOauthCallbackRouteImport } from './routes/api/oauth/callback'
 import { Route as ApiOauthStartServerIdRouteImport } from './routes/api/oauth/start.$serverId'
@@ -97,11 +98,6 @@ const AppSessionsRoute = AppSessionsRouteImport.update({
   path: '/sessions',
   getParentRoute: () => AppRoute,
 } as any)
-const AppWorkflowRoute = AppWorkflowRouteImport.update({
-  id: '/workflow',
-  path: '/workflow',
-  getParentRoute: () => AppRoute,
-} as any)
 const ApiLiveRoute = ApiLiveRouteImport.update({
   id: '/api/live',
   path: '/api/live',
@@ -130,6 +126,16 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
 const AppSettingsConnectRoute = AppSettingsConnectRouteImport.update({
   id: '/settings/connect',
   path: '/settings/connect',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWorkflowsIndexRoute = AppWorkflowsIndexRouteImport.update({
+  id: '/workflows/',
+  path: '/workflows/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWorkflowsWorkflowIdRoute = AppWorkflowsWorkflowIdRouteImport.update({
+  id: '/workflows/$workflowId',
+  path: '/workflows/$workflowId',
   getParentRoute: () => AppRoute,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -161,15 +167,16 @@ export interface FileRoutesByFullPath {
   '/integrations': typeof AppIntegrationsRoute
   '/rate-limits': typeof AppRateLimitsRoute
   '/sessions': typeof AppSessionsRoute
-  '/workflow': typeof AppWorkflowRoute
   '/api/live': typeof ApiLiveRoute
   '/access/groups': typeof AppAccessGroupsRoute
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
   '/settings/connect': typeof AppSettingsConnectRoute
+  '/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/settings/': typeof AppSettingsIndexRoute
+  '/workflows/': typeof AppWorkflowsIndexRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRoutesByTo {
@@ -184,16 +191,17 @@ export interface FileRoutesByTo {
   '/integrations': typeof AppIntegrationsRoute
   '/rate-limits': typeof AppRateLimitsRoute
   '/sessions': typeof AppSessionsRoute
-  '/workflow': typeof AppWorkflowRoute
   '/api/live': typeof ApiLiveRoute
   '/': typeof AppIndexRoute
   '/access/groups': typeof AppAccessGroupsRoute
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
   '/settings/connect': typeof AppSettingsConnectRoute
+  '/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/settings': typeof AppSettingsIndexRoute
+  '/workflows': typeof AppWorkflowsIndexRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRoutesById {
@@ -210,16 +218,17 @@ export interface FileRoutesById {
   '/_app/integrations': typeof AppIntegrationsRoute
   '/_app/rate-limits': typeof AppRateLimitsRoute
   '/_app/sessions': typeof AppSessionsRoute
-  '/_app/workflow': typeof AppWorkflowRoute
   '/api/live': typeof ApiLiveRoute
   '/_app/': typeof AppIndexRoute
   '/_app/access/groups': typeof AppAccessGroupsRoute
   '/_app/access/members': typeof AppAccessMembersRoute
   '/_app/access/resources': typeof AppAccessResourcesRoute
   '/_app/settings/connect': typeof AppSettingsConnectRoute
+  '/_app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
+  '/_app/workflows/': typeof AppWorkflowsIndexRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRouteTypes {
@@ -237,15 +246,16 @@ export interface FileRouteTypes {
     | '/integrations'
     | '/rate-limits'
     | '/sessions'
-    | '/workflow'
     | '/api/live'
     | '/access/groups'
     | '/access/members'
     | '/access/resources'
     | '/settings/connect'
+    | '/workflows/$workflowId'
     | '/api/auth/$'
     | '/api/oauth/callback'
     | '/settings/'
+    | '/workflows/'
     | '/api/oauth/start/$serverId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -260,16 +270,17 @@ export interface FileRouteTypes {
     | '/integrations'
     | '/rate-limits'
     | '/sessions'
-    | '/workflow'
     | '/api/live'
     | '/'
     | '/access/groups'
     | '/access/members'
     | '/access/resources'
     | '/settings/connect'
+    | '/workflows/$workflowId'
     | '/api/auth/$'
     | '/api/oauth/callback'
     | '/settings'
+    | '/workflows'
     | '/api/oauth/start/$serverId'
   id:
     | '__root__'
@@ -285,16 +296,17 @@ export interface FileRouteTypes {
     | '/_app/integrations'
     | '/_app/rate-limits'
     | '/_app/sessions'
-    | '/_app/workflow'
     | '/api/live'
     | '/_app/'
     | '/_app/access/groups'
     | '/_app/access/members'
     | '/_app/access/resources'
     | '/_app/settings/connect'
+    | '/_app/workflows/$workflowId'
     | '/api/auth/$'
     | '/api/oauth/callback'
     | '/_app/settings/'
+    | '/_app/workflows/'
     | '/api/oauth/start/$serverId'
   fileRoutesById: FileRoutesById
 }
@@ -404,13 +416,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSessionsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/workflow': {
-      id: '/_app/workflow'
-      path: '/workflow'
-      fullPath: '/workflow'
-      preLoaderRoute: typeof AppWorkflowRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/api/live': {
       id: '/api/live'
       path: '/api/live'
@@ -453,6 +458,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsConnectRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/workflows/': {
+      id: '/_app/workflows/'
+      path: '/workflows'
+      fullPath: '/workflows/'
+      preLoaderRoute: typeof AppWorkflowsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/workflows/$workflowId': {
+      id: '/_app/workflows/$workflowId'
+      path: '/workflows/$workflowId'
+      fullPath: '/workflows/$workflowId'
+      preLoaderRoute: typeof AppWorkflowsWorkflowIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -484,13 +503,14 @@ interface AppRouteChildren {
   AppIntegrationsRoute: typeof AppIntegrationsRoute
   AppRateLimitsRoute: typeof AppRateLimitsRoute
   AppSessionsRoute: typeof AppSessionsRoute
-  AppWorkflowRoute: typeof AppWorkflowRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAccessGroupsRoute: typeof AppAccessGroupsRoute
   AppAccessMembersRoute: typeof AppAccessMembersRoute
   AppAccessResourcesRoute: typeof AppAccessResourcesRoute
   AppSettingsConnectRoute: typeof AppSettingsConnectRoute
+  AppWorkflowsWorkflowIdRoute: typeof AppWorkflowsWorkflowIdRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+  AppWorkflowsIndexRoute: typeof AppWorkflowsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -500,13 +520,14 @@ const AppRouteChildren: AppRouteChildren = {
   AppIntegrationsRoute: AppIntegrationsRoute,
   AppRateLimitsRoute: AppRateLimitsRoute,
   AppSessionsRoute: AppSessionsRoute,
-  AppWorkflowRoute: AppWorkflowRoute,
   AppIndexRoute: AppIndexRoute,
   AppAccessGroupsRoute: AppAccessGroupsRoute,
   AppAccessMembersRoute: AppAccessMembersRoute,
   AppAccessResourcesRoute: AppAccessResourcesRoute,
   AppSettingsConnectRoute: AppSettingsConnectRoute,
+  AppWorkflowsWorkflowIdRoute: AppWorkflowsWorkflowIdRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
+  AppWorkflowsIndexRoute: AppWorkflowsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

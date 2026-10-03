@@ -1,9 +1,11 @@
 # AI Control Layer
 
 A control plane for Claude Code: every model request, built-in tool call and MCP tool call goes through
-a gateway that applies the organization's workflow (device fingerprint, dangerous keywords, judge model,
-redaction), rate limits and access rules. A dashboard shows the traffic, handles approvals and manages
-policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
+a gateway that applies the organization's workflows (device fingerprint, dangerous keywords, judge model,
+redaction), rate limits and access rules. Each workflow has start conditions (request kind, tool, MCP
+server, model, ...) and the member groups it runs for; every matching workflow runs and the strictest
+outcome wins, while a request that starts no workflow is allowed. A dashboard shows the traffic, handles
+approvals and manages policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
 Durable Objects).
 
 ## Layout

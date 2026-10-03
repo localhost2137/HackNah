@@ -78,7 +78,7 @@ export const messages = new Hono<AppEnv>()
       decision: result.decision,
       checks: result.checks,
       riskScore: result.riskScore,
-      workflowVersion: result.workflowVersion,
+      workflows: result.workflows,
       inputTokens: null,
       outputTokens: null,
       latencyMs: 0,

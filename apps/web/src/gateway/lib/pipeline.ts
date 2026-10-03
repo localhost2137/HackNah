@@ -5,22 +5,23 @@ import {
   callJudge,
   type Decision,
   type EvaluationInput,
-  evaluateGraph,
+  evaluateWorkflows,
   type RedactConfig,
   randomId,
+  type WorkflowRef,
 } from '@acl/shared'
 import { eq } from 'drizzle-orm'
 import type { Principal } from '../context.ts'
 import { approvalsStub } from '../do/approvals.ts'
 import { effectivePermissions, permissionDenial, userGroupIds } from './access.ts'
-import { loadActiveWorkflow } from './workflow.ts'
+import { loadActiveWorkflows } from './workflow.ts'
 
 export type PipelineResult = {
   decision: Extract<Decision, 'allow' | 'block' | 'approved' | 'declined'>
   checks: CheckResult[]
   riskScore: number
   reasons: string[]
-  workflowVersion: number | null
+  workflows: WorkflowRef[]
   approvalId: string | null
   redact: RedactConfig | null
 }
@@ -31,8 +32,9 @@ function judgeApiKey(env: Env, endpoint: string): string | undefined {
 }
 
 /**
- * Runs the org's policy graph for one request. If the path ends in an approval, this blocks
- * until someone decides in the dashboard or the approval times out.
+ * Runs every workflow the request triggers and keeps the strictest outcome. A request that
+ * triggers none is allowed. If the outcome is an approval, this blocks until someone decides in
+ * the dashboard or the approval times out.
  *
  * Device-side approvals (confirm, Touch ID, browser) pass on their own when the request carries
  * the proof in `input.signals`. Until the gateway issues the plugin's challenges, a request
@@ -45,8 +47,8 @@ export async function runPipeline(
   input: Omit<EvaluationInput, 'deviceStatus' | 'groupIds'>,
   meta: { eventId: string; sessionId: string | null; summary: string },
 ): Promise<PipelineResult> {
-  const [workflow, groupIds, permissions] = await Promise.all([
-    loadActiveWorkflow(db, principal.orgId),
+  const [workflows, groupIds, permissions] = await Promise.all([
+    loadActiveWorkflows(db, principal.orgId),
     userGroupIds(db, principal),
     effectivePermissions(db, principal),
   ])
@@ -66,13 +68,13 @@ export async function runPipeline(
       ],
       riskScore: 1,
       reasons: [denied],
-      workflowVersion: workflow.version,
+      workflows: [],
       approvalId: null,
       redact: null,
     }
   }
-  const result = await evaluateGraph(
-    workflow.definition,
+  const result = await evaluateWorkflows(
+    workflows,
     { ...input, groupIds, deviceStatus: principal.deviceStatus },
     { judge: (check, i) => callJudge(check, i, { apiKey: judgeApiKey(env, check.endpoint) }) },
   )
@@ -80,7 +82,7 @@ export async function runPipeline(
     checks: result.checks,
     riskScore: result.riskScore,
     reasons: result.reasons,
-    workflowVersion: workflow.version,
+    workflows: result.workflows,
     approvalId: null,
     redact: result.redact,
   }
