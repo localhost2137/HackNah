@@ -1,0 +1,48 @@
+/*
+ * Dark, dense console theme. Import after `@import "tailwindcss"` in the app stylesheet.
+ */
+@source "./";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg: #0a0b10;
+  --color-panel: #11131a;
+  --color-panel-2: #171a23;
+  --color-line: #232735;
+  --color-line-strong: #2f3445;
+  --color-fg: #e6e8ef;
+  --color-muted: #8b91a5;
+  --color-subtle: #5d6377;
+
+  --color-accent: #7c6cff;
+  --color-accent-strong: #9a8dff;
+  --color-accent-soft: rgb(124 108 255 / 0.14);
+
+  --color-ok: #2fd18b;
+  --color-ok-soft: rgb(47 209 139 / 0.12);
+  --color-warn: #f5b84a;
+  --color-warn-soft: rgb(245 184 74 / 0.12);
+  --color-bad: #ff5c72;
+  --color-bad-soft: rgb(255 92 114 / 0.12);
+  --color-info: #4aa8ff;
+  --color-info-soft: rgb(74 168 255 / 0.12);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-size: 13px;
+  }
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+  * {
+    border-color: var(--color-line);
+  }
+}
