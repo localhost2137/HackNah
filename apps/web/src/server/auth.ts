@@ -1,0 +1,131 @@
+import { type Db, member, schema, ssoProvider, user } from '@acl/db'
+import { sso } from '@better-auth/sso'
+import { betterAuth } from 'better-auth'
+import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { organization } from 'better-auth/plugins/organization'
+import { tanstackStartCookies } from 'better-auth/tanstack-start'
+import { and, asc, eq } from 'drizzle-orm'
+import { env } from './env.ts'
+
+/**
+ * Identity providers the SSO plugin may fetch discovery documents, tokens and keys from.
+ * Self-hosted ones (Keycloak, Authentik, ...) go in the comma-separated `SSO_TRUSTED_ORIGINS` var.
+ */
+const IDP_ORIGINS = [
+  'https://accounts.google.com',
+  'https://oauth2.googleapis.com',
+  'https://openidconnect.googleapis.com',
+  'https://www.googleapis.com',
+  'https://login.microsoftonline.com',
+  'https://graph.microsoft.com',
+  'https://*.okta.com',
+  'https://*.oktapreview.com',
+  'https://*.auth0.com',
+]
+
+/** Over HTTP only sign-in and the callback are reachable; provider admin goes through server fns. */
+const PUBLIC_SSO_PATHS = ['/sign-in/sso', '/sso/callback']
+
+function idpOrigins(): string[] {
+  const extra = env.SSO_TRUSTED_ORIGINS.split(',')
+    .map((o) => o.trim())
+    .filter(Boolean)
+  return [...IDP_ORIGINS, ...extra]
+}
+
+export function emailDomain(email: string): string {
+  return email.slice(email.lastIndexOf('@') + 1).toLowerCase()
+}
+
+/** Owners keep password login so a broken IdP configuration can't lock the org out. */
+async function isBreakGlassOwner(db: Db, email: string, orgId: string | null): Promise<boolean> {
+  if (!orgId) return false
+  const [row] = await db
+    .select({ role: member.role })
+    .from(member)
+    .innerJoin(user, eq(user.id, member.userId))
+    .where(
+      and(
+        eq(member.organizationId, orgId),
+        eq(user.email, email.toLowerCase()),
+        eq(member.role, 'owner'),
+      ),
+    )
+    .limit(1)
+  return Boolean(row)
+}
+
+export function createAuth(db: Db) {
+  return betterAuth({
+    baseURL: env.PUBLIC_URL,
+    secret: env.BETTER_AUTH_SECRET,
+    // IdP origins are trusted only where the SSO plugin talks to the IdP, so they never become
+    // valid post-login redirect targets elsewhere.
+    trustedOrigins: (request) => {
+      const path = request ? new URL(request.url).pathname : null
+      if (!path || path.includes('/sso/')) return [env.PUBLIC_URL, ...idpOrigins()]
+      return [env.PUBLIC_URL]
+    },
+    database: drizzleAdapter(db, {
+      provider: 'sqlite',
+      schema: {
+        user: schema.user,
+        session: schema.session,
+        account: schema.account,
+        verification: schema.verification,
+        organization: schema.organization,
+        member: schema.member,
+        invitation: schema.invitation,
+        ssoProvider: schema.ssoProvider,
+      },
+    }),
+    emailAndPassword: { enabled: true, minPasswordLength: 10 },
+    session: { expiresIn: 60 * 60 * 12, updateAge: 60 * 60 },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        const isSsoAdmin =
+          ctx.path.startsWith('/sso/') && !PUBLIC_SSO_PATHS.some((p) => ctx.path.startsWith(p))
+        if (ctx.request && isSsoAdmin) throw new APIError('NOT_FOUND')
+
+        if (ctx.path === '/sign-in/email' || ctx.path === '/sign-up/email') {
+          const email = (ctx.body as { email?: unknown } | undefined)?.email
+          if (typeof email !== 'string') return
+          const enforced = await db.query.ssoProvider.findFirst({
+            where: eq(ssoProvider.domain, emailDomain(email)),
+            columns: { organizationId: true },
+          })
+          if (enforced && !(await isBreakGlassOwner(db, email, enforced.organizationId)))
+            throw new APIError('FORBIDDEN', {
+              message: 'Your organization requires single sign-on. Use "Continue with SSO".',
+            })
+        }
+      }),
+    },
+    databaseHooks: {
+      session: {
+        create: {
+          // Land users in their first organization so every page has an org context.
+          before: async (session) => {
+            const first = await db.query.member.findFirst({
+              where: eq(member.userId, session.userId),
+              orderBy: asc(member.createdAt),
+            })
+            return { data: { ...session, activeOrganizationId: first?.organizationId ?? null } }
+          },
+        },
+      },
+    },
+    plugins: [
+      organization({
+        allowUserToCreateOrganization: true,
+      }),
+      sso({
+        organizationProvisioning: { defaultRole: 'member' },
+      }),
+      tanstackStartCookies(),
+    ],
+  })
+}
+
+export type Auth = ReturnType<typeof createAuth>
