@@ -237,6 +237,12 @@ for (const host of ['127.0.0.1', '::1']) {
   createServer(handle)
     .on('error', (err) => {
       if (host === '::1' && err.code === 'EADDRNOTAVAIL') return
+      // Exiting would make `pnpm dev` stop the app too, so stay idle next to the other instance.
+      if (err.code === 'EADDRINUSE') {
+        console.warn(`Port ${port} is already in use on ${host}; assuming the mock is running.`)
+        setInterval(() => {}, 1 << 30)
+        return
+      }
       console.error(`mock IdP could not listen on ${host}:${port}: ${err.message}`)
       process.exit(1)
     })

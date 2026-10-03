@@ -59,7 +59,7 @@ Vite dev server.
 pnpm install
 cp apps/web/.dev.vars.example apps/web/.dev.vars   # fill OPENROUTER_API_KEY and generate the three secrets
 pnpm db:migrate                                    # applies packages/db/drizzle to the local D1
-pnpm dev                                           # http://localhost:3000 (dashboard and gateway)
+pnpm dev                                           # http://localhost:3000 (dashboard and gateway) + mock SSO
 ```
 
 This is a single-tenant installation. The first account becomes admin automatically; later accounts need access granted by an admin or SSO. Local data lives in
@@ -92,13 +92,14 @@ It is excluded from production builds.
 
 ### Testing single sign-on locally
 
-`pnpm mock:idp` starts a development-only OIDC identity provider at `http://localhost:9400`. It accepts
-any client ID and secret and signs in whoever you pick, without a password.
+`pnpm dev` also starts a development-only OIDC identity provider at `http://localhost:9400`
+(`pnpm mock:idp` runs it alone). It accepts any client ID and secret and signs in whoever you pick,
+without a password. If the port is taken, it assumes another copy is running and stays idle.
 
 1. Add `SSO_TRUSTED_ORIGINS=http://localhost:9400` to `apps/web/.dev.vars` and restart `pnpm dev`.
 2. Run `pnpm db:seed`. It registers the mock as the instance's provider for `sso.test` and creates
    `admin@sso.test` (admin) and `member@sso.test` (member), already linked to it.
-3. Start `pnpm mock:idp`, then click **Sign in with mock SSO** on the login page and pick an account.
+3. Click **Sign in with mock SSO** on the login page and pick an account.
 
 Other emails on the mock's page (`alice@sso.test`, `bob@sso.test`, or any you type) join as new members,
 so they land on the admin-required page until promoted in Members. If Settings already has a provider,
