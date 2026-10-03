@@ -6,12 +6,13 @@ export const GLASS_SIZE = (GLASS_RADIUS + GLASS_OVERSCAN) * 2
 /** Inverse ray offset through the rounded shoulder of a convex glass lens (Snell's law). */
 export function refractedOffset(x: number, y: number): [number, number] {
   const radius = Math.hypot(x, y)
-  const shoulder = GLASS_RADIUS * 0.52
+  const shoulder = GLASS_RADIUS * 0.4
   if (radius <= shoulder || radius > GLASS_RADIUS) return [0, 0]
   const t = Math.min(0.995, (radius - shoulder) / (GLASS_RADIUS - shoulder))
   const incident = Math.asin(t)
   const transmitted = Math.asin(t / 1.46)
-  const thickness = 1.5 + 6 * Math.sqrt(1 - t * t)
+  // A deep, broadly rounded shoulder bends rays across most of the rim.
+  const thickness = 4.5 + 18 * Math.sqrt(1 - t * t)
   const travel = Math.tan(incident - transmitted) * thickness
   return [(-x / radius) * travel, (-y / radius) * travel]
 }
@@ -57,9 +58,9 @@ export function createGlassOptics(glass: HTMLElement): HTMLDivElement {
     // All markup is internal, including the locally generated displacement texture.
     svg.innerHTML = `<defs><filter id="${id}" x="0" y="0" width="${GLASS_SIZE}" height="${GLASS_SIZE}" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feImage href="${map}" width="${GLASS_SIZE}" height="${GLASS_SIZE}" result="surface" />
-      <feDisplacementMap in="SourceGraphic" in2="surface" scale="16.3" xChannelSelector="R" yChannelSelector="G" result="redRay" />
+      <feDisplacementMap in="SourceGraphic" in2="surface" scale="15.4" xChannelSelector="R" yChannelSelector="G" result="redRay" />
       <feDisplacementMap in="SourceGraphic" in2="surface" scale="16" xChannelSelector="R" yChannelSelector="G" result="greenRay" />
-      <feDisplacementMap in="SourceGraphic" in2="surface" scale="15.7" xChannelSelector="R" yChannelSelector="G" result="blueRay" />
+      <feDisplacementMap in="SourceGraphic" in2="surface" scale="16.6" xChannelSelector="R" yChannelSelector="G" result="blueRay" />
       <feColorMatrix in="redRay" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="red" />
       <feColorMatrix in="greenRay" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="green" />
       <feColorMatrix in="blueRay" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="blue" />

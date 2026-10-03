@@ -10,7 +10,7 @@ describe('glass refraction', () => {
     const right = refractedOffset(16, 0)
     const left = refractedOffset(-16, 0)
     const bottom = refractedOffset(0, 16)
-    expect(right[0]).toBeLessThan(-1)
+    expect(right[0]).toBeLessThan(-5)
     expect(left[0]).toBeCloseTo(-right[0])
     expect(bottom[1]).toBeCloseTo(right[0])
     expect(right[1]).toBeCloseTo(0)
@@ -20,7 +20,7 @@ describe('glass refraction', () => {
       for (let x = -GLASS_RADIUS; x <= GLASS_RADIUS; x += 0.5) {
         const [dx, dy] = refractedOffset(x, y)
         expect(Number.isFinite(dx) && Number.isFinite(dy)).toBe(true)
-        expect(Math.hypot(dx, dy) * 1.03).toBeLessThan(GLASS_OVERSCAN)
+        expect(Math.hypot(dx, dy) * 1.04).toBeLessThan(GLASS_OVERSCAN)
       }
     }
   })
