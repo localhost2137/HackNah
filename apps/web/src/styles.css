@@ -121,9 +121,9 @@
   );
   mask-image: radial-gradient(
     circle closest-side,
-    transparent 58%,
-    #0002 76%,
-    #0006 92%,
+    transparent 78%,
+    #0002 84%,
+    #0006 94%,
     #000 100%
   );
 }

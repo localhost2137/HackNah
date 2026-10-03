@@ -6,12 +6,13 @@ export const GLASS_SIZE = (GLASS_RADIUS + GLASS_OVERSCAN) * 2
 /** Inverse ray offset through the rounded shoulder of a convex glass lens (Snell's law). */
 export function refractedOffset(x: number, y: number): [number, number] {
   const radius = Math.hypot(x, y)
-  const shoulder = GLASS_RADIUS * 0.4
+  const shoulder = GLASS_RADIUS * 0.78
   if (radius <= shoulder || radius > GLASS_RADIUS) return [0, 0]
-  const t = Math.min(0.995, (radius - shoulder) / (GLASS_RADIUS - shoulder))
+  const rimPosition = (radius - shoulder) / (GLASS_RADIUS - shoulder)
+  const t = Math.min(0.995, Math.sin((rimPosition * Math.PI) / 2))
   const incident = Math.asin(t)
   const transmitted = Math.asin(t / 1.46)
-  // A deep, broadly rounded shoulder bends rays across most of the rim.
+  // Strong curvature is confined to the outer 4px; the central 28px stays flat.
   const thickness = 4.5 + 18 * Math.sqrt(1 - t * t)
   const travel = Math.tan(incident - transmitted) * thickness
   return [(-x / radius) * travel, (-y / radius) * travel]

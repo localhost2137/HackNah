@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { GLASS_OVERSCAN, GLASS_RADIUS, refractedOffset } from './glass-optics.ts'
 
 describe('glass refraction', () => {
-  it('keeps the optical center undistorted', () => {
-    expect(refractedOffset(0, 0)).toEqual([0, 0])
-    expect(refractedOffset(5, 5)).toEqual([0, 0])
+  it('keeps the entire central 28px clear, including its edges', () => {
+    for (let y = -14; y <= 14; y += 0.5) {
+      for (let x = -14; x <= 14; x += 0.5) {
+        if (Math.hypot(x, y) <= 14) expect(refractedOffset(x, y)).toEqual([0, 0])
+      }
+    }
   })
   it('bends peripheral rays radially and symmetrically', () => {
-    const right = refractedOffset(16, 0)
-    const left = refractedOffset(-16, 0)
-    const bottom = refractedOffset(0, 16)
+    const right = refractedOffset(17, 0)
+    const left = refractedOffset(-17, 0)
+    const bottom = refractedOffset(0, 17)
     expect(right[0]).toBeLessThan(-5)
     expect(left[0]).toBeCloseTo(-right[0])
     expect(bottom[1]).toBeCloseTo(right[0])
