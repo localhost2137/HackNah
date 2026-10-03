@@ -29,11 +29,14 @@ const IDP_ORIGINS = [
 /** Over HTTP only sign-in and the callback are reachable; provider admin goes through server fns. */
 const PUBLIC_SSO_PATHS = ['/sign-in/sso', '/sso/callback']
 
-function idpOrigins(): string[] {
-  const extra = env.SSO_TRUSTED_ORIGINS.split(',')
+function selfHostedIdpOrigins(): string[] {
+  return env.SSO_TRUSTED_ORIGINS.split(',')
     .map((o) => o.trim())
     .filter(Boolean)
-  return [...IDP_ORIGINS, ...extra]
+}
+
+function idpOrigins(): string[] {
+  return [...IDP_ORIGINS, ...selfHostedIdpOrigins()]
 }
 
 export function emailDomain(email: string): string {
@@ -67,6 +70,7 @@ export function createAuth(db: Db) {
     trustedOrigins: (request) => {
       const path = request ? new URL(request.url).pathname : null
       if (!path || path.includes('/sso/')) return [env.PUBLIC_URL, ...idpOrigins()]
+      if (path.endsWith('/sign-in/sso')) return [env.PUBLIC_URL, ...selfHostedIdpOrigins()]
       return [env.PUBLIC_URL]
     },
     database: drizzleAdapter(db, {

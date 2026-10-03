@@ -15,6 +15,7 @@
     "format": "biome check --write .",
     "db:generate": "pnpm --filter @acl/db generate",
     "db:seed": "pnpm --filter @acl/web db:seed",
+    "mock:idp": "pnpm --filter @acl/web mock:idp",
     "db:migrate": "pnpm --filter @acl/web db:migrate",
     "db:migrate:remote": "pnpm --filter @acl/web db:migrate:remote",
     "deploy": "turbo run deploy"

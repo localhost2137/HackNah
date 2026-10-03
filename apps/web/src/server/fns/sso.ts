@@ -8,6 +8,7 @@ import { env } from '../env.ts'
 import { adminMiddleware } from '../middleware.ts'
 
 const DOMAIN = /^(?=.{3,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/
+const LOCAL_ISSUER = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/
 
 async function providerIdFor(db: Db, orgId: string): Promise<string> {
   const org = await db.query.organization.findFirst({
@@ -47,7 +48,12 @@ export const saveSsoProvider = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .validator(
     z.object({
-      issuer: z.url().startsWith('https://', 'The issuer must use https'),
+      issuer: z
+        .url()
+        .refine(
+          (u) => u.startsWith('https://') || (import.meta.env.DEV && LOCAL_ISSUER.test(u)),
+          'The issuer must use https',
+        ),
       domain: z
         .string()
         .trim()

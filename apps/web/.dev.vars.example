@@ -7,3 +7,5 @@ ENCRYPTION_KEY=
 JUDGE_API_KEY=
 # Local only: long-lived access tokens for manual testing without the plugin
 ACCESS_TOKEN_TTL_SEC=86400
+# Local only: lets single sign-on reach the mock identity provider (pnpm mock:idp)
+SSO_TRUSTED_ORIGINS=http://localhost:9400

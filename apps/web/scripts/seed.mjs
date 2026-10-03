@@ -4,26 +4,33 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hashPassword } from 'better-auth/crypto'
+import { mockClient, mockIssuer, mockSsoDomain, seededSsoUsers, subjectFor } from './mock-sso.mjs'
 
 // Development fixtures only. Always targets Wrangler's local D1 database.
 const cwd = fileURLToPath(new URL('..', import.meta.url))
 const password = 'LocalDemo123!'
 const now = Date.now()
 const quote = (value) => `'${String(value).replaceAll("'", "''")}'`
+/** A SQL expression to insert as-is instead of a quoted value. */
+const expr = (sql) => ({ sql })
+const ssoProviderId = expr(`'sso-' || (SELECT slug FROM organization LIMIT 1)`)
 const sql = []
-function insert(table, row) {
+function insert(table, row, where = '1') {
   sql.push(
     `INSERT INTO "${table}" (${Object.keys(row)
       .map((key) => `"${key}"`)
       .join(',')}) SELECT ${Object.values(row)
-      .map((value) =>
-        value === 'seed-org' ? '(SELECT id FROM organization LIMIT 1)' : quote(value),
+      .map(
+        (value) =>
+          value?.sql ??
+          (value === 'seed-org' ? '(SELECT id FROM organization LIMIT 1)' : quote(value)),
       )
       .join(
         ',',
-      )} WHERE ${table === 'member' ? `NOT EXISTS (SELECT 1 FROM member WHERE user_id = ${quote(row.user_id)} AND organization_id = (SELECT id FROM organization LIMIT 1))` : '1'} ON CONFLICT DO NOTHING;`,
+      )} WHERE ${where}${table === 'member' ? ` AND NOT EXISTS (SELECT 1 FROM member WHERE user_id = ${quote(row.user_id)} AND organization_id = (SELECT id FROM organization LIMIT 1))` : ''} ON CONFLICT DO NOTHING;`,
   )
 }
+const userExists = (id) => `EXISTS (SELECT 1 FROM user WHERE id = ${quote(id)})`
 
 for (const role of ['admin', 'member']) {
   const id = `seed-${role}`
@@ -51,6 +58,51 @@ for (const role of ['admin', 'member']) {
     role,
     created_at: now,
   })
+}
+
+// The mock identity provider from `pnpm mock:idp`, registered the way Settings would after discovery.
+insert('sso_provider', {
+  id: 'seed-mock-sso',
+  provider_id: ssoProviderId,
+  issuer: mockIssuer,
+  domain: mockSsoDomain,
+  organization_id: 'seed-org',
+  oidc_config: JSON.stringify({
+    issuer: mockIssuer,
+    clientId: mockClient.id,
+    clientSecret: mockClient.secret,
+    authorizationEndpoint: `${mockIssuer}/authorize`,
+    tokenEndpoint: `${mockIssuer}/token`,
+    tokenEndpointAuthentication: 'client_secret_basic',
+    jwksEndpoint: `${mockIssuer}/jwks`,
+    pkce: true,
+    discoveryEndpoint: `${mockIssuer}/.well-known/openid-configuration`,
+    scopes: ['openid', 'email', 'profile'],
+    userInfoEndpoint: `${mockIssuer}/userinfo`,
+    overrideUserInfo: false,
+  }),
+})
+
+for (const { email, name, role } of seededSsoUsers) {
+  const id = `seed-sso-${role}`
+  insert('user', { id, name, email, email_verified: 1, created_at: now, updated_at: now })
+  insert(
+    'account',
+    {
+      id: `${id}-account`,
+      account_id: subjectFor(email),
+      provider_id: ssoProviderId,
+      user_id: id,
+      created_at: now,
+      updated_at: now,
+    },
+    userExists(id),
+  )
+  insert(
+    'member',
+    { id: `${id}-membership`, organization_id: 'seed-org', user_id: id, role, created_at: now },
+    userExists(id),
+  )
 }
 
 for (let i = 0; i < 48; i++) {
@@ -88,7 +140,7 @@ try {
     stdio: 'inherit',
   })
   console.log(
-    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nExisting fixtures are preserved on subsequent runs.`,
+    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nMock SSO accounts (pnpm mock:idp): ${seededSsoUsers.map((u) => u.email).join(', ')}\nExisting fixtures are preserved on subsequent runs.`,
   )
 } finally {
   rmSync(temporary, { recursive: true, force: true })

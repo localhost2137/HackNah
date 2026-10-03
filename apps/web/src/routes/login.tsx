@@ -50,12 +50,11 @@ function LoginPage() {
     await navigate({ href: target })
   }
 
-  async function onSso(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
+  async function startSso(provider: { email: string } | { domain: string }) {
     setPending(true)
     setError(null)
     const { error } = await authClient.signIn.sso({
-      email,
+      ...provider,
       callbackURL: target,
       errorCallbackURL: '/login',
     })
@@ -68,6 +67,11 @@ function LoginPage() {
           : (error.message ?? 'Single sign-on failed'),
       )
     }
+  }
+
+  function onSso(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    return startSso({ email })
   }
 
   const emailField = (
@@ -103,19 +107,30 @@ function LoginPage() {
             {pending ? 'Signing in…' : 'Sign in'}
           </Button>
           {import.meta.env.DEV ? (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setEmail('admin@demo.test')
-                setPassword('LocalDemo123!')
-                setError(null)
-              }}
-            >
-              Fill admin credentials
-            </Button>
-          ) : null}
-          <Button onClick={() => switchMode('sso')}>Continue with SSO</Button>
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setEmail('admin@demo.test')
+                  setPassword('LocalDemo123!')
+                  setError(null)
+                }}
+              >
+                Fill admin credentials
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => startSso({ domain: 'sso.test' })}
+              >
+                Sign in with mock SSO
+              </Button>
+            </>
+          ) : (
+            <Button onClick={() => switchMode('sso')}>Continue with SSO</Button>
+          )}
           <p className="text-center text-xs text-muted">
             No account?{' '}
             <Link to="/signup" search={{ redirect }} className="text-accent-strong hover:underline">
