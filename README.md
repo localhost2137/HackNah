@@ -1,0 +1,109 @@
+# AI Control Layer
+
+A control plane for Claude Code: every model request, built-in tool call and MCP tool call goes through
+a gateway that applies the organization's workflow (device fingerprint, dangerous keywords, judge model,
+redaction), rate limits and access rules. A dashboard shows the traffic, handles approvals and manages
+policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
+Durable Objects).
+
+## Layout
+
+| Path | What it is |
+| --- | --- |
+| `apps/web` | The Worker. `src/server.ts` sends `/v1`, `/mcp`, `/auth` and `/health` to the gateway (`src/gateway`, Hono) and everything else to the dashboard (TanStack Start) |
+| `packages/shared` | Workflow schema and engine, redaction, crypto, judge client |
+| `packages/db` | Drizzle schema and generated SQL migrations for D1 |
+| `packages/ui` | Tailwind theme and UI primitives |
+
+## How a request flows
+
+```
+Claude Code ──► /v1/messages ──► workflow ──► openrouter.ai (Anthropic-compatible API)
+            ──► /mcp          ──► access + rate limit + workflow ──► GitHub / Jira / ... MCP
+            ──► /v1/acl/hooks/pre-tool-use (Bash, Edit, ...) ──► workflow
+                         │
+                         ├─ pending ──► ApprovalDO ──WebSocket──► dashboard Approvals
+                         └─ event ──► Queue ──► D1 (metadata) + R2 (payloads)
+```
+
+- **Auth.** The plugin logs in with the OAuth device flow. It gets a 15-minute JWT bound to a hash of the machine
+  fingerprint, plus a rotating refresh token with reuse detection. The same token presented with a different
+  fingerprint is flagged as `mismatch`. The fingerprint step then blocks it or asks for approval.
+- **Sessions.** Claude Code's session id is pinned to the first user and device that use it (`SessionDO`). The
+  session also stores the resource scope picked with `/acl resources` and the redaction vault.
+- **Workflow.** There is one versioned pipeline per organization (draft, then publish), evaluated by the shared
+  `evaluate()` function. Every event's payload is kept in R2 so new rules can be replayed against history.
+- **Models.** The gateway forwards Anthropic Messages requests to OpenRouter with the organization's
+  `OPENROUTER_API_KEY`. Claude Code is only guaranteed to work with Anthropic models there. The judge step can use
+  OpenRouter too (`https://openrouter.ai/api/v1/chat/completions`), with the same key.
+- **Dashboard login.** Email and password, or OIDC single sign-on per organization (Settings → Single sign-on).
+  People on the organization's email domain must use SSO and join as members; owners keep password login as a
+  fallback. Removing a member also revokes their Claude Code devices.
+- **Access.** Admins group MCP tools into resources (tool glob patterns) and grant them to users or groups.
+  Owners and admins can use every resource. Checks are D1 queries, cached for 10 seconds.
+- **MCP credentials** are AES-GCM encrypted with additional authenticated data (AAD) bound to the server and the
+  user. They are only decrypted inside the Worker when calling the upstream MCP server.
+- **Redaction** replaces secrets and PII with `[REDACTED_EMAIL_1]`-style placeholders before the model sees them,
+  and restores them in MCP tool arguments, so the agent can work with data it never sees in clear text.
+
+## Local development
+
+Requirements: Node 22+ and pnpm 12. No Docker: D1, R2, Queues and Durable Objects all run locally inside the
+Vite dev server.
+
+```sh
+pnpm install
+cp apps/web/.dev.vars.example apps/web/.dev.vars   # fill OPENROUTER_API_KEY and generate the three secrets
+pnpm db:migrate                                    # applies packages/db/drizzle to the local D1
+pnpm dev                                           # http://localhost:3000 (dashboard and gateway)
+```
+
+Sign up, then create an organization. Whoever creates an organization becomes its owner. Local data lives in
+`apps/web/.wrangler/state`; delete that folder and run `pnpm db:migrate` again to start over.
+
+Checks: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
+
+After changing `packages/db/src/schema.ts`, run `pnpm db:generate` and commit the new file in `packages/db/drizzle`.
+D1 allows at most 100 bound parameters per statement, so split multi-row inserts with `chunkRows` from `@acl/db`.
+
+## Connecting Claude Code
+
+The dashboard's **Connect Claude Code** page shows the exact configuration, filled in with your URL. In short:
+
+- `ANTHROPIC_BASE_URL` points at the Worker, and `apiKeyHelper` returns the gateway token. The OpenRouter key
+  is only in the Worker.
+- One HTTP MCP server, `acl` → `<url>/mcp`, with a `headersHelper` that adds the token and the fingerprint.
+- A `PreToolUse` command hook that POSTs the hook input to `<url>/v1/acl/hooks/pre-tool-use`.
+- Ship it as managed settings and block `api.anthropic.com` and `openrouter.ai` at the egress, so nothing
+  bypasses the gateway.
+
+## Deploying
+
+One-time setup per Cloudflare account:
+
+```sh
+cd apps/web
+npx wrangler d1 create acl                      # put the database_id in wrangler.jsonc
+npx wrangler r2 bucket create acl-payloads
+npx wrangler queues create acl-events && npx wrangler queues create acl-events-dlq
+npx wrangler secret put OPENROUTER_API_KEY      # also JWT_SECRET, BETTER_AUTH_SECRET, ENCRYPTION_KEY, JUDGE_API_KEY (optional)
+```
+
+Set `PUBLIC_URL` in `apps/web/wrangler.jsonc` to the production URL, then:
+
+```sh
+pnpm db:migrate:remote
+pnpm --filter @acl/web run deploy
+```
+
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests and the build on every PR, and on `main` applies the
+D1 migrations and deploys. It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
+
+## Not here yet
+
+- The Claude Code plugin itself (`/acl login`, `/acl resources`, and the `acl token` / `acl headers` /
+  `acl hook` helpers). The gateway endpoints it needs exist.
+- Email invitations. Members are added by email once they have signed up.
+- Proof-of-possession tokens (DPoP-style key binding) on top of the fingerprint binding.
+- Device-bound dashboard sessions (DBSC, `@dbsc-toolkit/better-auth`).
+- SSO domain verification (DNS TXT). Until then, the first organization to claim an email domain owns it.
