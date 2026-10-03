@@ -23,7 +23,7 @@ describe('glass refraction', () => {
       for (let x = -GLASS_RADIUS; x <= GLASS_RADIUS; x += 0.5) {
         const [dx, dy] = refractedOffset(x, y)
         expect(Number.isFinite(dx) && Number.isFinite(dy)).toBe(true)
-        expect(Math.hypot(dx, dy) * 1.04).toBeLessThan(GLASS_OVERSCAN)
+        expect(Math.hypot(dx, dy) * 1.1).toBeLessThan(GLASS_OVERSCAN)
       }
     }
   })

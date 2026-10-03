@@ -59,9 +59,9 @@ export function createGlassOptics(glass: HTMLElement): HTMLDivElement {
     // All markup is internal, including the locally generated displacement texture.
     svg.innerHTML = `<defs><filter id="${id}" x="0" y="0" width="${GLASS_SIZE}" height="${GLASS_SIZE}" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feImage href="${map}" width="${GLASS_SIZE}" height="${GLASS_SIZE}" result="surface" />
-      <feDisplacementMap in="SourceGraphic" in2="surface" scale="15.4" xChannelSelector="R" yChannelSelector="G" result="redRay" />
+      <feDisplacementMap in="SourceGraphic" in2="surface" scale="14.5" xChannelSelector="R" yChannelSelector="G" result="redRay" />
       <feDisplacementMap in="SourceGraphic" in2="surface" scale="16" xChannelSelector="R" yChannelSelector="G" result="greenRay" />
-      <feDisplacementMap in="SourceGraphic" in2="surface" scale="16.6" xChannelSelector="R" yChannelSelector="G" result="blueRay" />
+      <feDisplacementMap in="SourceGraphic" in2="surface" scale="17.5" xChannelSelector="R" yChannelSelector="G" result="blueRay" />
       <feColorMatrix in="redRay" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="red" />
       <feColorMatrix in="greenRay" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="green" />
       <feColorMatrix in="blueRay" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="blue" />
