@@ -1,0 +1,185 @@
+import { cn } from '@acl/ui'
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  redirect,
+  useNavigate,
+  useRouter,
+} from '@tanstack/react-router'
+import {
+  Activity,
+  BadgeCheck,
+  Boxes,
+  Gauge,
+  KeyRound,
+  LayoutDashboard,
+  ListChecks,
+  LogOut,
+  MonitorSmartphone,
+  Plug,
+  Settings,
+  ShieldCheck,
+  TerminalSquare,
+  Users,
+  UsersRound,
+} from 'lucide-react'
+import type * as React from 'react'
+import { authClient } from '#/lib/auth-client.ts'
+import { LiveProvider, useLive } from '#/lib/live.tsx'
+import { getViewer } from '#/server/fns/viewer.ts'
+
+export const Route = createFileRoute('/_app')({
+  beforeLoad: async ({ location }) => {
+    const viewer = await getViewer()
+    if (!viewer) throw redirect({ to: '/login', search: { redirect: location.href } })
+    const org = viewer.orgs.find((o) => o.id === viewer.activeOrgId)
+    if (!org) throw redirect({ to: '/onboarding', search: { redirect: location.href } })
+    return { viewer, org, isAdmin: org.role === 'owner' || org.role === 'admin' }
+  },
+  component: AppLayout,
+})
+
+type NavItem = {
+  to: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  badge?: 'approvals'
+}
+
+const nav: { title?: string; items: NavItem[] }[] = [
+  {
+    items: [
+      { to: '/', label: 'Overview', icon: LayoutDashboard },
+      { to: '/events', label: 'Events', icon: Activity },
+      { to: '/approvals', label: 'Approvals', icon: BadgeCheck, badge: 'approvals' },
+      { to: '/sessions', label: 'Sessions', icon: TerminalSquare },
+      { to: '/devices', label: 'Devices', icon: MonitorSmartphone },
+    ],
+  },
+  {
+    title: 'Policy',
+    items: [
+      { to: '/workflow', label: 'Workflow', icon: ListChecks },
+      { to: '/rate-limits', label: 'Rate limits', icon: Gauge },
+    ],
+  },
+  {
+    title: 'Access',
+    items: [
+      { to: '/integrations', label: 'Integrations', icon: Plug },
+      { to: '/access/resources', label: 'Resources', icon: Boxes },
+      { to: '/access/groups', label: 'Groups', icon: UsersRound },
+      { to: '/access/members', label: 'Members', icon: Users },
+    ],
+  },
+  {
+    title: 'Organization',
+    items: [
+      { to: '/settings', label: 'Settings', icon: Settings },
+      { to: '/settings/connect', label: 'Connect Claude Code', icon: KeyRound },
+    ],
+  },
+]
+
+function AppLayout() {
+  return (
+    <LiveProvider>
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <main className="min-w-0 flex-1">
+          <div className="mx-auto max-w-[1400px] px-8 py-6">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+    </LiveProvider>
+  )
+}
+
+function Sidebar() {
+  const { viewer, org } = Route.useRouteContext()
+  const navigate = useNavigate()
+  const router = useRouter()
+  const live = useLive()
+
+  async function switchOrg(id: string) {
+    await authClient.organization.setActive({ organizationId: id })
+    await router.invalidate()
+  }
+
+  return (
+    <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-panel">
+      <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+        <span className="flex size-6 items-center justify-center rounded bg-accent text-white">
+          <ShieldCheck className="size-3.5" />
+        </span>
+        <span className="text-[13px] font-semibold tracking-tight">AI Control Layer</span>
+      </div>
+      <div className="px-3 pb-2">
+        <select
+          value={org.id}
+          onChange={(e) => switchOrg(e.target.value)}
+          className="h-8 w-full rounded-md border border-line bg-panel-2 px-2 text-xs text-fg focus:outline-none"
+        >
+          {viewer.orgs.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <nav className="flex-1 overflow-y-auto px-2 py-2">
+        {nav.map((section, i) => (
+          <div key={section.title ?? i} className="mb-3">
+            {section.title ? (
+              <div className="px-2 pb-1 text-[10px] font-semibold tracking-wider text-subtle uppercase">
+                {section.title}
+              </div>
+            ) : null}
+            {section.items.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                activeOptions={{ exact: item.to === '/' || item.to === '/settings' }}
+                className="group flex h-8 items-center gap-2 rounded-md px-2 text-[13px] text-muted hover:bg-panel-2 hover:text-fg"
+                activeProps={{ className: 'bg-panel-2 !text-fg' }}
+              >
+                <item.icon className="size-4 shrink-0" />
+                <span className="flex-1">{item.label}</span>
+                {item.badge === 'approvals' && live.pendingApprovals.length > 0 ? (
+                  <span className="rounded bg-warn px-1.5 text-[10px] leading-4 font-semibold text-black">
+                    {live.pendingApprovals.length}
+                  </span>
+                ) : null}
+              </Link>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div className="border-t border-line p-3">
+        <div className="flex items-center gap-2">
+          <span
+            className={cn('size-2 rounded-full', live.connected ? 'bg-ok' : 'bg-subtle')}
+            title={live.connected ? 'Live updates connected' : 'Live updates offline'}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs font-medium text-fg">{viewer.user.name}</div>
+            <div className="truncate text-[11px] text-subtle">{viewer.user.email}</div>
+          </div>
+          <button
+            type="button"
+            className="rounded p-1 text-muted hover:bg-panel-2 hover:text-fg"
+            aria-label="Sign out"
+            onClick={async () => {
+              await authClient.signOut()
+              await navigate({ to: '/login' })
+            }}
+          >
+            <LogOut className="size-3.5" />
+          </button>
+        </div>
+      </div>
+    </aside>
+  )
+}
