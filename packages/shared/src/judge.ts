@@ -1,7 +1,5 @@
 import type { EvaluationInput, JudgeVerdict } from './engine.ts'
-import type { WorkflowStep } from './workflow.ts'
-
-type JudgeStep = Extract<WorkflowStep, { type: 'judge' }>
+import type { JudgeCheck } from './workflow.ts'
 
 const SYSTEM_PROMPT = `You are a security reviewer for an AI coding agent used inside a company.
 You receive one input that the agent is about to send to a model or one tool call it is about to make.
@@ -12,7 +10,7 @@ const MAX_INPUT_CHARS = 24_000
 
 /** Calls an OpenAI-compatible chat completions endpoint (vLLM, Ollama, LiteLLM, ...). */
 export async function callJudge(
-  step: JudgeStep,
+  step: JudgeCheck,
   input: EvaluationInput,
   opts: { apiKey?: string; fetch?: typeof fetch } = {},
 ): Promise<JudgeVerdict> {

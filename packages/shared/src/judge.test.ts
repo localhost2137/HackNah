@@ -2,17 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { callJudge, parseVerdict } from './judge.ts'
 
 const step = {
-  id: 'j',
   type: 'judge' as const,
-  enabled: true,
-  action: 'require_approval' as const,
   endpoint: 'http://judge.local/v1/chat/completions',
   model: 'llama-guard',
   threshold: 0.7,
   timeoutMs: 1000,
-  failOpen: true,
   instructions: '',
-  appliesTo: ['model_request' as const, 'tool_call' as const],
 }
 
 describe('judge', () => {

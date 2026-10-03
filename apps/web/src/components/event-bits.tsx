@@ -62,13 +62,18 @@ export function CheckList({ checks }: { checks: CheckResult[] }) {
           <span className="mt-0.5 w-4 text-right font-mono text-[11px] text-subtle">{i + 1}</span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium">
-                {stepLabels[c.type as keyof typeof stepLabels] ?? c.type}
-              </span>
-              <Badge tone={outcomeTone[c.outcome]}>{c.outcome}</Badge>
-              {c.outcome === 'fail' && c.action ? (
-                <Badge tone="neutral">{c.action.replace('_', ' ')}</Badge>
-              ) : null}
+              <span className="text-xs font-medium">{stepLabels[c.type] ?? c.type}</span>
+              {c.type === 'match' ? (
+                <Badge tone={c.branch === 'match' ? 'accent' : 'neutral'}>{c.branch}</Badge>
+              ) : c.type === 'decision' ? (
+                <Badge tone={c.action === 'block' ? 'bad' : c.action ? 'warn' : 'ok'}>
+                  {c.action?.replace('_', ' ') ?? 'allow'}
+                </Badge>
+              ) : (
+                <Badge tone={outcomeTone[c.outcome]}>
+                  {c.branch && c.branch !== c.outcome ? c.branch : c.outcome}
+                </Badge>
+              )}
               {c.score != null ? (
                 <span className="font-mono text-[11px] text-muted">risk {c.score.toFixed(2)}</span>
               ) : null}

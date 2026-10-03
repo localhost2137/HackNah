@@ -1,16 +1,5 @@
-import type { EventKind, PiiKind, StepAction, WorkflowStep } from '@acl/shared'
+import type { CheckConfig, CheckType, PiiKind } from '@acl/shared'
 import { Field, Input, Select, Switch, Textarea } from '@acl/ui'
-
-const actions: { value: StepAction; label: string }[] = [
-  { value: 'block', label: 'Block the request' },
-  { value: 'require_approval', label: 'Require approval' },
-  { value: 'log', label: 'Log only' },
-]
-
-const kinds: { value: EventKind; label: string }[] = [
-  { value: 'model_request', label: 'Prompts' },
-  { value: 'tool_call', label: 'Tool calls' },
-]
 
 const piiKinds: { value: PiiKind; label: string }[] = [
   { value: 'email', label: 'Email addresses' },
@@ -21,25 +10,7 @@ const piiKinds: { value: PiiKind; label: string }[] = [
   { value: 'pesel', label: 'PESEL numbers' },
 ]
 
-function ActionSelect({
-  value,
-  onChange,
-}: {
-  value: StepAction
-  onChange: (v: StepAction) => void
-}) {
-  return (
-    <Select value={value} onChange={(e) => onChange(e.target.value as StepAction)}>
-      {actions.map((a) => (
-        <option key={a.value} value={a.value}>
-          {a.label}
-        </option>
-      ))}
-    </Select>
-  )
-}
-
-function CheckboxGroup<T extends string>({
+export function CheckboxGroup<T extends string>({
   options,
   value,
   onChange,
@@ -67,37 +38,24 @@ function CheckboxGroup<T extends string>({
   )
 }
 
-export function StepForm({
-  step,
+export function CheckForm({
+  check,
   onChange,
 }: {
-  step: WorkflowStep
-  onChange: (step: WorkflowStep) => void
+  check: CheckConfig
+  onChange: (check: CheckConfig) => void
 }) {
-  switch (step.type) {
+  switch (check.type) {
     case 'fingerprint':
       return (
-        <div className="flex flex-col gap-4">
-          <p className="text-xs text-muted">
-            Compares the device presenting the token with the one it was issued to, and flags
-            machines the user hasn't used before.
-          </p>
-          <Field label="When the request comes from a new device">
-            <ActionSelect
-              value={step.onNewDevice}
-              onChange={(onNewDevice) => onChange({ ...step, onNewDevice })}
-            />
-          </Field>
-          <Field
-            label="When the token is used from a different device"
-            hint="This usually means the token was copied."
-          >
-            <ActionSelect
-              value={step.onMismatch}
-              onChange={(onMismatch) => onChange({ ...step, onMismatch })}
-            />
-          </Field>
-        </div>
+        <p className="text-xs text-muted">
+          Compares the device presenting the token with the one it was issued to. Requests leave
+          through <span className="text-fg">pass</span> for a known device,{' '}
+          <span className="text-fg">new device</span> for a machine the user hasn't used before, and{' '}
+          <span className="text-fg">mismatch</span> when the token was copied to another machine.
+          Approving a request that came through <span className="text-fg">new device</span> also
+          trusts that device.
+        </p>
       )
     case 'keywords':
       return (
@@ -105,52 +63,37 @@ export function StepForm({
           <Field
             label="Patterns"
             hint={
-              step.mode === 'regex'
-                ? 'One regular expression per line.'
-                : 'One per line. Use * as a wildcard.'
+              check.mode === 'regex'
+                ? 'One regular expression per line. Any match leaves through fail.'
+                : 'One per line. Use * as a wildcard. Any match leaves through fail.'
             }
           >
             <Textarea
               rows={8}
-              value={step.patterns.join('\n')}
+              value={check.patterns.join('\n')}
               onChange={(e) =>
-                onChange({ ...step, patterns: e.target.value.split('\n').filter((l) => l.trim()) })
+                onChange({ ...check, patterns: e.target.value.split('\n').filter((l) => l.trim()) })
               }
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Match mode">
-              <Select
-                value={step.mode}
-                onChange={(e) =>
-                  onChange({ ...step, mode: e.target.value as 'substring' | 'regex' })
-                }
-              >
-                <option value="substring">Substring / wildcard</option>
-                <option value="regex">Regular expression</option>
-              </Select>
-            </Field>
-            <Field label="On match">
-              <ActionSelect
-                value={step.action}
-                onChange={(action) => onChange({ ...step, action })}
-              />
-            </Field>
-          </div>
+          <Field label="Match mode">
+            <Select
+              value={check.mode}
+              onChange={(e) =>
+                onChange({ ...check, mode: e.target.value as 'substring' | 'regex' })
+              }
+            >
+              <option value="substring">Substring / wildcard</option>
+              <option value="regex">Regular expression</option>
+            </Select>
+          </Field>
           <label className="flex items-center gap-2 text-xs">
             <Switch
-              checked={step.caseSensitive}
-              onCheckedChange={(caseSensitive) => onChange({ ...step, caseSensitive })}
+              checked={check.caseSensitive}
+              onCheckedChange={(caseSensitive) => onChange({ ...check, caseSensitive })}
             />
             Case sensitive
           </label>
-          <Field label="Check">
-            <CheckboxGroup
-              options={kinds}
-              value={step.appliesTo}
-              onChange={(appliesTo) => onChange({ ...step, appliesTo })}
-            />
-          </Field>
         </div>
       )
     case 'judge':
@@ -158,32 +101,33 @@ export function StepForm({
         <div className="flex flex-col gap-4">
           <p className="text-xs text-muted">
             Sends the input to a model on OpenRouter, or to any OpenAI-compatible endpoint (vLLM,
-            Ollama, LiteLLM), and asks for a risk score between 0 and 1.
+            Ollama, LiteLLM), and asks for a risk score between 0 and 1. Leaves through{' '}
+            <span className="text-fg">error</span> when the judge is down or times out.
           </p>
           <Field
             label="Endpoint"
             hint="Chat completions URL. OpenRouter uses the gateway's key; other hosts use JUDGE_API_KEY."
           >
             <Input
-              value={step.endpoint}
-              onChange={(e) => onChange({ ...step, endpoint: e.target.value })}
+              value={check.endpoint}
+              onChange={(e) => onChange({ ...check, endpoint: e.target.value })}
+            />
+          </Field>
+          <Field label="Model">
+            <Input
+              value={check.model}
+              onChange={(e) => onChange({ ...check, model: e.target.value })}
             />
           </Field>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Model">
-              <Input
-                value={step.model}
-                onChange={(e) => onChange({ ...step, model: e.target.value })}
-              />
-            </Field>
             <Field label="Fail at risk ≥">
               <Input
                 type="number"
                 step={0.05}
                 min={0}
                 max={1}
-                value={step.threshold}
-                onChange={(e) => onChange({ ...step, threshold: Number(e.target.value) })}
+                value={check.threshold}
+                onChange={(e) => onChange({ ...check, threshold: Number(e.target.value) })}
               />
             </Field>
             <Field label="Timeout (ms)">
@@ -191,39 +135,19 @@ export function StepForm({
                 type="number"
                 min={100}
                 max={30000}
-                value={step.timeoutMs}
-                onChange={(e) => onChange({ ...step, timeoutMs: Number(e.target.value) })}
-              />
-            </Field>
-            <Field label="On high risk">
-              <ActionSelect
-                value={step.action}
-                onChange={(action) => onChange({ ...step, action })}
+                value={check.timeoutMs}
+                onChange={(e) => onChange({ ...check, timeoutMs: Number(e.target.value) })}
               />
             </Field>
           </div>
-          <label className="flex items-center gap-2 text-xs">
-            <Switch
-              checked={step.failOpen}
-              onCheckedChange={(failOpen) => onChange({ ...step, failOpen })}
-            />
-            Let requests through when the judge is down or times out
-          </label>
           <Field
             label="Extra instructions"
             hint="Company-specific rules appended to the judge's system prompt."
           >
             <Textarea
               rows={4}
-              value={step.instructions}
-              onChange={(e) => onChange({ ...step, instructions: e.target.value })}
-            />
-          </Field>
-          <Field label="Check">
-            <CheckboxGroup
-              options={kinds}
-              value={step.appliesTo}
-              onChange={(appliesTo) => onChange({ ...step, appliesTo })}
+              value={check.instructions}
+              onChange={(e) => onChange({ ...check, instructions: e.target.value })}
             />
           </Field>
         </div>
@@ -235,20 +159,21 @@ export function StepForm({
             Replaces secrets and personal data with stable placeholders like [REDACTED_EMAIL_1]
             before they reach the model, and in MCP tool results. When the agent passes a
             placeholder back into a tool call, the gateway swaps the real value in, so the agent can
-            still work with the data without seeing it. Never blocks.
+            still work with the data without seeing it. Applies to requests whose path goes through
+            this node; never blocks.
           </p>
           <label className="flex items-center gap-2 text-xs">
             <Switch
-              checked={step.secrets}
-              onCheckedChange={(secrets) => onChange({ ...step, secrets })}
+              checked={check.secrets}
+              onCheckedChange={(secrets) => onChange({ ...check, secrets })}
             />
             Secrets (API keys, tokens, private keys, passwords)
           </label>
           <Field label="Personal data">
             <CheckboxGroup
               options={piiKinds}
-              value={step.pii}
-              onChange={(pii) => onChange({ ...step, pii })}
+              value={check.pii}
+              onChange={(pii) => onChange({ ...check, pii })}
             />
           </Field>
         </div>
@@ -256,59 +181,38 @@ export function StepForm({
   }
 }
 
-export function stepSummary(step: WorkflowStep): string {
-  switch (step.type) {
+export function checkSummary(check: CheckConfig): string {
+  switch (check.type) {
     case 'fingerprint':
-      return `New device: ${step.onNewDevice.replace('_', ' ')} · Mismatch: ${step.onMismatch.replace('_', ' ')}`
+      return 'Known, new or copied device'
     case 'keywords':
-      return `${step.patterns.length} patterns · ${step.action.replace('_', ' ')}`
+      return `${check.patterns.length} patterns`
     case 'judge':
-      return `${step.model} · risk ≥ ${step.threshold} · ${step.action.replace('_', ' ')}`
+      return `${check.model} · risk ≥ ${check.threshold}`
     case 'redact':
       return (
-        [step.secrets ? 'secrets' : null, ...step.pii].filter(Boolean).join(', ') ||
+        [check.secrets ? 'secrets' : null, ...check.pii].filter(Boolean).join(', ') ||
         'nothing selected'
       )
   }
 }
 
-export function newStep(type: WorkflowStep['type']): WorkflowStep {
-  const id = `${type}-${Math.random().toString(36).slice(2, 7)}`
+export function newCheck(type: CheckType): CheckConfig {
   switch (type) {
     case 'fingerprint':
-      return { id, type, enabled: true, onNewDevice: 'require_approval', onMismatch: 'block' }
+      return { type }
     case 'keywords':
-      return {
-        id,
-        type,
-        enabled: true,
-        patterns: [],
-        mode: 'substring',
-        caseSensitive: false,
-        appliesTo: ['model_request', 'tool_call'],
-        action: 'block',
-      }
+      return { type, patterns: [], mode: 'substring', caseSensitive: false }
     case 'judge':
       return {
-        id,
         type,
-        enabled: true,
         endpoint: 'https://openrouter.ai/api/v1/chat/completions',
         model: 'anthropic/claude-haiku-4.5',
         threshold: 0.7,
         timeoutMs: 8000,
-        failOpen: true,
         instructions: '',
-        appliesTo: ['tool_call'],
-        action: 'require_approval',
       }
     case 'redact':
-      return {
-        id,
-        type,
-        enabled: true,
-        secrets: true,
-        pii: ['email', 'phone', 'iban', 'credit_card'],
-      }
+      return { type, secrets: true, pii: ['email', 'phone', 'iban', 'credit_card'] }
   }
 }
