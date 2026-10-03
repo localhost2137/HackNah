@@ -50,6 +50,31 @@ describe('single-tenant migration', () => {
       db.close()
     }
   })
+  it('creates one default group that keeps existing access', () => {
+    const db = database()
+    try {
+      db.exec("INSERT INTO `group` VALUES ('g1','x','Backend',NULL,0)")
+      db.exec(migration('0003_single_tenant'))
+      db.exec(migration('0004_group_permissions'))
+      expect(db.prepare('SELECT id,is_default,permissions FROM `group` ORDER BY id').all()).toEqual(
+        [
+          { id: 'g1', is_default: 0, permissions: '{"models":[],"builtinTools":[]}' },
+          {
+            id: 'grp_default',
+            is_default: 1,
+            permissions: '{"models":["*"],"builtinTools":["*"]}',
+          },
+        ],
+      )
+      expect(() =>
+        db.exec(
+          "INSERT INTO `group` (id,org_id,name,is_default,created_at) SELECT 'g2',id,'B',1,0 FROM organization",
+        ),
+      ).toThrow()
+    } finally {
+      db.close()
+    }
+  })
   it('refuses to silently merge an existing multi-tenant installation', () => {
     const db = database()
     try {

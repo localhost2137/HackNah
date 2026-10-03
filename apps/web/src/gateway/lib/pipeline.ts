@@ -12,7 +12,7 @@ import {
 import { eq } from 'drizzle-orm'
 import type { Principal } from '../context.ts'
 import { approvalsStub } from '../do/approvals.ts'
-import { userGroupIds } from './access.ts'
+import { effectivePermissions, permissionDenial, userGroupIds } from './access.ts'
 import { loadActiveWorkflow } from './workflow.ts'
 
 export type PipelineResult = {
@@ -45,10 +45,32 @@ export async function runPipeline(
   input: Omit<EvaluationInput, 'deviceStatus' | 'groupIds'>,
   meta: { eventId: string; sessionId: string | null; summary: string },
 ): Promise<PipelineResult> {
-  const [workflow, groupIds] = await Promise.all([
+  const [workflow, groupIds, permissions] = await Promise.all([
     loadActiveWorkflow(db, principal.orgId),
     userGroupIds(db, principal),
+    effectivePermissions(db, principal),
   ])
+  const denied = permissionDenial(permissions, input)
+  if (denied) {
+    return {
+      decision: 'block',
+      checks: [
+        {
+          stepId: 'permissions',
+          type: 'permissions',
+          outcome: 'fail',
+          action: 'block',
+          reason: denied,
+          durationMs: 0,
+        },
+      ],
+      riskScore: 1,
+      reasons: [denied],
+      workflowVersion: workflow.version,
+      approvalId: null,
+      redact: null,
+    }
+  }
   const result = await evaluateGraph(
     workflow.definition,
     { ...input, groupIds, deviceStatus: principal.deviceStatus },

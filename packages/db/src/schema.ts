@@ -1,4 +1,11 @@
-import type { CheckResult, Decision, EventKind, PolicyGraph, RateLimitRule } from '@acl/shared'
+import type {
+  CheckResult,
+  Decision,
+  EventKind,
+  GroupPermissions,
+  PolicyGraph,
+  RateLimitRule,
+} from '@acl/shared'
 import { sql } from 'drizzle-orm'
 import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
@@ -421,9 +428,17 @@ export const group = sqliteTable(
     orgId: text().notNull(),
     name: text().notNull(),
     description: text(),
+    /** Every org member belongs to the default group implicitly; it has no `group_member` rows. */
+    isDefault: bool().notNull().default(false),
+    permissions: json<GroupPermissions>()
+      .notNull()
+      .$defaultFn(() => ({ models: [], builtinTools: [] })),
     createdAt: createdAt(),
   },
-  (t) => [index('group_org_idx').on(t.orgId)],
+  (t) => [
+    index('group_org_idx').on(t.orgId),
+    uniqueIndex('group_org_default_uq').on(t.orgId).where(sql`${t.isDefault} = 1`),
+  ],
 )
 
 export const groupMember = sqliteTable(

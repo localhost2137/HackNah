@@ -1,6 +1,12 @@
 import type { RateLimitRule } from '@acl/shared'
 import { describe, expect, it } from 'vitest'
-import { applySessionScope, globMatch, resourcesForTool } from './access.ts'
+import {
+  applySessionScope,
+  filterToolDefinitions,
+  globMatch,
+  permissionDenial,
+  resourcesForTool,
+} from './access.ts'
 import { matchingRules } from './rate-limit.ts'
 
 type Row = Parameters<typeof resourcesForTool>[0][number]
@@ -29,6 +35,43 @@ describe('resource matching', () => {
   it('narrows to the session scope only when one is set', () => {
     expect(applySessionScope(resources, undefined)).toHaveLength(3)
     expect(applySessionScope(resources, ['jira']).map((r) => r.id)).toEqual(['jira'])
+  })
+})
+
+describe('group permissions', () => {
+  const perms = { models: ['claude-sonnet-*'], builtinTools: ['Read', 'Grep'] }
+
+  it('blocks models and built-in tools the groups do not allow', () => {
+    const model = (m: string) =>
+      permissionDenial(perms, { kind: 'model_request', model: m, toolName: null })
+    expect(model('claude-sonnet-4-5')).toBeNull()
+    expect(model('claude-opus-4-1')).toMatch(/claude-opus-4-1/)
+    const tool = (t: string, mcpServerId: string | null = null) =>
+      permissionDenial(perms, { kind: 'tool_call', toolName: t, mcpServerId })
+    expect(tool('Read')).toBeNull()
+    expect(tool('Bash')).toMatch(/Bash/)
+  })
+
+  it('leaves MCP tools to resource grants', () => {
+    expect(
+      permissionDenial(perms, {
+        kind: 'tool_call',
+        toolName: 'gh__create_issue',
+        mcpServerId: 'gh',
+      }),
+    ).toBeNull()
+    expect(
+      permissionDenial(perms, { kind: 'tool_call', toolName: 'mcp__other__do', mcpServerId: null }),
+    ).toBeNull()
+  })
+
+  it('strips disallowed built-in tool definitions only', () => {
+    const tools = [{ name: 'Read' }, { name: 'Bash' }, { name: 'mcp__acl__gh__list' }, {}]
+    expect(filterToolDefinitions(perms, tools)).toEqual([
+      { name: 'Read' },
+      { name: 'mcp__acl__gh__list' },
+      {},
+    ])
   })
 })
 

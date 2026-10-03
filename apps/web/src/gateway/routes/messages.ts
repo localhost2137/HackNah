@@ -2,6 +2,7 @@ import {
   anthropicError,
   extractTurnText,
   type GatewayEvent,
+  type GroupPermissions,
   type MessagesRequest,
   mapRequestText,
   parseUsage,
@@ -13,6 +14,7 @@ import {
 import { Hono } from 'hono'
 import { type AppEnv, clientInfo } from '../context.ts'
 import { sessionStub } from '../do/session.ts'
+import { effectivePermissions, filterToolDefinitions } from '../lib/access.ts'
 import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
 import { denialMessage, runPipeline } from '../lib/pipeline.ts'
@@ -100,12 +102,9 @@ export const messages = new Hono<AppEnv>()
       return c.json(anthropicError('permission_error', denialMessage(result)), 403)
     }
 
-    const outgoing = await redactIfConfigured(
-      c.env,
-      result.redact,
-      principal.orgId,
-      session.id,
-      body,
+    const outgoing = withPermittedTools(
+      await effectivePermissions(db, principal),
+      await redactIfConfigured(c.env, result.redact, principal.orgId, session.id, body),
     )
     const upstream = await fetch(
       upstreamRequest(c.env, c.req.raw, '/v1/messages', JSON.stringify(outgoing)),
@@ -152,6 +151,23 @@ export const messages = new Hono<AppEnv>()
       headers: clientResponseHeaders(upstream.headers),
     })
   })
+
+function withPermittedTools(permissions: GroupPermissions, body: MessagesRequest): MessagesRequest {
+  if (!Array.isArray(body.tools)) return body
+  const tools = filterToolDefinitions(permissions, body.tools as { name?: unknown }[])
+  if (tools.length === body.tools.length) return body
+  const { tool_choice, ...rest } = body
+  const choice = tool_choice as { type?: string; name?: string } | undefined
+  const keepChoice =
+    choice &&
+    tools.length > 0 &&
+    (choice.type !== 'tool' || tools.some((t) => t.name === choice.name))
+  return {
+    ...rest,
+    ...(tools.length ? { tools } : {}),
+    ...(keepChoice ? { tool_choice } : {}),
+  }
+}
 
 async function redactIfConfigured(
   env: Env,
