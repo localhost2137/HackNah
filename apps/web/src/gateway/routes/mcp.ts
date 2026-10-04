@@ -24,11 +24,11 @@ import {
 } from '../lib/access.ts'
 import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
+import { loadLimits } from '../lib/guardrail.ts'
 import { checkLimits } from '../lib/limits.ts'
 import { runPipeline } from '../lib/pipeline.ts'
 import { type ResolvedSession, resolveSession } from '../lib/session.ts'
 import { markResultChecked } from '../lib/verdicts.ts'
-import { loadLimits } from '../lib/workflow.ts'
 import {
   type JsonRpcRequest,
   type JsonRpcResponse,
@@ -202,7 +202,7 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     decision: 'allow',
     checks: [],
     riskScore: 0,
-    workflows: [],
+    guardrails: [],
     inputTokens: null,
     outputTokens: null,
     latencyMs: 0,
@@ -278,7 +278,7 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     )
     event.checks = [...limits.checks, ...result.checks]
     event.riskScore = result.riskScore
-    event.workflows = result.workflows
+    event.guardrails = result.guardrails
     if (result.decision === 'block' || result.decision === 'declined') {
       finish(result.decision)
       return toolError(`Blocked by Hack?Nah!: ${result.reasons.join('; ') || 'policy'}`)
@@ -364,7 +364,7 @@ async function checkResult(
     decision: result.decision,
     checks: result.checks,
     riskScore: result.riskScore,
-    workflows: result.workflows,
+    guardrails: result.guardrails,
     latencyMs: Date.now() - started,
     overheadMs: Date.now() - started,
     payloadKey: null,

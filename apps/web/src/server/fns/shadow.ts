@@ -1,6 +1,6 @@
 import { type Db, event, group, groupMember, mcpServer, user } from '@acl/db'
 import {
-  type ActiveWorkflow,
+  type ActiveGuardrail,
   type EvaluationInput,
   type EventKind,
   eventPayload,
@@ -9,7 +9,7 @@ import {
   type ReplayOutcome,
   recordedDeviceStatus,
   replayWithShadow,
-  selectWorkflows,
+  selectGuardrails,
   toolTierFromAnnotations,
 } from '@acl/shared'
 import { createServerFn } from '@tanstack/react-start'
@@ -17,8 +17,8 @@ import { and, count, desc, eq, gte, lt } from 'drizzle-orm'
 import { z } from 'zod'
 import { env } from '../env.ts'
 import { adminMiddleware } from '../middleware.ts'
+import { findGuardrail } from './guardrail.ts'
 import { rangeMs, timeRange } from './traffic.ts'
-import { findWorkflow } from './workflow.ts'
 
 /** Every event may read one R2 payload; this keeps a batch well under the subrequest limit. */
 const BATCH = 200
@@ -51,7 +51,7 @@ export const replayShadow = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .validator(
     z.object({
-      workflowId: z.string(),
+      guardrailId: z.string(),
       definition: policyGraph,
       range: timeRange,
       judge: z.enum(['recorded', 'pass', 'fail']),
@@ -59,8 +59,8 @@ export const replayShadow = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data, context: { db, orgId } }) => {
-    const meta = await findWorkflow(db, orgId, data.workflowId)
-    const shadow: ActiveWorkflow = {
+    const meta = await findGuardrail(db, orgId, data.guardrailId)
+    const shadow: ActiveGuardrail = {
       id: meta.id,
       name: meta.name,
       version: 0,
@@ -123,7 +123,7 @@ export const replayShadow = createServerFn({ method: 'POST' })
           deviceStatus: recordedDeviceStatus(row.checks),
           toolTier: tierOf(row.mcpServerId, row.toolName),
         }
-        if (selectWorkflows([shadow], input).length > 0) {
+        if (selectGuardrails([shadow], input).length > 0) {
           const payload = await readPayload(orgId, row.payloadKey)
           input.text = payload?.text ?? ''
           input.toolArguments = payload?.toolArguments

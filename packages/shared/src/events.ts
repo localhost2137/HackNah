@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 /**
- * The stage of an interaction a workflow inspects. `model_request` is everything sent to the model
+ * The stage of an interaction a guardrail inspects. `model_request` is everything sent to the model
  * as user input, `tool_result` what a tool returned, `model_output` what the model generated, and
  * `agent_message` a message one agent hands to another (a delegated task or its reply).
  */
@@ -42,21 +42,21 @@ export type ApprovalMethod = z.infer<typeof approvalMethod>
 export const checkOutcome = z.enum(['pass', 'fail', 'error', 'skipped'])
 export type CheckOutcome = z.infer<typeof checkOutcome>
 
-/** Which published workflow version took part in a decision. */
-export const workflowRef = z.object({
+/** Which published guardrail version took part in a decision. */
+export const guardrailRef = z.object({
   id: z.string(),
   name: z.string(),
   version: z.number(),
-  /** What this workflow alone decided. */
+  /** What this guardrail alone decided. */
   decision: z.enum(['allow', 'block', 'pending', 'skip']).optional(),
-  /** Time this workflow took, judge calls included. */
+  /** Time this guardrail took, judge calls included. */
   durationMs: z.number().optional(),
 })
-export type WorkflowRef = z.infer<typeof workflowRef>
+export type GuardrailRef = z.infer<typeof guardrailRef>
 
 export const checkResult = z.object({
-  /** The workflow this step belongs to; absent for checks outside any workflow. */
-  workflowId: z.string().optional(),
+  /** The guardrail this step belongs to; absent for checks outside any guardrail. */
+  guardrailId: z.string().optional(),
   stepId: z.string(),
   type: z.string(),
   outcome: checkOutcome,
@@ -86,8 +86,8 @@ export const gatewayEvent = z.object({
   decision,
   checks: z.array(checkResult),
   riskScore: z.number(),
-  /** Every workflow that ran; empty when none matched and the request was allowed. */
-  workflows: z.array(workflowRef),
+  /** Every guardrail that ran; empty when none matched and the request was allowed. */
+  guardrails: z.array(guardrailRef),
   inputTokens: z.number().nullable(),
   outputTokens: z.number().nullable(),
   cacheReadTokens: z.number().nullable().optional(),

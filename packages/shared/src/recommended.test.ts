@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateWorkflows } from './engine.ts'
+import { evaluateGuardrails } from './engine.ts'
+import { policyGraph, validateGraph } from './guardrail.ts'
 import { recommendedGuardrails } from './recommended.ts'
-import { policyGraph, validateGraph } from './workflow.ts'
 
 const guardrails = recommendedGuardrails({ prompts: null, indirect: null })
 const active = guardrails.map((g) => ({
@@ -12,7 +12,7 @@ const active = guardrails.map((g) => ({
   definition: policyGraph.parse(g.graph),
 }))
 const decide = (kind: 'model_request' | 'tool_call' | 'tool_result', text: string, extra = {}) =>
-  evaluateWorkflows(active, {
+  evaluateGuardrails(active, {
     kind,
     text,
     toolName: kind === 'tool_call' ? 'Bash' : null,

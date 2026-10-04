@@ -14,7 +14,7 @@ const actionTone = {
 } as const
 
 /**
- * Exports the instance's workflows, limits and model catalog as one documented YAML file, and
+ * Exports the instance's guardrails, limits and model catalog as one documented YAML file, and
  * applies one: preview the changes first, then apply.
  */
 export function PolicyFileCard() {

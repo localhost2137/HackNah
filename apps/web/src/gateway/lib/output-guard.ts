@@ -2,7 +2,7 @@
  * Inspects a model's output block by block before it reaches the agent.
  *
  * Text streams through with a short hold-back: the text so far is checked every few hundred
- * characters, and only what passed (redacted if the workflow says so) is released. A secret that
+ * characters, and only what passed (redacted if the guardrail says so) is released. A secret that
  * starts inside the hold-back is caught before any of it leaves. When the text fails, the stream
  * ends there with a notice instead of an error, so the agent sees a normal, shorter answer.
  *

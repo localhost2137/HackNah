@@ -3,7 +3,7 @@ import { DATASET_INDEX_KEY, datasetKey } from '#/gateway/lib/learned-models.ts'
 
 /**
  * The labelled datasets in the payload bucket. The Attack analysis page lists them, the Trained model
- * step learns from them and Attack analysis replays them against the published workflows.
+ * step learns from them and Attack analysis replays them against the published guardrails.
  */
 
 export const datasetSummary = z.object({

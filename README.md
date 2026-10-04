@@ -1,11 +1,11 @@
 # Hack?Nah!
 
 A control plane for Claude Code: every model request, built-in tool call and MCP tool call goes through
-a gateway that applies the organization's workflows (device fingerprint, dangerous keywords, judge model,
-redaction), limits and access rules. Each workflow runs on chosen stages (model input, tool calls, tool
+a gateway that applies the organization's guardrails (device fingerprint, dangerous keywords, judge model,
+redaction), limits and access rules. Each guardrail runs on chosen stages (model input, tool calls, tool
 results, model output, agent messages) for chosen member groups, and asks about the request with condition
-blocks (tool, model, MCP server, group, ...); every matching workflow runs and the strictest outcome wins,
-while a request that starts no workflow, or whose path ends in Skip, is allowed. A dashboard shows the traffic, handles
+blocks (tool, model, MCP server, group, ...); every matching guardrail runs and the strictest outcome wins,
+while a request that starts no guardrail, or whose path ends in Skip, is allowed. A dashboard shows the traffic, handles
 approvals and manages policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
 Durable Objects).
 
@@ -20,14 +20,14 @@ on every call. Ordinary members do not discover these tools and cannot invoke th
 | Tools | Actions |
 | --- | --- |
 | `hacknah_platform_context` | Inspect group, resource and integration IDs without stored credentials |
-| `hacknah_list_workflows`, `hacknah_get_workflow`, `hacknah_workflow_schema` | Inspect workflows and the graph format |
-| `hacknah_create_workflow`, `hacknah_update_workflow`, `hacknah_save_workflow_draft`, `hacknah_publish_workflow` | Create, edit and publish using the same services as the dashboard |
-| `hacknah_export_policy`, `hacknah_preview_policy`, `hacknah_apply_policy` | Read, preview and apply workflows, limits and the model catalog; merge is the default |
+| `hacknah_list_guardrails`, `hacknah_get_guardrail`, `hacknah_guardrail_schema` | Inspect guardrails and the graph format |
+| `hacknah_create_guardrail`, `hacknah_update_guardrail`, `hacknah_save_guardrail_draft`, `hacknah_publish_guardrail` | Create, edit and publish using the same services as the dashboard |
+| `hacknah_export_policy`, `hacknah_preview_policy`, `hacknah_apply_policy` | Read, preview and apply guardrails, limits and the model catalog; merge is the default |
 | `hacknah_list_events`, `hacknah_get_event` | Inspect paginated traffic and checks; raw payload access is explicit |
 | `hacknah_list_datasets`, `hacknah_run_analysis`, `hacknah_list_analysis_runs`, `hacknah_get_analysis_run` | Replay synthetic traffic and retrieve persisted, revision-scoped results |
 
 Draft saves are separate from publishing. Publishing, enabling/disabling and applying policies affect
-production rules. Tools pass through gateway limits and workflow checks using the management action name, tier and
+production rules. Tools pass through gateway limits and guardrail checks using the management action name, tier and
 structured arguments; policy text is configuration, not a model request. Role and device access are
 checked again after any pending approval. Calls have an actor-attributed attempt and outcome in the
 Settings audit log and an event in Logs. Arguments and returned payloads are not duplicated into MCP
@@ -39,11 +39,11 @@ compatible, so the rename does not create new infrastructure or disconnect insta
 
 ## Attack analysis
 
-Open **Attack analysis**, pick a dataset, and run it against the current published workflows. One page lists
+Open **Attack analysis**, pick a dataset, and run it against the current published guardrails. One page lists
 every kind:
 
 - **Mixed check** (200, 500 or 1,000 rows): half attacks of every kind, half normal requests. The quick
-  one to rerun after changing a workflow.
+  one to rerun after changing a guardrail.
 - **Normal requests**: benign rows only, so anything blocked is a false positive.
 - **Synthetic**: generated traffic for prompt injection, tool poisoning, definition drift and argument
   exfiltration, with device and session signals varied.
@@ -56,7 +56,7 @@ runs available per dataset across browser sessions. Synthetic identities use the
 no production requests are sent. A missing judge, model or limit evaluation is inconclusive; a check
 that is not used on a row's stage is not.
 
-Migration `0010_analysis_runs.sql` adds a per-organization rule revision. Workflow edits and publishing,
+Migration `0010_analysis_runs.sql` adds a per-organization rule revision. Guardrail edits and publishing,
 access rules, limits, model catalog changes and relevant integration changes invalidate all saved runs
 for that organization. Reverting a rule does not restore old results. Runs reject concurrent rule
 changes; reads only return the current revision and synthetic catalog version. Invalidated payloads
@@ -68,7 +68,7 @@ traffic or replay semantics. Apply migrations before starting or deploying the u
 | Path | What it is |
 | --- | --- |
 | `apps/web` | The Worker. `src/server.ts` sends `/v1`, `/mcp`, `/auth` and `/health` to the gateway (`src/gateway`, Hono) and everything else to the dashboard (TanStack Start) |
-| `packages/shared` | Workflow schema and engine, redaction, crypto, judge client |
+| `packages/shared` | Guardrail schema and engine, redaction, crypto, judge client |
 | `packages/db` | Drizzle schema and generated SQL migrations for D1 |
 | `packages/ui` | Tailwind theme and UI primitives |
 | `claude-plugin` | hy-guard Claude Code plugin, mock platform, and backend integration contract |
@@ -88,12 +88,12 @@ Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Mod
                      └─ event (stage, decision, cost, timing) ──► Queue ──► D1 + R2 (payloads)
 ```
 
-- **Stages.** Every workflow runs on one or more stages: *Model input* (what the user turn sends to the model),
+- **Stages.** Every guardrail runs on one or more stages: *Model input* (what the user turn sends to the model),
   *Tool call* (arguments, built-in or MCP), *Tool result* (what a tool returned, checked before the model reads
   it), *Model output* (text and tool calls the model generated) and *Agent message* (a task handed to a subagent
   and its reply). A start node with no stage ticked runs on all of them. Blocks that say nothing about a stage are
-  skipped there (a device fingerprint on a tool result, argument rules on model output). Every matching workflow
-  runs and the strictest outcome wins; a check that errors follows the workflow's fallback.
+  skipped there (a device fingerprint on a tool result, argument rules on model output). Every matching guardrail
+  runs and the strictest outcome wins; a check that errors follows the guardrail's fallback.
 - **Output guard.** Streamed answers are inspected block by block: text is released behind a 200-character
   hold-back after the deterministic checks (so a secret can't leak in pieces) and redacted on the way, the judge
   runs when a block is complete, and a failing answer ends with a notice instead of an error. Tool calls are held
@@ -105,19 +105,19 @@ Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Mod
 - **Limits.** Requests, requests at once, tokens, USD and GPU-seconds, for models, MCP servers, tools, resources or
   the guardrails' own judge calls; counted per user, per member of a group, for a group in total (All members
   included) or for the org. Past the limit a rule blocks, warns, or leaves it to a *Usage limit* block in a
-  workflow (e.g. route over-budget requests to an approval). Budgets are compared with spend so far and charged
+  guardrail (e.g. route over-budget requests to an approval). Budgets are compared with spend so far and charged
   after the call, cache reads and writes included, and `max_tokens` is capped to what a budget has left.
 
 - **Auth.** The plugin logs in with the OAuth device flow. It gets a 15-minute JWT bound to a hash of the machine
   fingerprint, plus a rotating refresh token with reuse detection. The same token presented with a different
-  fingerprint is flagged as `mismatch`. The workflow's fingerprint node routes it to a block or an approval.
+  fingerprint is flagged as `mismatch`. The guardrail's fingerprint node routes it to a block or an approval.
 - **Sessions.** Claude Code's session id is pinned to the first user and device that use it (`SessionDO`). The
   session also stores the resource scope picked with `/acl resources` and the redaction vault.
-- **Workflow ("Guardrail" in the dashboard).** Each workflow is a versioned policy graph (draft, then publish), edited with React Flow.
+- **Guardrail ("Guardrail" in the dashboard).** Each guardrail is a versioned policy graph (draft, then publish), edited with React Flow.
   Condition blocks ask one question each (*Tool is*, *Model is*, *MCP server is*, *User group is*, *Stage is*,
   ...) and leave through Yes or No; chaining Yes into the next condition makes AND, chaining No makes OR, and
   a block may have several incoming connections. Check nodes (fingerprint, keywords, judge, redact) branch on
-  their result, and every path ends in allow, approval, block or *Skip* (the workflow does not apply). Graphs
+  their result, and every path ends in allow, approval, block or *Skip* (the guardrail does not apply). Graphs
   saved with the older start-node conditions and Route blocks are converted when they are loaded. `evaluateGraph()` in `packages/shared` runs it in the gateway and
   in the editor's dry run, and each event stores the path it took.
 - **Models.** The Models page is the catalog: a pattern over model ids, where it is served, and what it costs
@@ -220,7 +220,7 @@ Read the [backend guide](claude-plugin/docs/BACKEND_GUIDE.md) and
 - OAuth authorization code + PKCE and device-key-bound tokens (the current gateway uses device codes).
 - Versioned `/v1/policy` and batched `/v1/events`, plus server-side tool-policy enforcement.
 - Plugin confirmation, Touch ID presence proofs, and fresh-sign-in browser challenges. These differ from
-  the current workflow's administrator approval queue; that queue remains available in Logs until migrated.
+  the current guardrail's administrator approval queue; that queue remains available in Logs until migrated.
 - A compatible `/llm/*` streaming gateway; the existing model endpoint is `/v1/messages`.
 
 Keep device/session identity and revocation in the backend: these are security inputs, even though there
@@ -261,7 +261,7 @@ D1 migrations and deploys. It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_A
 
 Run `pnpm db:setup` once, then `pnpm dev`. Setup creates `.dev.vars` with random development
 secrets only if it is missing, applies local migrations, and seeds the database. Existing secrets,
-accounts, workflows, connections and user-created mock issues are preserved. A model API key is
+accounts, guardrails, connections and user-created mock issues are preserved. A model API key is
 not needed for the MCP fixtures. The seed imports TypeScript fixture modules and requires Node
 22.18+ (or a newer supported Node release).
 
@@ -308,7 +308,7 @@ Creating a ticket is not a simulation of a successful write: it can be retrieved
 filters. Ordinary `pnpm db:seed` preserves the timeline and avoids duplicates. To replay the canned
 scenario at the current time, run `pnpm --filter @acl/web db:seed --refresh-mocks`. This replaces only
 the fixed fixture records; it preserves user-created mock issues/comments, credentials, grants and
-workflow configuration. `MOCK_MCP_ORIGIN` can set a different loopback origin during initial setup.
+guardrail configuration. `MOCK_MCP_ORIGIN` can set a different loopback origin during initial setup.
 
 For direct transport testing, use bearer token `local-demo-<provider>-token` (for example,
 `local-demo-datadog-token`), `Content-Type: application/json`, and

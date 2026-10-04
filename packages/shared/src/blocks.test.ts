@@ -9,7 +9,7 @@ import {
   type PolicyGraph,
   policyGraph,
   policyNode,
-} from './workflow.ts'
+} from './guardrail.ts'
 
 const at = { x: 0, y: 0 }
 const toolCall: EvaluationInput = {
@@ -65,7 +65,7 @@ describe('block registry', () => {
     }
   })
 
-  it('reads workflows saved before approvals had a method as admin approvals', () => {
+  it('reads guardrails saved before approvals had a method as admin approvals', () => {
     const saved = {
       fallback: 'block',
       nodes: [

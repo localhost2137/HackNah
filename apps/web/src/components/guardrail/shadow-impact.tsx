@@ -130,7 +130,7 @@ function headline(t: Tally): string {
 }
 
 /** Replays the graph against recorded traffic, including failed requests, without publishing it. */
-export function ShadowImpact({ workflowId, graph }: { workflowId: string; graph: PolicyGraph }) {
+export function ShadowImpact({ guardrailId, graph }: { guardrailId: string; graph: PolicyGraph }) {
   const [range, setRange] = useState<TimeRange>('7d')
   const [judge, setJudge] = useState<Judge>('recorded')
   const [tally, setTally] = useState<Tally | null>(null)
@@ -155,7 +155,7 @@ export function ShadowImpact({ workflowId, graph }: { workflowId: string; graph:
     try {
       do {
         const r = await replayShadow({
-          data: { workflowId, definition: graph, range, judge, cursor },
+          data: { guardrailId, definition: graph, range, judge, cursor },
         })
         acc = {
           total: r.total ?? acc.total,

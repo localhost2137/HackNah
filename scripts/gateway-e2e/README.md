@@ -29,7 +29,7 @@ access are needed.
 | A local model goes out as OpenAI chat completions under its upstream name, without a key | Model routing, local models |
 | A chain of condition blocks (model input AND a pilot model) blocks a matching request; any other request ends in Skip | Conditions (AND, Skip) |
 | A model outside the catalog is refused | Allowed models |
-| A workflow that ended in Skip is listed on the event but does not decide | Conditions (Skip) |
+| A guardrail that ended in Skip is listed on the event but does not decide | Conditions (Skip) |
 | A USD budget (cache reads and writes priced) blocks once spent; `max_tokens` is capped first | Budget, external API |
 | A concurrency limit of 1 refuses the second parallel request, then frees the slot | Resource governance, runaway agents |
 | A GPU-seconds budget on a local model blocks after use | Budget, local compute |
@@ -47,9 +47,9 @@ the audit log: the performance telemetry the evaluation asks for.
 - `mock-upstream.mjs`: a model server for both the Anthropic Messages and the OpenAI chat
   completions APIs. It picks its answer from keywords in the prompt (`LEAK`, `DANGER`, `CURL`,
   `LISTFILES`, `SLOW`) and keeps every request for the checks at `GET /_requests`.
-- `fixtures.mjs`: a trusted device, the model catalog, three limits and two stage workflows (Model
+- `fixtures.mjs`: a trusted device, the model catalog, three limits and two stage guardrails (Model
   output: redact and block `rm -rf /`; Tool results: block an injection phrase). The seeded Default
-  workflow already blocks `curl * | sh`. Each check uses its own model id, so budgets don't leak
+  guardrail already blocks `curl * | sh`. Each check uses its own model id, so budgets don't leak
   between checks and the order doesn't matter.
 - `checks.mjs`: the checks.
 
@@ -58,6 +58,6 @@ needs one), add a keyword to the mock if it needs a new answer, and call `check(
 in `checks.mjs`. `fn` returns `true` or `{ ok, ...details }`.
 
 The suite also exercises the built-in Hack?Nah! MCP: admin-only discovery without an integration,
-fingerprint binding, input validation, workflow draft/publish, policy preview, saved analysis and
+fingerprint binding, input validation, guardrail draft/publish, policy preview, saved analysis and
 invalidation, audit attribution, and immediate role/device revocation. These mutations run only in
 the disposable copy.

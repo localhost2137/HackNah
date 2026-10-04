@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Export or apply the Hack?Nah! policy file (workflows, limits, model catalog) against a
+// Export or apply the Hack?Nah! policy file (guardrails, limits, model catalog) against a
 // running instance, through its /api/policy endpoint.
 //
 //   pnpm policy:export [file]                         write the current policy (stdout without a file)
@@ -10,7 +10,7 @@
 //   ACL_EMAIL     admin email and ACL_PASSWORD, to sign in with a password (local: admin@demo.test)
 //   ACL_COOKIE    or a session cookie copied from the browser, for admins who only use SSO
 //
-// Replace mode (the default) disables workflows, limits and models the file leaves out; --merge
+// Replace mode (the default) disables guardrails, limits and models the file leaves out; --merge
 // only adds and updates. Nothing is deleted either way.
 
 import { readFileSync, writeFileSync } from 'node:fs'

@@ -15,7 +15,7 @@ export const readJsonl = (file) =>
 
 const sourceOf = (c) => c.source?.dataset ?? c.source?.name
 
-/** Channels a workflow runs on; plain payloads only, so a miss is a real miss. */
+/** Channels a guardrail runs on; plain payloads only, so a miss is a real miss. */
 const REPLAYABLE = new Set([
   'user_input',
   'tool_arguments',

@@ -45,7 +45,7 @@ export const base: EvaluationInput = {
 }
 
 /** Curated, versioned adaptations, not incident logs or verbatim exploit reproductions. */
-export const catalogVersion = '2026-10-04.4'
+export const catalogVersion = '2026-10-04.5'
 export const trafficTemplates: TrafficTemplate[] = [
   {
     id: 'PROMPT-01',

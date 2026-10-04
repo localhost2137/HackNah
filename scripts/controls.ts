@@ -47,7 +47,7 @@ type Case = {
 }
 
 /**
- * The stages the gateway runs workflows on: model input, tool calls, tool results, model output
+ * The stages the gateway runs guardrails on: model input, tool calls, tool results, model output
  * and messages between agents. Tool descriptions pass through uninspected, and the report says
  * so instead of counting them as caught.
  */

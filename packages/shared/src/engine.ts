@@ -3,17 +3,9 @@ import {
   type ApprovalMethod,
   type CheckResult,
   type EventKind,
+  type GuardrailRef,
   kindLabels,
-  type WorkflowRef,
 } from './events.ts'
-import { type ScoringModel, scoreModel } from './learned.ts'
-import {
-  baselineSignatures,
-  matchSignatures,
-  type Signature,
-  severityRisk,
-  textVariants,
-} from './signatures.ts'
 import type {
   CheckConfig,
   CheckNode,
@@ -26,7 +18,15 @@ import type {
   PolicyNode,
   RedactConfig,
   ToolTier,
-} from './workflow.ts'
+} from './guardrail.ts'
+import { type ScoringModel, scoreModel } from './learned.ts'
+import {
+  baselineSignatures,
+  matchSignatures,
+  type Signature,
+  severityRisk,
+  textVariants,
+} from './signatures.ts'
 
 export type DeviceStatus = 'trusted' | 'new' | 'mismatch' | 'revoked'
 
@@ -101,7 +101,7 @@ export type EngineDeps = {
 }
 
 export type EvaluationResult = {
-  /** `skip`: the path ended in Skip, so this workflow does not count. */
+  /** `skip`: the path ended in Skip, so this guardrail does not count. */
   decision: 'allow' | 'block' | 'pending' | 'skip'
   /** Every node the request passed through, in order, ending with the decision. */
   checks: CheckResult[]
@@ -230,7 +230,7 @@ export async function evaluateGraph(
       if (result.outcome === 'error')
         return finish(graph.fallback, {
           stepId: '(fallback)',
-          reason: `${result.reason} (workflow fallback: ${graph.fallback})`,
+          reason: `${result.reason} (guardrail fallback: ${graph.fallback})`,
         })
       branch = result.branch
       if (node.enabled && node.check.type === 'redact') redact = node.check
@@ -244,32 +244,32 @@ export async function evaluateGraph(
 
   return finish(graph.fallback, {
     stepId: '(fallback)',
-    reason: node ? 'Workflow is too deep' : `Nothing connected after ${from}`,
+    reason: node ? 'Guardrail is too deep' : `Nothing connected after ${from}`,
   })
 }
 
-/** One published workflow, as the gateway loads it. */
-export type ActiveWorkflow = {
+/** One published guardrail, as the gateway loads it. */
+export type ActiveGuardrail = {
   id: string
   name: string
   version: number
-  /** Groups whose members this workflow runs for. Empty means every member. */
+  /** Groups whose members this guardrail runs for. Empty means every member. */
   groupIds: string[]
   definition: PolicyGraph
 }
 
 export type CombinedResult = Omit<EvaluationResult, 'decision'> & {
   decision: 'allow' | 'block' | 'pending'
-  workflows: WorkflowRef[]
+  guardrails: GuardrailRef[]
 }
 
-/** The enabled workflows that run for a request: in scope for the user, and triggered by it. */
-export function selectWorkflows(
-  workflows: ActiveWorkflow[],
+/** The enabled guardrails that run for a request: in scope for the user, and triggered by it. */
+export function selectGuardrails(
+  guardrails: ActiveGuardrail[],
   input: EvaluationInput,
-): ActiveWorkflow[] {
+): ActiveGuardrail[] {
   const groups = new Set(input.groupIds ?? [])
-  return workflows.filter(
+  return guardrails.filter(
     (w) =>
       (w.groupIds.length === 0 || w.groupIds.some((id) => groups.has(id))) &&
       triggerHolds(w.definition, input),
@@ -277,21 +277,21 @@ export function selectWorkflows(
 }
 
 /**
- * Runs every workflow the request triggers and keeps the strictest outcome: block over approval
- * over allow. A request that triggers no workflow is allowed.
+ * Runs every guardrail the request triggers and keeps the strictest outcome: block over approval
+ * over allow. A request that triggers no guardrail is allowed.
  */
-export async function evaluateWorkflows(
-  workflows: ActiveWorkflow[],
+export async function evaluateGuardrails(
+  guardrails: ActiveGuardrail[],
   input: EvaluationInput,
   deps: EngineDeps = {},
 ): Promise<CombinedResult> {
   const now = deps.now ?? (() => performance.now())
-  const selected = selectWorkflows(workflows, input)
+  const selected = selectGuardrails(guardrails, input)
   const results = await Promise.all(
     selected.map(async (w) => {
       const started = now()
       const result = await evaluateGraph(w.definition, input, deps)
-      return { workflow: w, result, durationMs: Math.round(now() - started) }
+      return { guardrail: w, result, durationMs: Math.round(now() - started) }
     }),
   )
   return combineResults(results)
@@ -302,22 +302,22 @@ const approvalStrength: ApprovalMethod[] = ['admin', 'browser', 'touchid', 'conf
 
 export function combineResults(
   results: {
-    workflow: Pick<ActiveWorkflow, 'id' | 'name' | 'version'>
+    guardrail: Pick<ActiveGuardrail, 'id' | 'name' | 'version'>
     result: EvaluationResult
     durationMs?: number
   }[],
 ): CombinedResult {
-  const workflows = results.map(({ workflow: { id, name, version }, result, durationMs }) => ({
+  const guardrails = results.map(({ guardrail: { id, name, version }, result, durationMs }) => ({
     id,
     name,
     version,
     decision: result.decision,
     ...(durationMs === undefined ? {} : { durationMs }),
   }))
-  const checks = results.flatMap(({ workflow, result }) =>
-    result.checks.map((c) => ({ ...c, workflowId: workflow.id })),
+  const checks = results.flatMap(({ guardrail, result }) =>
+    result.checks.map((c) => ({ ...c, guardrailId: guardrail.id })),
   )
-  // A workflow that ended in Skip does not apply; only the others decide.
+  // A guardrail that ended in Skip does not apply; only the others decide.
   const applied = results.filter((r) => r.result.decision !== 'skip')
   const blocked = applied.filter((r) => r.result.decision === 'block')
   const pending = applied.filter((r) => r.result.decision === 'pending')
@@ -353,7 +353,7 @@ export function combineResults(
     approvalMethod: method,
     trustsDevice: decision === 'pending' && pending.some((r) => r.result.trustsDevice),
     redact,
-    workflows,
+    guardrails,
   }
 }
 
@@ -652,8 +652,8 @@ async function runCheck(
 }
 
 /**
- * Whether a workflow runs on any of these stages. Lets the gateway skip inspecting output nobody
- * has a workflow for.
+ * Whether a guardrail runs on any of these stages. Lets the gateway skip inspecting output nobody
+ * has a guardrail for.
  */
 export function triggerMayRun(graph: PolicyGraph, kinds: EventKind[]): boolean {
   const trigger = graph.nodes.find((n) => n.type === 'trigger')

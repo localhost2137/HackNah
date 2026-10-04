@@ -1,4 +1,4 @@
-import { type ActiveWorkflow, defaultWorkflow } from '@acl/shared'
+import { type ActiveGuardrail, defaultGuardrail } from '@acl/shared'
 import { describe, expect, it } from 'vitest'
 import { isLabelled, labelledInfo, labelledSlug, labelledTraffic } from './labelled.ts'
 import { type Persona, replayTraffic } from './replay.ts'
@@ -56,12 +56,12 @@ const persona: Persona = {
   resourceIds: [],
   model: '',
 }
-const workflow: ActiveWorkflow = {
+const guardrail: ActiveGuardrail = {
   id: 'wf',
   name: 'Default',
   version: 1,
   groupIds: [],
-  definition: defaultWorkflow,
+  definition: defaultGuardrail,
 }
 
 describe('labelled datasets as replay traffic', () => {
@@ -76,7 +76,7 @@ describe('labelled datasets as replay traffic', () => {
 
   it('maps each row to the stage it arrives on and to what should happen to it', () => {
     const events = labelledTraffic(info, rows)
-    // Tool descriptions are not a stage a workflow runs on, so that row is left out.
+    // Tool descriptions are not a stage a guardrail runs on, so that row is left out.
     expect(events).toHaveLength(4)
     const byText = (text: string) => events.find((e) => e.input.text.includes(text))!
     expect(byText('rm -rf').input).toMatchObject({ kind: 'tool_call', toolName: 'Bash' })
@@ -96,8 +96,8 @@ describe('labelled datasets as replay traffic', () => {
   })
 
   it('does not call a row unresolved because a check is not used on its stage', async () => {
-    // The default workflow starts with the device check, which is skipped on model output.
-    const results = await replayTraffic(labelledTraffic(info, rows), [workflow], persona)
+    // The default guardrail starts with the device check, which is skipped on model output.
+    const results = await replayTraffic(labelledTraffic(info, rows), [guardrail], persona)
     expect(results.map((r) => r.actual)).not.toContain('inconclusive')
     const output = results.find((r) => r.input.kind === 'model_output')!
     expect(output.result.checks[0]).toMatchObject({ outcome: 'skipped' })

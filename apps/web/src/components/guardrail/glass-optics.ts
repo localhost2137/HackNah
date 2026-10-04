@@ -48,10 +48,10 @@ function getDisplacementMap() {
 /** Refract the actual cloned canvas, with slight wavelength separation at the curved edge. */
 export function createGlassOptics(glass: HTMLElement): HTMLDivElement {
   const optics = document.createElement('div')
-  optics.className = 'workflow-lens-optics'
+  optics.className = 'guardrail-lens-optics'
   const map = getDisplacementMap()
   if (map) {
-    const id = `workflow-glass-${crypto.randomUUID()}`
+    const id = `guardrail-glass-${crypto.randomUUID()}`
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
     svg.setAttribute('width', '0')
     svg.setAttribute('height', '0')

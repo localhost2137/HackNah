@@ -1,18 +1,18 @@
 import {
-  type ActiveWorkflow,
+  type ActiveGuardrail,
   type DeviceStatus,
   type EngineDeps,
   type EvaluationInput,
   type EvaluationResult,
   evaluateGraph,
-  selectWorkflows,
+  selectGuardrails,
 } from './engine.ts'
 import type { CheckResult, Decision } from './events.ts'
 
 /** What a request ended as, regardless of who approved it. */
 export type ReplayOutcome = 'allow' | 'approval' | 'block'
 
-/** How a request actually ended. `denied` was stopped by permissions or access before any workflow ran. */
+/** How a request actually ended. `denied` was stopped by permissions or access before any guardrail ran. */
 export type RecordedResult = ReplayOutcome | 'rate_limited' | 'denied'
 
 const rank: Record<ReplayOutcome, number> = { allow: 0, approval: 1, block: 2 }
@@ -23,19 +23,19 @@ export function stricter(a: ReplayOutcome, b: ReplayOutcome): ReplayOutcome {
 
 export function recordedResult(decision: Decision, checks: CheckResult[]): RecordedResult {
   if (decision === 'rate_limited') return 'rate_limited'
-  if (decision === 'block') return checks.some((c) => c.workflowId) ? 'block' : 'denied'
+  if (decision === 'block') return checks.some((c) => c.guardrailId) ? 'block' : 'denied'
   if (decision === 'allow') return 'allow'
   return 'approval'
 }
 
-/** The outcome each workflow reached, read from the decision step of its recorded path. */
-export function recordedWorkflowOutcomes(checks: CheckResult[]): Map<string, ReplayOutcome> {
+/** The outcome each guardrail reached, read from the decision step of its recorded path. */
+export function recordedGuardrailOutcomes(checks: CheckResult[]): Map<string, ReplayOutcome> {
   const outcomes = new Map<string, ReplayOutcome>()
   for (const c of checks) {
-    // A workflow that ended in Skip did not apply.
-    if (c.type !== 'decision' || !c.workflowId || c.outcome === 'skipped') continue
+    // A guardrail that ended in Skip did not apply.
+    if (c.type !== 'decision' || !c.guardrailId || c.outcome === 'skipped') continue
     outcomes.set(
-      c.workflowId,
+      c.guardrailId,
       c.action === 'block' ? 'block' : c.action === 'require_approval' ? 'approval' : 'allow',
     )
   }
@@ -62,12 +62,12 @@ export type ShadowVerdict = {
 }
 
 /**
- * Runs `shadow` on any recorded request, including failed ones. Other workflows keep the outcome
- * they reached at the time and `shadow` replaces any version of the same workflow. Requests the
- * gateway stopped before workflows ran stay blocked.
+ * Runs `shadow` on any recorded request, including failed ones. Other guardrails keep the outcome
+ * they reached at the time and `shadow` replaces any version of the same guardrail. Requests the
+ * gateway stopped before guardrails ran stay blocked.
  */
 export async function replayWithShadow(
-  shadow: ActiveWorkflow,
+  shadow: ActiveGuardrail,
   recorded: { decision: Decision; checks: CheckResult[] },
   input: EvaluationInput,
   deps: EngineDeps = {},
@@ -76,7 +76,7 @@ export async function replayWithShadow(
   const early = status === 'rate_limited' || status === 'denied'
   const before: ReplayOutcome = early ? 'block' : status
 
-  const others = recordedWorkflowOutcomes(recorded.checks)
+  const others = recordedGuardrailOutcomes(recorded.checks)
   others.delete(shadow.id)
   const rest = [...others.values()].reduce<ReplayOutcome>(stricter, 'allow')
 
@@ -87,7 +87,7 @@ export async function replayWithShadow(
     after: early ? 'block' : rest,
     result,
   })
-  if (selectWorkflows([shadow], input).length === 0) return notStarted(null)
+  if (selectGuardrails([shadow], input).length === 0) return notStarted(null)
   const result = await evaluateGraph(shadow.definition, input, deps)
   if (result.decision === 'skip') return notStarted(result)
   const own: ReplayOutcome =

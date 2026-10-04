@@ -24,7 +24,7 @@ export async function checkInternalMcp(ctx, check, headers) {
     'Internal MCP authorization',
     async () => {
       const listed = await rpc('tools/list')
-      const denied = await call('create_workflow', { name: 'Should not exist' })
+      const denied = await call('create_guardrail', { name: 'Should not exist' })
       return {
         ok: listed.result?.tools?.length === 0 && denied.result?.isError === true,
         listed,
@@ -49,7 +49,7 @@ export async function checkInternalMcp(ctx, check, headers) {
       return {
         ok:
           init.result?.serverInfo?.title === 'Hack?Nah!' &&
-          listed.result?.tools?.some((t) => t.name === 'hacknah_create_workflow') &&
+          listed.result?.tools?.some((t) => t.name === 'hacknah_create_guardrail') &&
           stored[0].n === 0,
         init,
         count: listed.result?.tools?.length,
@@ -66,20 +66,20 @@ export async function checkInternalMcp(ctx, check, headers) {
   await check(
     'invalid arguments return an MCP tool error',
     'Internal MCP input validation',
-    async () => (await call('create_workflow', { name: '' })).result?.isError === true,
+    async () => (await call('create_guardrail', { name: '' })).result?.isError === true,
   )
-  let workflowId
+  let guardrailId
   await check(
-    'create, inspect, save and publish a workflow through MCP',
+    'create, inspect, save and publish a guardrail through MCP',
     'Internal MCP actions',
     async () => {
-      const made = data(await call('create_workflow', { name: 'Internal MCP e2e workflow' }))
-      workflowId = made.id
-      const read = data(await call('get_workflow', { workflowId }))
-      const graph = data(await call('workflow_schema')).starter
-      const draft = data(await call('save_workflow_draft', { workflowId, definition: graph }))
-      const published = data(await call('publish_workflow', { workflowId, note: 'MCP e2e' }))
-      const after = data(await call('get_workflow', { workflowId }))
+      const made = data(await call('create_guardrail', { name: 'Internal MCP e2e guardrail' }))
+      guardrailId = made.id
+      const read = data(await call('get_guardrail', { guardrailId }))
+      const graph = data(await call('guardrail_schema')).starter
+      const draft = data(await call('save_guardrail_draft', { guardrailId, definition: graph }))
+      const published = data(await call('publish_guardrail', { guardrailId, note: 'MCP e2e' }))
+      const after = data(await call('get_guardrail', { guardrailId }))
       return {
         ok:
           read.draft?.status === 'draft' &&
@@ -91,30 +91,30 @@ export async function checkInternalMcp(ctx, check, headers) {
     },
   )
   await check(
-    'unknown and foreign workflow IDs cannot be edited',
+    'unknown and foreign guardrail IDs cannot be edited',
     'Internal MCP scope',
     async () =>
-      (await call('update_workflow', { workflowId: 'not-in-this-instance', enabled: false })).result
-        ?.isError === true,
+      (await call('update_guardrail', { guardrailId: 'not-in-this-instance', enabled: false }))
+        .result?.isError === true,
   )
   await check(
-    'foreign workflow scope is rejected without mutation',
+    'foreign guardrail scope is rejected without mutation',
     'Internal MCP scope',
     async () => {
       await ctx.query(
-        "INSERT INTO workflow (id,org_id,name,enabled,position,group_ids,created_at,updated_at) VALUES ('wf_foreign','foreign','Foreign policy',1,0,'[]',0,0)",
+        "INSERT INTO guardrail (id,org_id,name,enabled,position,group_ids,created_at,updated_at) VALUES ('wf_foreign','foreign','Foreign policy',1,0,'[]',0,0)",
       )
-      const result = await call('update_workflow', { workflowId: 'wf_foreign', enabled: false })
-      const [row] = await ctx.query("SELECT enabled FROM workflow WHERE id='wf_foreign'")
+      const result = await call('update_guardrail', { guardrailId: 'wf_foreign', enabled: false })
+      const [row] = await ctx.query("SELECT enabled FROM guardrail WHERE id='wf_foreign'")
       return result.result?.isError === true && row.enabled === 1
     },
   )
   await check(
-    'unknown group scope cannot widen a workflow to everyone',
+    'unknown group scope cannot widen a guardrail to everyone',
     'Internal MCP scope',
     async () => {
       return (
-        (await call('update_workflow', { workflowId, groupIds: ['foreign-group'] })).result
+        (await call('update_guardrail', { guardrailId, groupIds: ['foreign-group'] })).result
           ?.isError === true
       )
     },
@@ -137,13 +137,16 @@ export async function checkInternalMcp(ctx, check, headers) {
     'run, retrieve and invalidate persisted analysis through MCP',
     'Internal MCP attack analysis',
     async () => {
-      // Keep the test workflow from adding a production decision; the normal fixture policies remain.
-      data(await call('update_workflow', { workflowId, enabled: false }))
+      // Keep the test guardrail from adding a production decision; the normal fixture policies remain.
+      data(await call('update_guardrail', { guardrailId, enabled: false }))
       const run = data(await call('run_analysis', { datasetId: 'prompt-injection' }))
       const saved = data(await call('get_analysis_run', { id: run.id, limit: 2 }))
       const list = data(await call('list_analysis_runs'))
       data(
-        await call('update_workflow', { workflowId, description: 'Invalidate the synthetic run' }),
+        await call('update_guardrail', {
+          guardrailId,
+          description: 'Invalidate the synthetic run',
+        }),
       )
       const stale = await call('get_analysis_run', { id: run.id })
       return {
@@ -164,7 +167,7 @@ export async function checkInternalMcp(ctx, check, headers) {
     'Internal MCP audit',
     async () => {
       const rows = await ctx.query(
-        `SELECT actor_id, target FROM audit_log WHERE action='mcp.internal.success' AND target='hacknah_create_workflow'`,
+        `SELECT actor_id, target FROM audit_log WHERE action='mcp.internal.success' AND target='hacknah_create_guardrail'`,
       )
       return rows.some((r) => r.actor_id === USER)
     },

@@ -16,6 +16,8 @@ function database() {
     '0008_limits_and_models',
     '0009_model_api_format',
     '0010_analysis_runs',
+    '0011_resource_tools',
+    '0012_guardrails',
   ]) {
     db.exec(
       readFileSync(new URL(`../../../../packages/db/drizzle/${name}.sql`, import.meta.url), 'utf8'),
@@ -53,15 +55,15 @@ describe('persistent analysis rules revision', () => {
     const db = database()
     try {
       db.exec(
-        "INSERT INTO workflow (id, org_id, name, enabled, position, group_ids, created_at, updated_at) VALUES ('w','test','Guard',1,0,'[]',0,0)",
+        "INSERT INTO guardrail (id, org_id, name, enabled, position, group_ids, created_at, updated_at) VALUES ('w','test','Guard',1,0,'[]',0,0)",
       )
       save(db, 'a', 'prompt-injection')
       save(db, 'b', 'tool-poisoning')
       expect(valid(db)).toEqual([{ id: 'a' }, { id: 'b' }])
       expect(valid(db)).toEqual([{ id: 'a' }, { id: 'b' }])
-      db.exec("UPDATE workflow SET enabled = 0 WHERE id = 'w'")
+      db.exec("UPDATE guardrail SET enabled = 0 WHERE id = 'w'")
       expect(valid(db)).toEqual([])
-      db.exec("UPDATE workflow SET enabled = 1 WHERE id = 'w'")
+      db.exec("UPDATE guardrail SET enabled = 1 WHERE id = 'w'")
       expect(valid(db)).toEqual([])
       save(db, 'c', 'prompt-injection')
       expect(valid(db)).toEqual([{ id: 'c' }])
@@ -75,13 +77,13 @@ describe('persistent analysis rules revision', () => {
     }
   })
 
-  it('tracks workflow definitions, access rules, rate limits and integration changes', () => {
+  it('tracks guardrail definitions, access rules, rate limits and integration changes', () => {
     const db = database()
     try {
       const edits = [
-        "INSERT INTO workflow (id, org_id, name, enabled, position, group_ids, created_at, updated_at) VALUES ('w','test','Guard',1,0,'[]',0,0)",
-        "INSERT INTO workflow_version (id,org_id,workflow_id,version,definition,status,created_at) VALUES ('v','test','w',1,'{}','draft',0)",
-        "UPDATE workflow_version SET status='published' WHERE id='v'",
+        "INSERT INTO guardrail (id, org_id, name, enabled, position, group_ids, created_at, updated_at) VALUES ('w','test','Guard',1,0,'[]',0,0)",
+        "INSERT INTO guardrail_version (id,org_id,guardrail_id,version,definition,status,created_at) VALUES ('v','test','w',1,'{}','draft',0)",
+        "UPDATE guardrail_version SET status='published' WHERE id='v'",
         "INSERT INTO `group` (id,org_id,name,is_default,permissions,created_at) VALUES ('g','test','Analysts',0,'{}',0)",
         "UPDATE `group` SET permissions='{}' WHERE id='g'",
         "INSERT INTO resource (id,org_id,name,tool_patterns,created_at) VALUES ('r','test','Docs','[]',0)",
@@ -91,7 +93,7 @@ describe('persistent analysis rules revision', () => {
         "DELETE FROM rate_limit WHERE id='rl'",
         "INSERT INTO mcp_server (id,org_id,slug,name,url,auth_type,credential_mode,tools,enabled,created_at) VALUES ('s','test','s','Server','https://example.invalid','none','user','[]',1,0)",
         'UPDATE mcp_server SET tools=\'[{"name":"new_tool"}]\' WHERE id=\'s\'',
-        "DELETE FROM workflow_version WHERE id='v'",
+        "DELETE FROM guardrail_version WHERE id='v'",
         "INSERT INTO model (id,org_id,pattern,created_at) VALUES ('model','test','*',0)",
         "UPDATE model SET enabled=0 WHERE id='model'",
         "DELETE FROM model WHERE id='model'",
@@ -114,11 +116,11 @@ describe('persistent analysis rules revision', () => {
     try {
       save(db, 'a', 'prompt-injection')
       db.exec(
-        "INSERT INTO workflow (id, org_id, name, enabled, position, group_ids, created_at, updated_at) VALUES ('other','another','Guard',1,0,'[]',0,0)",
+        "INSERT INTO guardrail (id, org_id, name, enabled, position, group_ids, created_at, updated_at) VALUES ('other','another','Guard',1,0,'[]',0,0)",
       )
       expect(valid(db)).toEqual([{ id: 'a' }])
       db.exec(
-        "BEGIN; INSERT INTO workflow (id, org_id, name, enabled, position, group_ids, created_at, updated_at) VALUES ('rolled','test','Guard',1,0,'[]',0,0); ROLLBACK;",
+        "BEGIN; INSERT INTO guardrail (id, org_id, name, enabled, position, group_ids, created_at, updated_at) VALUES ('rolled','test','Guard',1,0,'[]',0,0); ROLLBACK;",
       )
       expect(valid(db)).toEqual([{ id: 'a' }])
       expect(revision(db)).toBe(0)

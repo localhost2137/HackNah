@@ -1,4 +1,4 @@
-import type { CheckResult, Decision, EventKind, WorkflowRef } from '@acl/shared'
+import type { CheckResult, Decision, EventKind, GuardrailRef } from '@acl/shared'
 import { approvalLabels, kindLabels, stepLabels } from '@acl/shared'
 import { Badge, cn } from '@acl/ui'
 import { Link } from '@tanstack/react-router'
@@ -70,21 +70,23 @@ const outcomeTone = { pass: 'ok', fail: 'bad', error: 'warn', skipped: 'neutral'
 
 export function CheckList({
   checks,
-  workflows = [],
+  guardrails = [],
 }: {
   checks: CheckResult[]
-  /** Labels each workflow's steps when more than one ran. */
-  workflows?: WorkflowRef[]
+  /** Labels each guardrail's steps when more than one ran. */
+  guardrails?: GuardrailRef[]
 }) {
   if (checks.length === 0) return <div className="text-xs text-muted">No checks ran.</div>
-  const names = new Map(workflows.map((w) => [w.id, w.name]))
+  const names = new Map(guardrails.map((w) => [w.id, w.name]))
   return (
     <ol className="flex flex-col divide-y divide-line rounded-md border border-line">
       {checks.map((c, i) => (
-        <Fragment key={`${c.workflowId}:${c.stepId}`}>
-          {workflows.length > 1 && c.workflowId && c.workflowId !== checks[i - 1]?.workflowId ? (
+        <Fragment key={`${c.guardrailId}:${c.stepId}`}>
+          {guardrails.length > 1 &&
+          c.guardrailId &&
+          c.guardrailId !== checks[i - 1]?.guardrailId ? (
             <li className="bg-panel-2 px-3 py-1.5 text-[11px] font-medium text-muted">
-              {names.get(c.workflowId) ?? c.workflowId}
+              {names.get(c.guardrailId) ?? c.guardrailId}
             </li>
           ) : null}
           <li className="flex items-start gap-3 px-3 py-2">
@@ -128,24 +130,24 @@ export function CheckList({
   )
 }
 
-const workflowTone = { allow: 'ok', block: 'bad', pending: 'warn', skip: 'neutral' } as const
+const guardrailTone = { allow: 'ok', block: 'bad', pending: 'warn', skip: 'neutral' } as const
 
-/** Each workflow that ran, with what it alone decided and how long it took. */
-export function WorkflowRuns({ workflows }: { workflows: WorkflowRef[] }) {
-  if (workflows.length === 0) return <span className="text-xs text-muted">None matched</span>
+/** Each guardrail that ran, with what it alone decided and how long it took. */
+export function GuardrailRuns({ guardrails }: { guardrails: GuardrailRef[] }) {
+  if (guardrails.length === 0) return <span className="text-xs text-muted">None matched</span>
   return (
     <ul className="flex flex-col gap-1">
-      {workflows.map((w) => (
+      {guardrails.map((w) => (
         <li key={w.id} className="flex items-center gap-2 text-xs">
           <Link
             to="/events"
-            search={{ workflow: w.id, range: '24h' }}
+            search={{ guardrail: w.id, range: '24h' }}
             className="truncate hover:text-accent-strong"
           >
             {w.name} <span className="text-subtle">v{w.version}</span>
           </Link>
           {w.decision ? (
-            <Badge tone={workflowTone[w.decision]}>
+            <Badge tone={guardrailTone[w.decision]}>
               {w.decision === 'pending'
                 ? 'approval'
                 : w.decision === 'skip'

@@ -145,26 +145,26 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
     if (!canvas || !viewport) return
     if (!lens.current) {
       const glass = document.createElement('div')
-      glass.className = 'workflow-canvas react-flow dark workflow-lens'
+      glass.className = 'guardrail-canvas react-flow dark guardrail-lens'
       glass.setAttribute('aria-hidden', 'true')
       glass.inert = true
       const optics = createGlassOptics(glass)
       const scene = document.createElement('div')
-      scene.className = 'workflow-lens-scene'
+      scene.className = 'guardrail-lens-scene'
       const copy = viewport.cloneNode(true) as HTMLElement
       // Decorative snapshot only: never duplicate accessible controls or document IDs.
       for (const element of copy.querySelectorAll('[id]')) element.removeAttribute('id')
-      for (const icon of copy.querySelectorAll<SVGElement>('.workflow-output svg'))
+      for (const icon of copy.querySelectorAll<SVGElement>('.guardrail-output svg'))
         icon.style.opacity = '1'
       // A cloned element cannot inherit :hover. Preserve the active connector's
       // enlarged state explicitly so the lens magnifies the growing dot and +.
       const handleId = event.currentTarget.getAttribute('data-handleid')
-      for (const handle of copy.querySelectorAll<HTMLElement>('.workflow-output')) {
+      for (const handle of copy.querySelectorAll<HTMLElement>('.guardrail-output')) {
         if (
           handle.getAttribute('data-handleid') === handleId &&
           handle.closest('.react-flow__node')?.getAttribute('data-id') === node.id
         )
-          handle.classList.add('workflow-output-active')
+          handle.classList.add('guardrail-output-active')
       }
       scene.appendChild(copy)
       optics.appendChild(scene)
@@ -176,7 +176,7 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
     const glass = lens.current
     glass.style.left = `${event.clientX - GLASS_RADIUS}px`
     glass.style.top = `${event.clientY - GLASS_RADIUS}px`
-    const scene = glass.querySelector<HTMLElement>('.workflow-lens-scene')!
+    const scene = glass.querySelector<HTMLElement>('.guardrail-lens-scene')!
     scene.style.width = `${box.width}px`
     scene.style.height = `${box.height}px`
     scene.style.transform = `translate(${GLASS_RADIUS + GLASS_OVERSCAN - (event.clientX - box.left) * 1.35}px, ${GLASS_RADIUS + GLASS_OVERSCAN - (event.clientY - box.top) * 1.35}px) scale(1.35)`
@@ -228,7 +228,7 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
                 id={h}
                 type="source"
                 position={Position.Right}
-                className={data.onAdd ? 'workflow-output' : undefined}
+                className={data.onAdd ? 'guardrail-output' : undefined}
                 role={data.onAdd ? 'button' : undefined}
                 tabIndex={data.onAdd ? 0 : undefined}
                 aria-label={`Add step after ${title}: ${label}`}

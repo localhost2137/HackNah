@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import {
-  type ActiveWorkflow,
+  type ActiveGuardrail,
   combineResults,
   type EvaluationResult,
   evaluateGraph,
-  evaluateWorkflows,
+  evaluateGuardrails,
   matchKeywords,
-  selectWorkflows,
+  selectGuardrails,
   triggerMayRun,
 } from './engine.ts'
 import {
   type Condition,
-  defaultWorkflow,
+  defaultGuardrail,
   type PolicyGraph,
   type PolicyNode,
   policyGraph,
   upgradeGraph,
   validateGraph,
-} from './workflow.ts'
+} from './guardrail.ts'
 
 const input = {
   kind: 'model_request' as const,
@@ -48,7 +48,7 @@ const edge = (source: string, sourceHandle: string, target: string) => ({
 
 describe('evaluateGraph', () => {
   it('allows clean requests along the default path', async () => {
-    const r = await evaluateGraph(defaultWorkflow, input)
+    const r = await evaluateGraph(defaultGuardrail, input)
     expect(r.decision).toBe('allow')
     expect(r.checks.map((c) => `${c.stepId}:${c.branch ?? c.outcome}`)).toEqual([
       'fingerprint:pass',
@@ -58,25 +58,25 @@ describe('evaluateGraph', () => {
   })
 
   it('blocks on a dangerous keyword', async () => {
-    const r = await evaluateGraph(defaultWorkflow, { ...input, text: 'please run rm -rf / now' })
+    const r = await evaluateGraph(defaultGuardrail, { ...input, text: 'please run rm -rf / now' })
     expect(r.decision).toBe('block')
     expect(r.reasons[0]).toContain('rm -rf /')
     expect(r.riskScore).toBe(1)
   })
 
   it('requires approval for a new device and blocks a mismatched one', async () => {
-    const fresh = await evaluateGraph(defaultWorkflow, { ...input, deviceStatus: 'new' })
+    const fresh = await evaluateGraph(defaultGuardrail, { ...input, deviceStatus: 'new' })
     expect(fresh.decision).toBe('pending')
     expect(fresh.trustsDevice).toBe(true)
     expect(fresh.approvalTimeoutSec).toBe(300)
-    const copied = await evaluateGraph(defaultWorkflow, { ...input, deviceStatus: 'mismatch' })
+    const copied = await evaluateGraph(defaultGuardrail, { ...input, deviceStatus: 'mismatch' })
     expect(copied.decision).toBe('block')
   })
 
   it('follows pass through disabled checks', async () => {
     const wf: PolicyGraph = {
-      ...defaultWorkflow,
-      nodes: defaultWorkflow.nodes.map((n) => (n.type === 'check' ? { ...n, enabled: false } : n)),
+      ...defaultGuardrail,
+      nodes: defaultGuardrail.nodes.map((n) => (n.type === 'check' ? { ...n, enabled: false } : n)),
     }
     const r = await evaluateGraph(wf, { ...input, deviceStatus: 'mismatch', text: 'rm -rf /' })
     expect(r.decision).toBe('allow')
@@ -146,16 +146,16 @@ describe('evaluateGraph', () => {
         },
       },
     )
-    // A judge that cannot answer follows the workflow fallback, like an unconnected output.
+    // A judge that cannot answer follows the guardrail fallback, like an unconnected output.
     expect(down.checks.find((c) => c.stepId === 'judge')?.outcome).toBe('error')
     expect(down.decision).toBe(wf.fallback)
-    expect(down.reasons.at(-1)).toContain('workflow fallback')
+    expect(down.reasons.at(-1)).toContain('guardrail fallback')
   })
 
   it('uses the fallback when an output is not connected', async () => {
     const wf: PolicyGraph = {
-      ...defaultWorkflow,
-      edges: defaultWorkflow.edges.filter((e) => e.sourceHandle !== 'fail'),
+      ...defaultGuardrail,
+      edges: defaultGuardrail.edges.filter((e) => e.sourceHandle !== 'fail'),
     }
     const r = await evaluateGraph(wf, { ...input, text: 'DROP DATABASE prod' })
     expect(r.decision).toBe('block')
@@ -191,15 +191,15 @@ describe('evaluateGraph', () => {
 })
 
 describe('validateGraph', () => {
-  it('accepts the default workflow', () => {
-    expect(validateGraph(defaultWorkflow)).toEqual([])
+  it('accepts the default guardrail', () => {
+    expect(validateGraph(defaultGuardrail)).toEqual([])
   })
 
   it('rejects loops, bad handles and doubled outputs', () => {
     const wf: PolicyGraph = {
-      ...defaultWorkflow,
+      ...defaultGuardrail,
       edges: [
-        ...defaultWorkflow.edges,
+        ...defaultGuardrail.edges,
         edge('keywords', 'pass', 'fingerprint'),
         edge('keywords', 'nope', 'block'),
       ],
@@ -213,7 +213,7 @@ describe('validateGraph', () => {
   })
 })
 
-describe('evaluateWorkflows', () => {
+describe('evaluateGuardrails', () => {
   const graph = (
     trigger: Partial<Extract<PolicyNode, { type: 'trigger' }>>,
     end: PolicyNode,
@@ -222,7 +222,7 @@ describe('evaluateWorkflows', () => {
     nodes: [{ id: 'start', type: 'trigger', position: at, stages: [], ...trigger }, end],
     edges: [edge('start', 'next', end.id)],
   })
-  const workflow = (id: string, definition: PolicyGraph, groupIds: string[] = []) => ({
+  const guardrail = (id: string, definition: PolicyGraph, groupIds: string[] = []) => ({
     id,
     name: id,
     version: 1,
@@ -237,18 +237,18 @@ describe('evaluateWorkflows', () => {
     groupIds: ['grp_dev'],
   }
 
-  it('allows a request that triggers no workflow', async () => {
+  it('allows a request that triggers no guardrail', async () => {
     const onlyPrompts = graph({ stages: ['model_request'] }, decision('b', 'block'))
-    const r = await evaluateWorkflows([workflow('prompts', onlyPrompts)], toolCall)
+    const r = await evaluateGuardrails([guardrail('prompts', onlyPrompts)], toolCall)
     expect(r.decision).toBe('allow')
-    expect(r.workflows).toEqual([])
+    expect(r.guardrails).toEqual([])
     expect(r.checks).toEqual([])
   })
 
-  it('a workflow whose conditions end in Skip does not apply', async () => {
+  it('a guardrail whose conditions end in Skip does not apply', async () => {
     /** Start → condition → allow on Yes, Skip on No. */
-    const applies = (id: string, c: Condition): ActiveWorkflow =>
-      workflow(id, {
+    const applies = (id: string, c: Condition): ActiveGuardrail =>
+      guardrail(id, {
         fallback: 'block',
         nodes: [
           { id: 'start', type: 'trigger', position: at, stages: [] },
@@ -258,7 +258,7 @@ describe('evaluateWorkflows', () => {
         ],
         edges: [edge('start', 'next', 'if'), edge('if', 'yes', 'b'), edge('if', 'no', 's')],
       })
-    const r = await evaluateWorkflows(
+    const r = await evaluateGuardrails(
       [
         applies('tool', { field: 'tool', values: ['delete_*'] }),
         applies('server', { field: 'mcpServer', values: ['srv_slack'] }),
@@ -266,28 +266,28 @@ describe('evaluateWorkflows', () => {
       toolCall,
     )
     expect(r.decision).toBe('block')
-    expect(r.workflows.map((w) => `${w.id}:${w.decision}`)).toEqual(['tool:block', 'server:skip'])
+    expect(r.guardrails.map((w) => `${w.id}:${w.decision}`)).toEqual(['tool:block', 'server:skip'])
   })
 
   it('only runs for the selected groups', () => {
     const everyone = graph({}, decision('a', 'allow'))
-    const picked = selectWorkflows(
+    const picked = selectGuardrails(
       [
-        workflow('dev', everyone, ['grp_dev']),
-        workflow('ops', everyone, ['grp_ops']),
-        workflow('all', everyone),
+        guardrail('dev', everyone, ['grp_dev']),
+        guardrail('ops', everyone, ['grp_ops']),
+        guardrail('all', everyone),
       ],
       toolCall,
     )
     expect(picked.map((w) => w.id)).toEqual(['dev', 'all'])
   })
 
-  it('keeps the strictest outcome and tags steps with their workflow', async () => {
-    const r = await evaluateWorkflows(
+  it('keeps the strictest outcome and tags steps with their guardrail', async () => {
+    const r = await evaluateGuardrails(
       [
-        workflow('allow', graph({}, decision('a', 'allow'))),
-        workflow('approve', graph({}, decision('h', 'require_approval'))),
-        workflow(
+        guardrail('allow', graph({}, decision('a', 'allow'))),
+        guardrail('approve', graph({}, decision('h', 'require_approval'))),
+        guardrail(
           'block',
           graph({}, { ...decision('b', 'block'), reason: 'No deletes' } as PolicyNode),
         ),
@@ -296,8 +296,8 @@ describe('evaluateWorkflows', () => {
     )
     expect(r.decision).toBe('block')
     expect(r.reasons).toEqual(['No deletes'])
-    expect(r.workflows.map((w) => w.id)).toEqual(['allow', 'approve', 'block'])
-    expect(r.checks.map((c) => `${c.workflowId}:${c.stepId}`)).toEqual([
+    expect(r.guardrails.map((w) => w.id)).toEqual(['allow', 'approve', 'block'])
+    expect(r.checks.map((c) => `${c.guardrailId}:${c.stepId}`)).toEqual([
       'allow:a',
       'approve:h',
       'block:b',
@@ -306,10 +306,10 @@ describe('evaluateWorkflows', () => {
 
   it('asks for the strictest approval method', async () => {
     const touchid = { ...decision('t', 'require_approval'), method: 'touchid' } as PolicyNode
-    const r = await evaluateWorkflows(
+    const r = await evaluateGuardrails(
       [
-        workflow('device', graph({}, touchid)),
-        workflow('admin', graph({}, decision('h', 'require_approval'))),
+        guardrail('device', graph({}, touchid)),
+        guardrail('admin', graph({}, decision('h', 'require_approval'))),
       ],
       toolCall,
     )
@@ -317,35 +317,35 @@ describe('evaluateWorkflows', () => {
     expect(r.approvalMethod).toBe('admin')
     expect(r.reasons).not.toContain('Needs Touch ID on the device')
   })
-  it('records what each workflow decided and how long it took', async () => {
+  it('records what each guardrail decided and how long it took', async () => {
     let t = 0
-    const r = await evaluateWorkflows(
+    const r = await evaluateGuardrails(
       [
-        workflow('allow', graph({}, decision('a', 'allow'))),
-        workflow('block', graph({}, decision('b', 'block'))),
+        guardrail('allow', graph({}, decision('a', 'allow'))),
+        guardrail('block', graph({}, decision('b', 'block'))),
       ],
       toolCall,
       { now: () => (t += 5) },
     )
-    expect(r.workflows.map((w) => `${w.id}:${w.decision}`)).toEqual(['allow:allow', 'block:block'])
-    expect(r.workflows.every((w) => typeof w.durationMs === 'number')).toBe(true)
+    expect(r.guardrails.map((w) => `${w.id}:${w.decision}`)).toEqual(['allow:allow', 'block:block'])
+    expect(r.guardrails.every((w) => typeof w.durationMs === 'number')).toBe(true)
   })
 
-  it('knows which stages a workflow could start on', () => {
+  it('knows which stages a guardrail could start on', () => {
     const outputs = graph({ stages: ['model_output'] }, decision('a', 'allow'))
     expect(triggerMayRun(outputs, ['model_output', 'tool_call'])).toBe(true)
     expect(triggerMayRun(outputs, ['tool_call'])).toBe(false)
     expect(triggerMayRun(graph({}, decision('a', 'allow')), ['tool_call'])).toBe(true)
   })
 
-  it('a workflow without stages runs on every stage', () => {
-    const any = workflow('any', graph({}, decision('a', 'allow')))
-    const outputsOnly = workflow(
+  it('a guardrail without stages runs on every stage', () => {
+    const any = guardrail('any', graph({}, decision('a', 'allow')))
+    const outputsOnly = guardrail(
       'outputs',
       graph({ stages: ['model_output'] }, decision('a', 'allow')),
     )
     for (const kind of ['model_request', 'tool_result', 'model_output', 'agent_message'] as const) {
-      const picked = selectWorkflows([any, outputsOnly], { ...input, kind })
+      const picked = selectGuardrails([any, outputsOnly], { ...input, kind })
       expect(picked.map((w) => w.id)).toEqual(
         kind === 'model_output' ? ['any', 'outputs'] : ['any'],
       )
@@ -500,8 +500,8 @@ describe('stages', () => {
 
   it('drops edges from the removed Error output of saved graphs', () => {
     const parsed = policyGraph.parse({
-      ...defaultWorkflow,
-      edges: [...defaultWorkflow.edges, edge('keywords', 'error', 'block')],
+      ...defaultGuardrail,
+      edges: [...defaultGuardrail.edges, edge('keywords', 'error', 'block')],
     })
     expect(parsed.edges.some((e) => e.sourceHandle === 'error')).toBe(false)
   })
@@ -641,7 +641,7 @@ describe('condition blocks', () => {
   })
 })
 
-describe('combineResults with skipped workflows', () => {
+describe('combineResults with skipped guardrails', () => {
   const result = (
     decision: EvaluationResult['decision'],
     extra: Partial<EvaluationResult> = {},
@@ -657,20 +657,20 @@ describe('combineResults with skipped workflows', () => {
     ...extra,
   })
   const wf = (id: string, r: EvaluationResult) => ({
-    workflow: { id, name: id, version: 1 },
+    guardrail: { id, name: id, version: 1 },
     result: r,
   })
 
-  it('lets the workflows that applied decide', () => {
+  it('lets the guardrails that applied decide', () => {
     const r = combineResults([wf('a', result('skip')), wf('b', result('allow'))])
     expect(r.decision).toBe('allow')
-    expect(r.workflows.map((w) => w.decision)).toEqual(['skip', 'allow'])
+    expect(r.guardrails.map((w) => w.decision)).toEqual(['skip', 'allow'])
   })
 
-  it('allows when every workflow skipped, and still lists them', () => {
+  it('allows when every guardrail skipped, and still lists them', () => {
     const r = combineResults([wf('a', result('skip')), wf('b', result('skip'))])
     expect(r.decision).toBe('allow')
-    expect(r.workflows.map((w) => `${w.id}:${w.decision}`)).toEqual(['a:skip', 'b:skip'])
+    expect(r.guardrails.map((w) => `${w.id}:${w.decision}`)).toEqual(['a:skip', 'b:skip'])
   })
 
   it('a skip never softens a block', () => {
@@ -680,7 +680,7 @@ describe('combineResults with skipped workflows', () => {
     expect(r.riskScore).toBe(1)
   })
 
-  it('ignores redaction and risk from skipped workflows', () => {
+  it('ignores redaction and risk from skipped guardrails', () => {
     const redact = { type: 'redact' as const, secrets: true, pii: [] }
     const r = combineResults([
       wf('a', result('skip', { redact, riskScore: 0.9 })),
@@ -823,7 +823,7 @@ describe('upgradeGraph', () => {
   })
 
   it('passes new graphs through unchanged and is idempotent', () => {
-    expect(upgradeGraph(defaultWorkflow)).toBe(defaultWorkflow)
+    expect(upgradeGraph(defaultGuardrail)).toBe(defaultGuardrail)
     for (const raw of [
       routeGraph('all'),
       routeGraph('any'),

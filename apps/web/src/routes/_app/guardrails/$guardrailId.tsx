@@ -34,36 +34,36 @@ import {
 import { ArrowLeft, History, Maximize2, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
-import { DryRun } from '#/components/workflow/dry-run.tsx'
+import { DryRun } from '#/components/guardrail/dry-run.tsx'
 import {
   blockIcons,
   type FlowNode,
   nodeTypes,
   toneColor,
-} from '#/components/workflow/graph-nodes.tsx'
-import { Inspector, type PickerOptions } from '#/components/workflow/inspector.tsx'
-import { recommendSteps, type Suggestion } from '#/components/workflow/recommendations.ts'
+} from '#/components/guardrail/graph-nodes.tsx'
+import { Inspector, type PickerOptions } from '#/components/guardrail/inspector.tsx'
+import { recommendSteps, type Suggestion } from '#/components/guardrail/recommendations.ts'
 import { timeAgo } from '#/lib/format.ts'
 import { listGroups, listResources } from '#/server/fns/access.ts'
+import { discardDraft, getGuardrail, publishDraft, saveDraft } from '#/server/fns/guardrail.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
 import { listLimits } from '#/server/fns/limits.ts'
-import { discardDraft, getWorkflow, publishDraft, saveDraft } from '#/server/fns/workflow.ts'
 
-const workflowQuery = (workflowId: string) =>
+const guardrailQuery = (guardrailId: string) =>
   queryOptions({
-    queryKey: ['workflow', workflowId],
-    queryFn: () => getWorkflow({ data: { workflowId } }),
+    queryKey: ['guardrail', guardrailId],
+    queryFn: () => getGuardrail({ data: { guardrailId } }),
   })
 const serversQuery = queryOptions({ queryKey: ['mcp-servers'], queryFn: () => listMcpServers() })
 const resourcesQuery = queryOptions({ queryKey: ['resources'], queryFn: () => listResources() })
 const groupsQuery = queryOptions({ queryKey: ['groups'], queryFn: () => listGroups() })
 const limitsQuery = queryOptions({ queryKey: ['limits'], queryFn: () => listLimits() })
 
-export const Route = createFileRoute('/_app/workflows/$workflowId')({
+export const Route = createFileRoute('/_app/guardrails/$guardrailId')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(workflowQuery(params.workflowId)),
-  // Editor state belongs to one workflow; start over when switching to another.
-  component: () => <WorkflowPage key={Route.useParams().workflowId} />,
+    context.queryClient.ensureQueryData(guardrailQuery(params.guardrailId)),
+  // Editor state belongs to one guardrail; start over when switching to another.
+  component: () => <GuardrailPage key={Route.useParams().guardrailId} />,
 })
 
 type InsertionPoint = { source: string; handle: string }
@@ -96,11 +96,11 @@ function createsCycle(edges: PolicyEdge[], source: string, target: string): bool
   return false
 }
 
-function WorkflowPage() {
+function GuardrailPage() {
   const { isAdmin } = Route.useRouteContext()
-  const { workflowId } = Route.useParams()
+  const { guardrailId } = Route.useParams()
   const qc = useQueryClient()
-  const { data } = useQuery(workflowQuery(workflowId))
+  const { data } = useQuery(guardrailQuery(guardrailId))
   const { data: servers } = useQuery(serversQuery)
   const { data: resources } = useQuery(resourcesQuery)
   const { data: groups } = useQuery(groupsQuery)
@@ -130,7 +130,7 @@ function WorkflowPage() {
       })),
       groups: (groups ?? []).map((g) => ({ value: g.id, label: g.name })),
       limits: (limits ?? [])
-        .filter((l) => l.action === 'workflow')
+        .filter((l) => l.action === 'guardrail')
         .map((l) => ({
           value: l.id,
           label: l.name || `${formatAmount(l.measure, l.limit)} per ${windowLabel(l.windowSec)}`,
@@ -141,17 +141,17 @@ function WorkflowPage() {
 
   const refresh = () =>
     Promise.all([
-      qc.invalidateQueries({ queryKey: ['workflow', workflowId] }),
-      qc.invalidateQueries({ queryKey: ['workflows'] }),
+      qc.invalidateQueries({ queryKey: ['guardrail', guardrailId] }),
+      qc.invalidateQueries({ queryKey: ['guardrails'] }),
     ])
   const save = useMutation({
-    mutationFn: (g: PolicyGraph) => saveDraft({ data: { workflowId, definition: g } }),
+    mutationFn: (g: PolicyGraph) => saveDraft({ data: { guardrailId, definition: g } }),
     onSuccess: refresh,
   })
   const publish = useMutation({
     mutationFn: async () => {
-      if (dirty && graph) await saveDraft({ data: { workflowId, definition: graph } })
-      return publishDraft({ data: { workflowId, note: note || undefined } })
+      if (dirty && graph) await saveDraft({ data: { guardrailId, definition: graph } })
+      return publishDraft({ data: { guardrailId, note: note || undefined } })
     },
     onSuccess: async () => {
       setPublishOpen(false)
@@ -160,7 +160,7 @@ function WorkflowPage() {
     },
   })
   const discard = useMutation({
-    mutationFn: () => discardDraft({ data: { workflowId } }),
+    mutationFn: () => discardDraft({ data: { guardrailId } }),
     onSuccess: async () => {
       setGraph(null)
       await refresh()
@@ -173,8 +173,8 @@ function WorkflowPage() {
         ? (await save.mutateAsync(graph)).version
         : (data?.draft?.version ?? data?.published?.version)
     await navigate({
-      to: '/workflows/$workflowId/impact',
-      params: { workflowId },
+      to: '/guardrails/$guardrailId/impact',
+      params: { guardrailId },
       search: { version },
     })
   }
@@ -184,13 +184,13 @@ function WorkflowPage() {
   return (
     <>
       <Link
-        to="/workflows"
+        to="/guardrails"
         className="mb-2 inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
       >
         <ArrowLeft className="size-3.5" /> All guardrails
       </Link>
       <PageHeader
-        title={data.workflow.name}
+        title={data.guardrail.name}
         description="Pick the stages this guardrail runs on in its first step, ask about the request with condition blocks, then follow it from left to right to an allow, a block, an approval or Skip."
         actions={
           isAdmin ? (
@@ -234,7 +234,7 @@ function WorkflowPage() {
             <Badge tone="neutral">not published</Badge>
           )}
         </span>
-        {data.workflow.enabled ? null : <Badge tone="neutral">Disabled</Badge>}
+        {data.guardrail.enabled ? null : <Badge tone="neutral">Disabled</Badge>}
         {data.draft ? <Badge tone="warn">Draft v{data.draft.version}</Badge> : null}
         {dirty ? <Badge tone="accent">Unsaved changes</Badge> : null}
         {errorCount > 0 ? (
@@ -308,7 +308,7 @@ function WorkflowPage() {
   )
 }
 
-type Version = Awaited<ReturnType<typeof getWorkflow>>['versions'][number]
+type Version = Awaited<ReturnType<typeof getGuardrail>>['versions'][number]
 type Tab = 'inspect' | 'test' | 'history'
 
 const tabLabels: Record<Tab, string> = {
@@ -725,7 +725,7 @@ function Editor({
             </div>
           </aside>
         ) : null}
-        <div ref={canvasRef} className="workflow-canvas min-w-0 flex-1">
+        <div ref={canvasRef} className="guardrail-canvas min-w-0 flex-1">
           <ReactFlow<FlowNode>
             colorMode="dark"
             nodes={nodes}

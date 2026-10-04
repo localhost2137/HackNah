@@ -13,7 +13,7 @@
 # Groups are referred to by name; "All members" is the default group everyone is in.
 version: 1
 
-workflows:
+guardrails:
   # Any stage (no stages ticked): model input, tool calls, tool results, model output and
   # agent messages. Device checks only run where a device is involved; elsewhere they pass.
   - name: Baseline
@@ -114,7 +114,7 @@ workflows:
   # Claude Code's Bash tool: piping a download into a shell, or force-pushing, needs the
   # developer to confirm in Claude Code. Argument rules are allowlists: every value must match.
   # A condition block picks Bash out of all tool calls; any other tool ends in Skip, so this
-  # workflow does not apply to it.
+  # guardrail does not apply to it.
   - name: "Built-in Bash"
     definition:
       fallback: block
@@ -184,7 +184,7 @@ limits:
     per: user
     action: block
 
-  # A shared counter for everyone; "workflow" leaves the decision to the Company budget workflow.
+  # A shared counter for everyone; "guardrail" leaves the decision to the Company budget guardrail.
   - name: Weekly company budget
     measure: cost
     scope: model
@@ -193,7 +193,7 @@ limits:
     windowSec: 604800
     per: group_total
     group: All members
-    action: workflow
+    action: guardrail
     warnAtPct: 80
 
   - name: Local GPU time per user

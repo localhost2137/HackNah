@@ -19,10 +19,10 @@ export const limitSubject = z.enum(['user', 'group_member', 'group_total', 'org'
 export type LimitSubject = z.infer<typeof limitSubject>
 
 /**
- * What happens past the limit. `warn` lets the request through and flags it; `workflow` does
+ * What happens past the limit. `warn` lets the request through and flags it; `guardrail` does
  * nothing on its own and leaves the decision to a Usage limit block.
  */
-export const limitAction = z.enum(['block', 'warn', 'workflow'])
+export const limitAction = z.enum(['block', 'warn', 'guardrail'])
 export type LimitAction = z.infer<typeof limitAction>
 
 export const limitRule = z.object({

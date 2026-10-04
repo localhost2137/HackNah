@@ -4,27 +4,27 @@ import { queryOptions, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { z } from 'zod'
-import { ShadowImpact } from '#/components/workflow/shadow-impact.tsx'
-import { getWorkflow } from '#/server/fns/workflow.ts'
+import { ShadowImpact } from '#/components/guardrail/shadow-impact.tsx'
+import { getGuardrail } from '#/server/fns/guardrail.ts'
 
-const workflowQuery = (workflowId: string) =>
+const guardrailQuery = (guardrailId: string) =>
   queryOptions({
-    queryKey: ['workflow', workflowId],
-    queryFn: () => getWorkflow({ data: { workflowId } }),
+    queryKey: ['guardrail', guardrailId],
+    queryFn: () => getGuardrail({ data: { guardrailId } }),
   })
 
-export const Route = createFileRoute('/_app/workflows/$workflowId_/impact')({
+export const Route = createFileRoute('/_app/guardrails/$guardrailId_/impact')({
   validateSearch: z.object({ version: z.number().optional() }),
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(workflowQuery(params.workflowId)),
+    context.queryClient.ensureQueryData(guardrailQuery(params.guardrailId)),
   component: ImpactPage,
 })
 
 function ImpactPage() {
-  const { workflowId } = Route.useParams()
+  const { guardrailId } = Route.useParams()
   const { version } = Route.useSearch()
   const navigate = Route.useNavigate()
-  const { data } = useQuery(workflowQuery(workflowId))
+  const { data } = useQuery(guardrailQuery(guardrailId))
   if (!data) return null
 
   const choices = data.versions.flatMap((v) => {
@@ -40,14 +40,14 @@ function ImpactPage() {
   return (
     <>
       <Link
-        to="/workflows/$workflowId"
-        params={{ workflowId }}
+        to="/guardrails/$guardrailId"
+        params={{ guardrailId }}
         className="mb-2 inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
       >
         <ArrowLeft className="size-3.5" /> Back to the editor
       </Link>
       <PageHeader
-        title={`Impact of ${data.workflow.name}`}
+        title={`Impact of ${data.guardrail.name}`}
         description="Replays a saved version on past requests, including failed ones, without publishing it. Other guardrails keep the outcome they reached at the time."
         actions={
           choices.length > 0 ? (
@@ -69,7 +69,7 @@ function ImpactPage() {
         }
       />
       {selected ? (
-        <ShadowImpact key={selected.id} workflowId={workflowId} graph={selected.graph} />
+        <ShadowImpact key={selected.id} guardrailId={guardrailId} graph={selected.graph} />
       ) : (
         <Card>
           <EmptyState

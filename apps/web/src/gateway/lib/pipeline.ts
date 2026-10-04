@@ -5,31 +5,31 @@ import {
   callJudge,
   type Decision,
   type EvaluationInput,
-  evaluateWorkflows,
+  evaluateGuardrails,
   findModel,
+  type GuardrailRef,
   type JudgeCheck,
   type LimitStatus,
   type RedactConfig,
   randomId,
   usageAmounts,
-  type WorkflowRef,
 } from '@acl/shared'
 import { eq } from 'drizzle-orm'
 import type { Principal } from '../context.ts'
 import { approvalsStub } from '../do/approvals.ts'
 import { effectivePermissions, permissionDenial, userGroupIds } from './access.ts'
+import { loadActiveGuardrails, loadLimits } from './guardrail.ts'
 import { loadLearnedModels } from './learned-models.ts'
 import { checkLimits, recordUsage } from './limits.ts'
 import { loadModels } from './models.ts'
 import { loadSignatures } from './signatures.ts'
-import { loadActiveWorkflows, loadLimits } from './workflow.ts'
 
 export type PipelineResult = {
   decision: Extract<Decision, 'allow' | 'block' | 'approved' | 'declined'>
   checks: CheckResult[]
   riskScore: number
   reasons: string[]
-  workflows: WorkflowRef[]
+  guardrails: GuardrailRef[]
   approvalId: string | null
   redact: RedactConfig | null
 }
@@ -40,7 +40,7 @@ function judgeApiKey(env: Env, endpoint: string): string | undefined {
 }
 
 /**
- * Runs every workflow the request triggers and keeps the strictest outcome. A request that
+ * Runs every guardrail the request triggers and keeps the strictest outcome. A request that
  * triggers none is allowed. If the outcome is an approval, this blocks until someone decides in
  * the dashboard or the approval times out.
  *
@@ -61,8 +61,8 @@ export async function runPipeline(
     limits?: Map<string, LimitStatus>
   },
 ): Promise<PipelineResult> {
-  const [workflows, groupIds, permissions] = await Promise.all([
-    loadActiveWorkflows(db, principal.orgId),
+  const [guardrails, groupIds, permissions] = await Promise.all([
+    loadActiveGuardrails(db, principal.orgId),
     userGroupIds(db, principal),
     effectivePermissions(db, principal),
   ])
@@ -82,17 +82,17 @@ export async function runPipeline(
       ],
       riskScore: 1,
       reasons: [denied],
-      workflows: [],
+      guardrails: [],
       approvalId: null,
       redact: null,
     }
   }
   const uses = (type: string) =>
-    workflows.some((w) =>
+    guardrails.some((w) =>
       w.definition.nodes.some((n) => n.type === 'check' && n.enabled && n.check.type === type),
     )
-  const result = await evaluateWorkflows(
-    workflows,
+  const result = await evaluateGuardrails(
+    guardrails,
     { ...input, groupIds, deviceStatus: principal.deviceStatus },
     {
       judge: (check, i) => guardedJudge(env, db, principal, groupIds, check, i),
@@ -105,7 +105,7 @@ export async function runPipeline(
       models: uses('learned')
         ? await loadLearnedModels(
             env,
-            workflows.flatMap((w) =>
+            guardrails.flatMap((w) =>
               w.definition.nodes.flatMap((n) =>
                 n.type === 'check' && n.enabled && n.check.type === 'learned' ? n.check.models : [],
               ),
@@ -118,7 +118,7 @@ export async function runPipeline(
     checks: result.checks,
     riskScore: result.riskScore,
     reasons: result.reasons,
-    workflows: result.workflows,
+    guardrails: result.guardrails,
     approvalId: null,
     redact: result.redact,
   }
@@ -182,7 +182,7 @@ export async function runPipeline(
 
 /**
  * Calls the judge as part of the control layer's own budget: limits on guardrails can cap how
- * much the judges cost, and a judge past its limit fails, so the workflow fallback decides.
+ * much the judges cost, and a judge past its limit fails, so the guardrail fallback decides.
  */
 export async function guardedJudge(
   env: Env,

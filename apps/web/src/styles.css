@@ -13,63 +13,63 @@
   --xy-node-boxshadow-selected: none;
 }
 
-.workflow-canvas .react-flow__controls {
+.guardrail-canvas .react-flow__controls {
   border: 1px solid var(--color-line-strong);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 16px #0004;
 }
 
-.workflow-canvas .react-flow__controls-button {
+.guardrail-canvas .react-flow__controls-button {
   width: 34px;
   height: 34px;
   color: var(--color-fg);
 }
 
-.workflow-canvas .react-flow__minimap {
+.guardrail-canvas .react-flow__minimap {
   border: 1px solid var(--color-line-strong);
   border-radius: 8px;
   overflow: hidden;
 }
 
-.workflow-canvas .react-flow__handle {
+.guardrail-canvas .react-flow__handle {
   width: 14px;
   height: 14px;
   border: 3px solid var(--color-panel);
   transition: box-shadow 150ms;
 }
 
-.workflow-canvas .react-flow__handle:hover {
+.guardrail-canvas .react-flow__handle:hover {
   box-shadow: 0 0 0 5px rgb(120 148 248 / 0.25);
 }
 
-.workflow-canvas .react-flow__edge.selected .react-flow__edge-path {
+.guardrail-canvas .react-flow__edge.selected .react-flow__edge-path {
   stroke-width: 4;
   filter: drop-shadow(0 0 4px var(--color-accent));
 }
 
 /* Keep the connector in place as its hit area grows into an add button. */
-.workflow-canvas .react-flow__handle.workflow-output {
+.guardrail-canvas .react-flow__handle.guardrail-output {
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: none;
 }
-.workflow-canvas .react-flow__handle.workflow-output:hover,
-.workflow-canvas .react-flow__handle.workflow-output-active,
-.workflow-canvas .react-flow__handle.workflow-output:focus-visible {
+.guardrail-canvas .react-flow__handle.guardrail-output:hover,
+.guardrail-canvas .react-flow__handle.guardrail-output-active,
+.guardrail-canvas .react-flow__handle.guardrail-output:focus-visible {
   width: 26px;
   height: 26px;
   color: var(--color-bg);
   outline: none;
   box-shadow: 0 0 0 4px var(--color-panel);
 }
-.workflow-canvas .workflow-output:hover svg,
-.workflow-canvas .workflow-output:focus-visible svg {
+.guardrail-canvas .guardrail-output:hover svg,
+.guardrail-canvas .guardrail-output:focus-visible svg {
   opacity: 1;
 }
 
-.workflow-lens.react-flow {
+.guardrail-lens.react-flow {
   position: fixed;
   z-index: 1000;
   width: 36px;
@@ -85,7 +85,7 @@
   pointer-events: none;
 }
 /* Refraction comes from the optical layer, not an opaque painted border. */
-.workflow-lens-optics {
+.guardrail-lens-optics {
   position: absolute;
   inset: -8px;
   width: 52px;
@@ -94,8 +94,8 @@
   background: var(--color-bg);
   pointer-events: none;
 }
-.workflow-lens::before,
-.workflow-lens::after {
+.guardrail-lens::before,
+.guardrail-lens::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -103,7 +103,7 @@
   border-radius: inherit;
   pointer-events: none;
 }
-.workflow-lens::before {
+.guardrail-lens::before {
   /* Feather the optical rim inward without spreading refraction across the center. */
   backdrop-filter: blur(0.65px);
   mask-image: radial-gradient(circle closest-side, transparent 64%, #0002 73%, #0009 84%, #000 94%);
@@ -112,7 +112,7 @@
     inset -0.5px -0.8px 0.8px rgb(205 231 255 / 0.35),
     inset 0 0 2px rgb(9 15 30 / 0.2);
 }
-.workflow-lens::after {
+.guardrail-lens::after {
   background: conic-gradient(
     from -40deg,
     rgb(255 255 255 / 0.52),
@@ -130,7 +130,7 @@
     #000 100%
   );
 }
-.workflow-lens-scene {
+.guardrail-lens-scene {
   position: absolute;
   left: 0;
   top: 0;

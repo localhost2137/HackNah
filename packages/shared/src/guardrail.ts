@@ -99,7 +99,7 @@ export const networkCheck = z.object({
 
 export const hookCheck = z.object({ type: z.literal('hook') })
 
-/** Reads a rule from the Limits page whose action is "let the workflow decide". */
+/** Reads a rule from the Limits page whose action is "let the guardrail decide". */
 export const limitCheck = z.object({
   type: z.literal('limit'),
   limitId: z.string().default(''),
@@ -162,7 +162,7 @@ export const condition = z.discriminatedUnion('field', [
 export type Condition = z.infer<typeof condition>
 export type ConditionField = Condition['field']
 
-/** `skip` ends a workflow without a decision, as if it had not started. */
+/** `skip` ends a guardrail without a decision, as if it had not started. */
 export const decisionAction = z.enum(['allow', 'block', 'require_approval', 'skip'])
 export type DecisionAction = z.infer<typeof decisionAction>
 
@@ -172,7 +172,7 @@ const nodeBase = { id: z.string().min(1).max(64), position }
 export const triggerNode = z.object({
   ...nodeBase,
   type: z.literal('trigger'),
-  /** The stages this workflow runs on. Empty means every stage. */
+  /** The stages this guardrail runs on. Empty means every stage. */
   stages: z.array(eventKind).default([]),
 })
 export type TriggerNode = z.infer<typeof triggerNode>
@@ -252,7 +252,7 @@ type RawEdge = { id: string; source: string; sourceHandle: string; target: strin
  * Graphs saved before condition blocks existed had conditions on the start node and multi-condition
  * Route nodes. Both become chains of condition blocks: AND links Yes to the next condition, OR
  * links No. A start condition that does not hold now ends in Skip, which, as before, means the
- * workflow does not apply.
+ * guardrail does not apply.
  */
 export function upgradeGraph(raw: unknown): unknown {
   const g = raw as { nodes?: RawNode[]; edges?: RawEdge[] } | null
@@ -462,7 +462,7 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
  * Fingerprint the device, then keyword-scan everything. New devices wait for approval, copied
  * tokens and dangerous commands are blocked.
  */
-export const defaultWorkflow: PolicyGraph = {
+export const defaultGuardrail: PolicyGraph = {
   fallback: 'block',
   nodes: [
     { id: 'start', type: 'trigger', position: { x: 0, y: 100 }, stages: [] },
@@ -523,8 +523,8 @@ export const defaultWorkflow: PolicyGraph = {
   ],
 }
 
-/** What a newly created workflow starts from: tool calls go straight to allow. */
-export const starterWorkflow: PolicyGraph = {
+/** What a newly created guardrail starts from: tool calls go straight to allow. */
+export const starterGuardrail: PolicyGraph = {
   fallback: 'block',
   nodes: [
     {

@@ -25,7 +25,7 @@ export function bearerToken(headers: Headers): string | null {
  * Authenticates a gateway access token and works out the device status:
  * - `mismatch`: the fingerprint header doesn't match the one the token was issued to (stolen token)
  * - `new`: the device is enrolled but still waiting for an admin approval
- * Revoked devices are rejected here, whatever the workflow says.
+ * Revoked devices are rejected here, whatever the guardrail says.
  */
 export const requireGatewayToken = (format: 'anthropic' | 'json' = 'json') =>
   createMiddleware<AppEnv>(async (c, next) => {

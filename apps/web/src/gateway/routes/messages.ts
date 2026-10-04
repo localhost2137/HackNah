@@ -5,7 +5,7 @@ import {
   type CombinedResult,
   type EvaluationInput,
   type EventKind,
-  evaluateWorkflows,
+  evaluateGuardrails,
   type GatewayEvent,
   type GroupPermissions,
   type LimitStatus,
@@ -31,6 +31,7 @@ import { sessionStub } from '../do/session.ts'
 import { effectivePermissions, filterToolDefinitions, userGroupIds } from '../lib/access.ts'
 import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
+import { loadActiveGuardrails, loadLimits } from '../lib/guardrail.ts'
 import { checkLimits, recordUsage } from '../lib/limits.ts'
 import {
   type CatalogModel,
@@ -54,7 +55,6 @@ import {
   upstreamRequest,
 } from '../lib/upstream.ts'
 import { normalizeToolName, rememberVerdict, resultChecked } from '../lib/verdicts.ts'
-import { loadActiveWorkflows, loadLimits } from '../lib/workflow.ts'
 
 const MAX_CAPTURED_RESPONSE = 256 * 1024
 const MAX_RECORDED_TEXT = 64 * 1024
@@ -70,7 +70,7 @@ type Ctx = {
 
 /**
  * Anthropic Messages API proxy. Claude Code points `ANTHROPIC_BASE_URL` here, so every model
- * call goes through the org's workflows on the way in and on the way out:
+ * call goes through the org's guardrails on the way in and on the way out:
  *
  * - Model input: what the user turn sends as input, and each tool result in it on its own
  *   (a refused result is withheld, the rest of the turn goes on).
@@ -233,7 +233,7 @@ export const messages = new Hono<AppEnv>()
     const guarded =
       upstream.ok &&
       upstream.body !== null &&
-      (await loadActiveWorkflows(db, principal.orgId)).some((w) =>
+      (await loadActiveGuardrails(db, principal.orgId)).some((w) =>
         triggerMayRun(w.definition, ['model_output', 'tool_call', 'agent_message']),
       )
 
@@ -370,7 +370,7 @@ function newEvent(ctx: Ctx, kind: EventKind, id: string, started: number): Gatew
     decision: 'allow',
     checks: [],
     riskScore: 0,
-    workflows: [],
+    guardrails: [],
     inputTokens: null,
     outputTokens: null,
     latencyMs: 0,
@@ -383,13 +383,13 @@ function newEvent(ctx: Ctx, kind: EventKind, id: string, started: number): Gatew
 
 function applyResult(
   event: GatewayEvent,
-  result: Pick<PipelineResult, 'decision' | 'checks' | 'riskScore' | 'workflows'>,
+  result: Pick<PipelineResult, 'decision' | 'checks' | 'riskScore' | 'guardrails'>,
   before: GatewayEvent['checks'] = [],
 ) {
   event.decision = result.decision
   event.checks = [...before, ...result.checks]
   event.riskScore = result.riskScore
-  event.workflows = result.workflows
+  event.guardrails = result.guardrails
 }
 
 const agentStage = (toolName: string | null): EventKind =>
@@ -488,8 +488,8 @@ function usageOf(raw: Record<string, number> | null): TokenUsage {
 async function outputHooks(ctx: Ctx, limits: Map<string, LimitStatus>) {
   const { c, principal, session } = ctx
   const db = c.get('db')
-  const [workflows, servers] = await Promise.all([
-    loadActiveWorkflows(db, principal.orgId),
+  const [guardrails, servers] = await Promise.all([
+    loadActiveGuardrails(db, principal.orgId),
     db.query.mcpServer.findMany({
       columns: { slug: true },
       where: and(eq(mcpServer.orgId, principal.orgId), eq(mcpServer.enabled, true)),
@@ -513,8 +513,8 @@ async function outputHooks(ctx: Ctx, limits: Map<string, LimitStatus>) {
 
   const hooks: GuardHooks<CombinedResult> = {
     checkText: async (text, final) => {
-      const result = await evaluateWorkflows(
-        workflows,
+      const result = await evaluateGuardrails(
+        guardrails,
         { ...base, kind: 'model_output', text },
         {
           judge: final
@@ -593,7 +593,7 @@ async function recordOutputEvent(ctx: Ctx, report: GuardReport<CombinedResult>) 
   event.decision = report.withheld ? 'block' : 'allow'
   event.checks = detail.checks
   event.riskScore = detail.riskScore
-  event.workflows = detail.workflows
+  event.guardrails = detail.guardrails
   event.latencyMs = report.checkMs
   event.overheadMs = report.checkMs
   await recordEvent(ctx.c.env, event, {

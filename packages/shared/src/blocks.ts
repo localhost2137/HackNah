@@ -6,10 +6,10 @@ import type {
   ConditionField,
   PolicyNode,
   PolicyNodeType,
-} from './workflow.ts'
+} from './guardrail.ts'
 
 /**
- * Every workflow node is an instance of a block. A block declares what it reads from the
+ * Every guardrail node is an instance of a block. A block declares what it reads from the
  * request, the outputs a request can leave through, and which blocks commonly follow each
  * output. The editor renders, connects and suggests nodes from this alone; what a check does
  * at runtime lives in `engine.ts`.
@@ -355,7 +355,7 @@ const specs: BlockSpec[] = [
     description: 'Picks which stages run this guardrail.',
     source: 'The request',
     details:
-      'Picks the stages this guardrail runs on. None ticked: every stage (model input, tool calls, tool results, model output and agent messages). Ask about tools, models or groups with condition blocks after it; a request that ends in Skip, or starts no workflow, is allowed.',
+      'Picks the stages this guardrail runs on. None ticked: every stage (model input, tool calls, tool results, model output and agent messages). Ask about tools, models or groups with condition blocks after it; a request that ends in Skip, or starts no guardrail, is allowed.',
     inputs: [],
     outputs: [
       {
@@ -898,7 +898,7 @@ const specs: BlockSpec[] = [
 
 export const blocks = Object.fromEntries(specs.map((b) => [b.id, b])) as Record<BlockId, BlockSpec>
 
-/** Everything that can be added to a workflow, in display order. */
+/** Everything that can be added to a guardrail, in display order. */
 export const palette: BlockSpec[] = specs.filter((b) => b.id !== 'trigger')
 
 export function blockId(node: PolicyNode): BlockId {

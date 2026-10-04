@@ -1,4 +1,4 @@
-import { defaultWorkflow } from '@acl/shared'
+import { defaultGuardrail } from '@acl/shared'
 import { describe, expect, it } from 'vitest'
 import { datasets, trafficWindow } from './datasets.ts'
 import { replayTraffic } from './replay.ts'
@@ -40,7 +40,7 @@ describe('synthetic traffic', () => {
     const progress: number[] = []
     const results = await replayTraffic(
       traffic,
-      [{ id: 'wf-test', name: 'Default', version: 1, groupIds: [], definition: defaultWorkflow }],
+      [{ id: 'wf-test', name: 'Default', version: 1, groupIds: [], definition: defaultGuardrail }],
       { id: 'synthetic-analyst', groupIds: [], resourceIds: [], mcpServerId: null, model: '' },
       (n) => progress.push(n),
     )

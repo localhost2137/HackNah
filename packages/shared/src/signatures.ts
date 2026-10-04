@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 /**
  * Signatures of attacks that already happened: code execution, unsafe deserialization, supply
- * chain packages, tool poisoning. The gateway matches them in the `signatures` workflow block.
+ * chain packages, tool poisoning. The gateway matches them in the `signatures` guardrail block.
  * A built-in baseline ships with the gateway; more arrive as a feed from an externally managed
  * system (`SIGNATURE_FEED_URL`), in the same format.
  */

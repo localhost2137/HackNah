@@ -1,4 +1,4 @@
-import type { PolicyGraph, PolicyNode } from './workflow.ts'
+import type { PolicyGraph, PolicyNode } from './guardrail.ts'
 
 export type Strictness = 'permissive' | 'balanced' | 'strict'
 

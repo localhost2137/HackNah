@@ -25,7 +25,7 @@ export function RunPerformance({ run }: { run: AnalysisRun }) {
   useEffect(() => {
     let cancelled = false
     setState({ phase: 'running', done: 0 })
-    const ids = run.workflows.flatMap((w) =>
+    const ids = run.guardrails.flatMap((w) =>
       w.definition.nodes.flatMap((n) =>
         n.type === 'check' && n.enabled && n.check.type === 'learned' ? n.check.models : [],
       ),

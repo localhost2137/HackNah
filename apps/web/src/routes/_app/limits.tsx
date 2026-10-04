@@ -84,7 +84,7 @@ function scopesFor(measure: LimitMeasure): LimitScope[] {
 const actionLabels: Record<LimitRule['action'], string> = {
   block: 'Block',
   warn: 'Warn only',
-  workflow: 'Guardrail decides',
+  guardrail: 'Guardrail decides',
 }
 
 function LimitsPage() {
@@ -437,7 +437,7 @@ function LimitsPage() {
                 >
                   <option value="block">Block the request</option>
                   <option value="warn">Allow, flag in the log</option>
-                  <option value="workflow">Let the guardrail decide</option>
+                  <option value="guardrail">Let the guardrail decide</option>
                 </Select>
               </Field>
               <Field label="Near limit at (%)">
@@ -450,7 +450,7 @@ function LimitsPage() {
                 />
               </Field>
             </div>
-            {draft.action === 'workflow' ? (
+            {draft.action === 'guardrail' ? (
               <p className="text-xs text-muted">
                 Add a Usage limit block to a guardrail and pick this limit. It leaves through Under
                 limit, Near limit or Over limit, so you can route an over-budget request to an

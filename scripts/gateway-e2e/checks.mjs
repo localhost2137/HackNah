@@ -235,7 +235,7 @@ export async function runChecks(ctx) {
   )
 
   await check(
-    'condition chain blocks a matching request; others skip the workflow',
+    'condition chain blocks a matching request; others skip the guardrail',
     'Conditions (AND, Skip)',
     async () => {
       const pilot = await send('mock-claude-pilot-1', user('hi'))
@@ -313,7 +313,7 @@ export async function runChecks(ctx) {
 
   // Events reach D1 through the queue; give the consumer a moment.
   let rows = []
-  const sessionEvents = `select kind, decision, model, tool_name, cost_usd, gpu_ms, overhead_ms, latency_ms, workflows from event where session_id = '${session}'`
+  const sessionEvents = `select kind, decision, model, tool_name, cost_usd, gpu_ms, overhead_ms, latency_ms, guardrails from event where session_id = '${session}'`
   for (let i = 0; i < 20; i++) {
     rows = await ctx.query(sessionEvents)
     if (
@@ -334,17 +334,21 @@ export async function runChecks(ctx) {
     }
     return { ok: Object.values(kinds).every(Boolean), kinds }
   })
-  await check('a skipped workflow is listed but does not decide', 'Conditions (Skip)', async () => {
-    const skipped = rows.filter((r) => {
-      const refs = JSON.parse(r.workflows ?? '[]')
-      return (
-        r.kind === 'model_request' &&
-        r.decision === 'allow' &&
-        refs.some((w) => w.id === 'wf_e2e_pilot' && w.decision === 'skip')
-      )
-    })
-    return { ok: skipped.length > 0, count: skipped.length }
-  })
+  await check(
+    'a skipped guardrail is listed but does not decide',
+    'Conditions (Skip)',
+    async () => {
+      const skipped = rows.filter((r) => {
+        const refs = JSON.parse(r.guardrails ?? '[]')
+        return (
+          r.kind === 'model_request' &&
+          r.decision === 'allow' &&
+          refs.some((w) => w.id === 'wf_e2e_pilot' && w.decision === 'skip')
+        )
+      })
+      return { ok: skipped.length > 0, count: skipped.length }
+    },
+  )
   await check('cost and GPU time are recorded per request', 'Budget reporting', async () => {
     const cost = rows.some(
       (r) => r.model === 'mock-claude-1' && r.kind === 'model_request' && r.cost_usd > 0,

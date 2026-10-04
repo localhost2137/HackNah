@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import balanced from '../../../policies/balanced.yaml?raw'
 import permissive from '../../../policies/permissive.yaml?raw'
 import strict from '../../../policies/strict.yaml?raw'
-import { evaluateWorkflows } from './engine.ts'
+import { evaluateGuardrails } from './engine.ts'
+import { defaultGuardrail } from './guardrail.ts'
 import {
   ALL_MEMBERS,
   diffPolicy,
@@ -14,7 +15,6 @@ import {
   resolveGroups,
   toPolicyFile,
 } from './policy-file.ts'
-import { defaultWorkflow } from './workflow.ts'
 
 const files = { permissive, balanced, strict }
 const examples = Object.keys(files) as (keyof typeof files)[]
@@ -33,13 +33,13 @@ const groups = [
 
 const state: PolicyState = {
   groups,
-  workflows: [
+  guardrails: [
     {
       name: 'Default',
       description: 'Runs for every member and every request.',
       enabled: true,
       groupIds: ['grp_ml'],
-      definition: defaultWorkflow,
+      definition: defaultGuardrail,
     },
     { name: 'Never published', description: null, enabled: true, groupIds: [], definition: null },
   ],
@@ -55,7 +55,7 @@ const state: PolicyState = {
       per: 'group_total',
       groupId: 'grp_default',
       group: null,
-      action: 'workflow',
+      action: 'guardrail',
       warnAtPct: 80,
       enabled: true,
     },
@@ -64,9 +64,9 @@ const state: PolicyState = {
 }
 
 describe('example policies', () => {
-  it.each(examples)('%s.yaml parses and every workflow can be published', (name) => {
+  it.each(examples)('%s.yaml parses and every guardrail can be published', (name) => {
     const file = parsed(load(name))
-    expect(file.workflows.length).toBeGreaterThan(2)
+    expect(file.guardrails.length).toBeGreaterThan(2)
     expect(file.limits.length).toBeGreaterThan(2)
     expect(file.models.some((m) => m.kind === 'local' && m.apiFormat === 'openai')).toBe(true)
   })
@@ -74,8 +74,8 @@ describe('example policies', () => {
   it('differ in strictness', async () => {
     const [permissive, , strict] = examples.map((n) => parsed(load(n)))
     const run = (file: PolicyFile, text: string) =>
-      evaluateWorkflows(
-        file.workflows.map((w, i) => ({
+      evaluateGuardrails(
+        file.guardrails.map((w, i) => ({
           id: `wf${i}`,
           name: w.name,
           version: 1,
@@ -91,11 +91,11 @@ describe('example policies', () => {
 })
 
 describe('example policies use condition blocks', () => {
-  const all = () => examples.flatMap((n) => parsed(load(n)).workflows)
-  const byName = (name: keyof typeof files, workflow: string) =>
-    parsed(load(name)).workflows.find((w) => w.name === workflow)!
-  const run = (w: PolicyFile['workflows'][number], input: Record<string, unknown>) =>
-    evaluateWorkflows(
+  const all = () => examples.flatMap((n) => parsed(load(n)).guardrails)
+  const byName = (name: keyof typeof files, guardrail: string) =>
+    parsed(load(name)).guardrails.find((w) => w.name === guardrail)!
+  const run = (w: PolicyFile['guardrails'][number], input: Record<string, unknown>) =>
+    evaluateGuardrails(
       [{ id: 'wf', name: w.name, version: 1, groupIds: [], definition: w.definition }],
       { kind: 'tool_call', text: '{}', toolName: 'Bash', deviceStatus: 'trusted', ...input },
     )
@@ -120,7 +120,7 @@ describe('example policies use condition blocks', () => {
     expect((await run(w, destructiveMcp)).decision).toBe('pending')
     const r = await run(w, { ...destructiveMcp, toolTier: 'write' })
     expect(r.decision).toBe('allow')
-    expect(r.workflows[0]!.decision).toBe('skip')
+    expect(r.guardrails[0]!.decision).toBe('skip')
   })
 
   it('OR: strict sends declared or obviously destructive tools to an admin', async () => {
@@ -136,7 +136,7 @@ describe('example policies use condition blocks', () => {
 
   it('still imports a policy file written with start conditions and Route nodes', () => {
     const legacy = `version: 1
-workflows:
+guardrails:
   - name: Old Bash rule
     definition:
       nodes:
@@ -145,7 +145,7 @@ workflows:
       edges:
         - { id: e1, source: start, sourceHandle: next, target: block }
 `
-    const w = parsed(legacy).workflows[0]!
+    const w = parsed(legacy).guardrails[0]!
     expect(w.definition.nodes.find((n) => n.type === 'trigger')).toMatchObject({
       stages: ['tool_call'],
     })
@@ -154,10 +154,10 @@ workflows:
 })
 
 describe('policy file round trip', () => {
-  it('exports names instead of ids and leaves out unpublished workflows', () => {
+  it('exports names instead of ids and leaves out unpublished guardrails', () => {
     const file = toPolicyFile(state)
-    expect(file.workflows.map((w) => w.name)).toEqual(['Default'])
-    expect(file.workflows[0]!.groups).toEqual(['ML team'])
+    expect(file.guardrails.map((w) => w.name)).toEqual(['Default'])
+    expect(file.guardrails[0]!.groups).toEqual(['ML team'])
     expect(file.limits[0]).toMatchObject({ name: 'Team budget', group: ALL_MEMBERS })
     expect(file.limits[0]).not.toHaveProperty('id')
   })
@@ -175,9 +175,9 @@ describe('policy file round trip', () => {
 
   it('refers to limits by name in Usage limit blocks', () => {
     const graph = {
-      ...defaultWorkflow,
+      ...defaultGuardrail,
       nodes: [
-        ...defaultWorkflow.nodes,
+        ...defaultGuardrail.nodes,
         {
           id: 'budget',
           type: 'check' as const,
@@ -189,9 +189,9 @@ describe('policy file round trip', () => {
     }
     const file = toPolicyFile({
       ...state,
-      workflows: [{ ...state.workflows[0]!, definition: graph }],
+      guardrails: [{ ...state.guardrails[0]!, definition: graph }],
     })
-    const node = file.workflows[0]!.definition.nodes.find((n) => n.id === 'budget')
+    const node = file.guardrails[0]!.definition.nodes.find((n) => n.id === 'budget')
     expect(node).toMatchObject({ check: { limitId: 'Team budget' } })
   })
 })
@@ -214,7 +214,7 @@ describe('parsePolicyYaml', () => {
   })
 
   it('reports YAML syntax errors with their line', () => {
-    const r = parsePolicyYaml('version: 1\nworkflows: [\n')
+    const r = parsePolicyYaml('version: 1\nguardrails: [\n')
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.errors[0]).toMatch(/^line \d+: /)
   })
@@ -222,7 +222,7 @@ describe('parsePolicyYaml', () => {
   it('refuses duplicates, unpublishable graphs and dangling limit references', () => {
     const r = parsePolicyYaml(`
 version: 1
-workflows:
+guardrails:
   - name: A
     definition:
       nodes:
@@ -245,9 +245,9 @@ workflows:
 
   it('lays out nodes written without positions', () => {
     const file = parsed(load('balanced'))
-    const positions = file.workflows[0]!.definition.nodes.map((n) => n.position.x)
+    const positions = file.guardrails[0]!.definition.nodes.map((n) => n.position.x)
     expect(new Set(positions).size).toBeGreaterThan(1)
-    expect(file.workflows[0]!.definition.nodes[0]!.position).toEqual({ x: 0, y: 0 })
+    expect(file.guardrails[0]!.definition.nodes[0]!.position).toEqual({ x: 0, y: 0 })
   })
 })
 
@@ -257,18 +257,18 @@ describe('diffPolicy', () => {
   it('creates, updates and in replace mode disables', () => {
     const next: PolicyFile = {
       ...current,
-      workflows: [
+      guardrails: [
         {
-          ...current.workflows[0]!,
-          definition: { ...current.workflows[0]!.definition, fallback: 'allow' },
+          ...current.guardrails[0]!,
+          definition: { ...current.guardrails[0]!.definition, fallback: 'allow' },
         },
-        { ...current.workflows[0]!, name: 'New one' },
+        { ...current.guardrails[0]!, name: 'New one' },
       ],
       limits: [],
     }
     expect(diffPolicy(current, next, 'replace')).toEqual([
-      { kind: 'workflow', name: 'Default', action: 'update', fields: ['definition'] },
-      { kind: 'workflow', name: 'New one', action: 'create' },
+      { kind: 'guardrail', name: 'Default', action: 'update', fields: ['definition'] },
+      { kind: 'guardrail', name: 'New one', action: 'create' },
       { kind: 'limit', name: 'Team budget', action: 'disable' },
     ])
     expect(diffPolicy(current, next, 'merge').some((c) => c.action === 'disable')).toBe(false)
@@ -277,10 +277,10 @@ describe('diffPolicy', () => {
   it('ignores entries the other side does not have when comparing order', () => {
     const extra: PolicyFile = {
       ...current,
-      workflows: [{ ...current.workflows[0]!, name: 'Old' }, ...current.workflows],
+      guardrails: [{ ...current.guardrails[0]!, name: 'Old' }, ...current.guardrails],
     }
     expect(diffPolicy(extra, current, 'merge')).toEqual([
-      { kind: 'workflow', name: 'Default', action: 'unchanged' },
+      { kind: 'guardrail', name: 'Default', action: 'unchanged' },
       { kind: 'limit', name: 'Team budget', action: 'unchanged' },
     ])
   })
@@ -288,7 +288,7 @@ describe('diffPolicy', () => {
   it('ignores node positions', () => {
     const moved: PolicyFile = {
       ...current,
-      workflows: current.workflows.map((w) => ({
+      guardrails: current.guardrails.map((w) => ({
         ...w,
         definition: {
           ...w.definition,
@@ -308,7 +308,7 @@ describe('resolveGroups', () => {
     const file = parsed(load('balanced'))
     expect(resolveGroups(groups, file).unknown).toEqual([])
     expect(resolveGroups(groups, file).ids.get(ALL_MEMBERS)).toBe('grp_default')
-    const extra = { ...file, workflows: [{ ...file.workflows[0]!, groups: ['Nobody'] }] }
+    const extra = { ...file, guardrails: [{ ...file.guardrails[0]!, groups: ['Nobody'] }] }
     expect(resolveGroups(groups, extra).unknown).toEqual(['Nobody'])
     expect(limitKey(file.limits[0]!)).toBe('Daily spend per user')
   })

@@ -1,11 +1,11 @@
 import { Document, isMap, isSeq, LineCounter, parseDocument, visit } from 'yaml'
 import { z } from 'zod'
 import { kindLabels } from './events.ts'
+import { type PolicyGraph, policyGraph, validateGraph } from './guardrail.ts'
 import { limitRule, limitRuleIssue, modelEntry } from './limits.ts'
-import { type PolicyGraph, policyGraph, validateGraph } from './workflow.ts'
 
 /**
- * The whole policy of an instance as one file: workflows, limits and the model catalog. It is
+ * The whole policy of an instance as one file: guardrails, limits and the model catalog. It is
  * exported from and applied to a running instance, so a policy can be reviewed, versioned and
  * moved between instances. Groups are referred to by name, never by id, and API keys are never
  * part of it.
@@ -55,11 +55,11 @@ export function withLayout(raw: unknown): unknown {
   }
 }
 
-export const policyWorkflow = z.object({
+export const policyGuardrail = z.object({
   name: z.string().trim().min(1).max(80),
   description: z.string().max(500).nullable().default(null),
   enabled: z.boolean().default(true),
-  /** Groups (by name) whose members this workflow runs for. Empty means every member. */
+  /** Groups (by name) whose members this guardrail runs for. Empty means every member. */
   groups: z.array(z.string().min(1)).default([]),
   /**
    * The graph. Nodes may leave out `position`; a Usage limit block names its limit by the
@@ -67,7 +67,7 @@ export const policyWorkflow = z.object({
    */
   definition: z.preprocess(withLayout, policyGraph),
 })
-export type PolicyWorkflow = z.infer<typeof policyWorkflow>
+export type PolicyGuardrail = z.infer<typeof policyGuardrail>
 
 export const policyLimit = limitRule.omit({ id: true, groupId: true }).extend({
   /** The group (by name) for `group_member` and `group_total`. */
@@ -79,17 +79,36 @@ export type PolicyLimit = z.infer<typeof policyLimit>
 export const policyModel = modelEntry.omit({ id: true })
 export type PolicyModel = z.infer<typeof policyModel>
 
-export const policyFile = z.object({
+/** Files written before guardrails were renamed call them workflows; they still apply. */
+function renameLegacyKeys(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
+  const { workflows, ...file } = raw as Record<string, unknown>
+  const limits = Array.isArray(file.limits)
+    ? file.limits.map((limit) => {
+        if (!limit || typeof limit !== 'object') return limit
+        const l = limit as Record<string, unknown>
+        return {
+          ...l,
+          ...(l.action === 'workflow' ? { action: 'guardrail' } : {}),
+          ...(l.scope === 'workflows' ? { scope: 'guardrails' } : {}),
+        }
+      })
+    : file.limits
+  return { ...file, guardrails: file.guardrails ?? workflows, limits }
+}
+
+const policyFileShape = z.object({
   version: z.literal(POLICY_FILE_VERSION),
   /** Where known attack signatures are fetched from, for instances that use the feed. */
   signatureFeedUrl: z.string().optional(),
-  /** In order: the order workflows are listed and their steps appear in events. */
-  workflows: z.array(policyWorkflow).default([]),
+  /** In order: the order guardrails are listed and their steps appear in events. */
+  guardrails: z.array(policyGuardrail).default([]),
   limits: z.array(policyLimit).default([]),
   /** In routing order: the first entry whose pattern matches a model id serves it. */
   models: z.array(policyModel).default([]),
 })
-export type PolicyFile = z.infer<typeof policyFile>
+export const policyFile = z.preprocess(renameLegacyKeys, policyFileShape)
+export type PolicyFile = z.infer<typeof policyFileShape>
 
 /**
  * How a limit is recognised across instances: by its name, or for an unnamed limit by what it
@@ -102,7 +121,7 @@ export function limitKey(l: PolicyLimit): string {
   )
 }
 
-/** Problems the schema can't see: duplicates, invalid limits, workflows that can't publish. */
+/** Problems the schema can't see: duplicates, invalid limits, guardrails that can't publish. */
 export function policyIssues(file: PolicyFile): string[] {
   const issues: string[] = []
   const dupes = (label: string, keys: string[]) => {
@@ -113,27 +132,27 @@ export function policyIssues(file: PolicyFile): string[] {
     })
   }
   dupes(
-    'workflows',
-    file.workflows.map((w) => w.name),
+    'guardrails',
+    file.guardrails.map((w) => w.name),
   )
   dupes('limits', file.limits.map(limitKey))
   dupes(
     'models',
     file.models.map((m) => m.pattern),
   )
-  file.workflows.forEach((w, i) => {
+  file.guardrails.forEach((w, i) => {
     for (const issue of validateGraph(w.definition))
       if (issue.level === 'error')
         issues.push(
-          `workflows[${i}] "${w.name}": ${issue.message}${issue.nodeId ? ` (node ${issue.nodeId})` : ''}`,
+          `guardrails[${i}] "${w.name}": ${issue.message}${issue.nodeId ? ` (node ${issue.nodeId})` : ''}`,
         )
   })
   const limitNames = new Set(file.limits.map(limitKey))
-  file.workflows.forEach((w, i) => {
+  file.guardrails.forEach((w, i) => {
     mapLimitRefs(w.definition, (ref) => {
       if (!limitNames.has(ref))
         issues.push(
-          `workflows[${i}] "${w.name}": Usage limit block refers to "${ref}", which is not in limits`,
+          `guardrails[${i}] "${w.name}": Usage limit block refers to "${ref}", which is not in limits`,
         )
       return ref
     })
@@ -149,7 +168,7 @@ export type ParsedPolicy = { ok: true; file: PolicyFile } | { ok: false; errors:
 
 /**
  * Parses and validates a policy file. Every error names where it is: the line and the path,
- * e.g. `line 42, workflows[1].definition.fallback: Invalid option`.
+ * e.g. `line 42, guardrails[1].definition.fallback: Invalid option`.
  */
 export function parsePolicyYaml(text: string): ParsedPolicy {
   const lineCounter = new LineCounter()
@@ -197,18 +216,18 @@ function lineOf(doc: Document, lc: LineCounter, path: (string | number)[]): numb
 const header = `Hack?Nah! policy file.
 
 Apply with \`pnpm policy:apply <file>\` or Settings > Policy file > Import. Applying publishes a
-new version of every workflow whose graph changed; in replace mode, workflows, limits and models
+new version of every guardrail whose graph changed; in replace mode, guardrails, limits and models
 missing from this file are disabled, never deleted. API keys are never exported: set them on the
 Models page after importing.`
 
 const sectionComments: Record<string, string> = {
   signatureFeedUrl: ' Where known attack signatures are fetched from (optional).',
-  workflows: `
- Workflows. Every enabled workflow whose start node runs on the request's stage runs, and the
- strictest outcome wins: block over approval over allow. A workflow whose path ends in skip does
+  guardrails: `
+ Guardrails. Every enabled guardrail whose start node runs on the request's stage runs, and the
+ strictest outcome wins: block over approval over allow. A guardrail whose path ends in skip does
  not count. A start node without stages runs on every stage: model_request, tool_call,
  tool_result, model_output and agent_message.
-   groups:     group names the workflow runs for; empty means every member.
+   groups:     group names the guardrail runs for; empty means every member.
    definition: the graph. nodes are trigger (start: stages), condition (one question about the
                request: field + values; outputs yes / no), check and decision (allow, block,
                require_approval, skip) blocks. edges connect a node's output (sourceHandle) to
@@ -216,12 +235,12 @@ const sectionComments: Record<string, string> = {
                have several incoming edges. fallback decides when an output is not connected or
                a check fails (allow or block).`,
   limits: `
- Limits, checked at the gateway before workflows run.
+ Limits, checked at the gateway before guardrails run.
    measure:   requests | concurrent | tokens | cost (USD) | gpu_seconds
    scope:     model | mcp | tool | resource | guardrails (the judge's own calls)
    target:    model or tool glob, MCP server id or resource id; * for anything
    per:       user | group_member | group_total | org   (group: a group name, or "${ALL_MEMBERS}")
-   action:    block | warn (allow and flag) | workflow (a Usage limit block decides)
+   action:    block | warn (allow and flag) | guardrail (a Usage limit block decides)
    warnAtPct: percent of the limit from which requests count as near the limit`,
   models: `
  Model catalog, in routing order: the first enabled entry whose pattern matches serves the model.
@@ -232,14 +251,14 @@ const sectionComments: Record<string, string> = {
    prices:    USD per million tokens; cache write/read for prompt caching`,
 }
 
-function workflowComment(w: PolicyWorkflow): string {
+function guardrailComment(w: PolicyGuardrail): string {
   const trigger = w.definition.nodes.find((n) => n.type === 'trigger')
   const stages = trigger?.type === 'trigger' ? trigger.stages.map((k) => kindLabels[k]) : []
   const who = w.groups.length ? w.groups.join(', ') : 'every member'
   return ` ${stages.length ? stages.join(', ') : 'Any stage'} · ${who}${w.enabled ? '' : ' · disabled'}`
 }
 
-/** The policy as documented YAML: a header, a comment per section and per workflow. */
+/** The policy as documented YAML: a header, a comment per section and per guardrail. */
 export function policyToYaml(file: PolicyFile): string {
   const doc = new Document(file)
   doc.commentBefore = header
@@ -255,10 +274,10 @@ export function policyToYaml(file: PolicyFile): string {
         node.commentBefore = comment.replace(/^\n/, '')
         node.spaceBefore = true
       }
-      if (key === 'workflows' && isSeq(pair.value))
+      if (key === 'guardrails' && isSeq(pair.value))
         pair.value.items.forEach((item, i) => {
-          const w = file.workflows[i]
-          if (w) (item as { commentBefore?: string }).commentBefore = workflowComment(w)
+          const w = file.guardrails[i]
+          if (w) (item as { commentBefore?: string }).commentBefore = guardrailComment(w)
         })
     }
   }
@@ -280,7 +299,7 @@ export function policyToYaml(file: PolicyFile): string {
 }
 
 export type PolicyChange = {
-  kind: 'workflow' | 'limit' | 'model'
+  kind: 'guardrail' | 'limit' | 'model'
   name: string
   action: 'create' | 'update' | 'disable' | 'unchanged'
   /** What changes, for an update. */
@@ -355,18 +374,18 @@ export function diffPolicy(
   }
 
   section(
-    'workflow',
-    current.workflows,
-    next.workflows,
+    'guardrail',
+    current.guardrails,
+    next.guardrails,
     (w) => w.name,
     (a, b) => {
       const fields = changedFields(a, b, ['description', 'enabled', 'groups'])
       if (canonicalJson(graphLogic(a.definition)) !== canonicalJson(graphLogic(b.definition)))
         fields.push('definition')
-      const name = (w: PolicyWorkflow) => w.name
+      const name = (w: PolicyGuardrail) => w.name
       if (
-        rank(current.workflows, next.workflows, name, a) !==
-        rank(next.workflows, current.workflows, name, b)
+        rank(current.guardrails, next.guardrails, name, a) !==
+        rank(next.guardrails, current.guardrails, name, b)
       )
         fields.push('position')
       return fields
@@ -409,12 +428,12 @@ export function mapLimitRefs(graph: PolicyGraph, map: (ref: string) => string): 
 /** What an instance holds, as `toPolicyFile` needs it. Ids are mapped to names here. */
 export type PolicyState = {
   groups: { id: string; name: string; isDefault: boolean }[]
-  workflows: {
+  guardrails: {
     name: string
     description: string | null
     enabled: boolean
     groupIds: string[]
-    /** The published graph; workflows never published are left out. */
+    /** The published graph; guardrails never published are left out. */
     definition: PolicyGraph | null
   }[]
   limits: (PolicyLimit & { id: string; groupId: string | null })[]
@@ -428,7 +447,7 @@ export function groupNameOf(groups: PolicyState['groups'], id: string | null): s
   return g ? (g.isDefault ? ALL_MEMBERS : g.name) : null
 }
 
-/** An instance's current policy, in workflow and routing order. */
+/** An instance's current policy, in guardrail and routing order. */
 export function toPolicyFile(state: PolicyState): PolicyFile {
   const limitNames = new Map(
     state.limits.map((l) => [
@@ -439,7 +458,7 @@ export function toPolicyFile(state: PolicyState): PolicyFile {
   return {
     version: POLICY_FILE_VERSION,
     ...(state.signatureFeedUrl ? { signatureFeedUrl: state.signatureFeedUrl } : {}),
-    workflows: state.workflows
+    guardrails: state.guardrails
       .filter((w) => w.definition)
       .map((w) => ({
         name: w.name,
@@ -472,7 +491,7 @@ export function resolveGroups(
     if (g.isDefault) ids.set(ALL_MEMBERS, g.id)
   }
   const used = [
-    ...file.workflows.flatMap((w) => w.groups),
+    ...file.guardrails.flatMap((w) => w.groups),
     ...file.limits.map((l) => l.group).filter((g): g is string => g !== null),
   ]
   return { ids, unknown: [...new Set(used.filter((n) => !ids.has(n)))] }

@@ -1,9 +1,9 @@
 import {
-  type ActiveWorkflow,
+  type ActiveGuardrail,
   type CombinedResult,
   type EngineDeps,
   type EvaluationInput,
-  evaluateWorkflows,
+  evaluateGuardrails,
   skipLeavesGap,
 } from '@acl/shared'
 import type { TrafficTemplate } from './catalog.ts'
@@ -35,7 +35,7 @@ export function classify(expected: TrafficTemplate['expected'], actual: Actual):
 
 export async function replayTraffic(
   events: TrafficTemplate[],
-  workflows: ActiveWorkflow[],
+  guardrails: ActiveGuardrail[],
   persona: Persona,
   onProgress?: (completed: number) => void,
   /** Signatures and trained models, as the gateway would load them. Never a judge. */
@@ -53,7 +53,7 @@ export async function replayTraffic(
           model: persona.model || entry.input.model,
         }
         // No judge stub: an unavailable judge must never be reported as a measured detection.
-        const result = await evaluateWorkflows(workflows, input, deps)
+        const result = await evaluateGuardrails(guardrails, input, deps)
         // A check skipped because it does not apply to the stage is not a missing measurement.
         const incomplete = result.checks.some(
           (check) => check.outcome === 'error' || skipLeavesGap(check),

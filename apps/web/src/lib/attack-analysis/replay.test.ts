@@ -1,4 +1,4 @@
-import { type ActiveWorkflow, defaultWorkflow } from '@acl/shared'
+import { type ActiveGuardrail, defaultGuardrail } from '@acl/shared'
 import { describe, expect, it } from 'vitest'
 import { trafficTemplates } from './catalog.ts'
 import { classify, decisionMatrix, type Persona, replayTraffic } from './replay.ts'
@@ -10,12 +10,12 @@ const persona: Persona = {
   resourceIds: [],
   model: 'test-model',
 }
-const workflow: ActiveWorkflow = {
+const guardrail: ActiveGuardrail = {
   id: 'wf-test',
   name: 'Test policy',
   version: 7,
   groupIds: [],
-  definition: defaultWorkflow,
+  definition: defaultGuardrail,
 }
 
 describe('attack analysis', () => {
@@ -31,9 +31,9 @@ describe('attack analysis', () => {
       { ...trafficTemplates[0]!, input: { ...trafficTemplates[0]!.input, text: 'rm -rf /' } },
       trafficTemplates[1]!,
     ]
-    const results = await replayTraffic(events, [workflow], persona)
+    const results = await replayTraffic(events, [guardrail], persona)
     expect(results.map((r) => r.actual)).toEqual(['block', 'allow'])
-    expect(results[0]!.result.workflows[0]!.version).toBe(7)
+    expect(results[0]!.result.guardrails[0]!.version).toBe(7)
     expect(results[0]!.input.groupIds).toEqual(['engineering'])
     const matrix = decisionMatrix(results)
     expect(matrix[0]!.block).toBe(1)
@@ -46,16 +46,16 @@ describe('attack analysis', () => {
   it('reports uncovered attacks as allowed and applies persona group scope', async () => {
     const results = await replayTraffic(
       [trafficTemplates[0]!],
-      [{ ...workflow, groupIds: ['finance'] }],
+      [{ ...guardrail, groupIds: ['finance'] }],
       persona,
     )
     expect(results[0]!.actual).toBe('allow')
     expect(results[0]!.outcome).toBe('missed')
-    expect(results[0]!.result.workflows).toEqual([])
+    expect(results[0]!.result.guardrails).toEqual([])
   })
 
   it('keeps a missing judge inconclusive even when its error branch blocks', async () => {
-    const definition = structuredClone(defaultWorkflow)
+    const definition = structuredClone(defaultGuardrail)
     const keywords = definition.nodes.find(
       (n) => n.type === 'check' && n.check.type === 'keywords',
     )!
@@ -70,7 +70,7 @@ describe('attack analysis', () => {
     }
     const results = await replayTraffic(
       [trafficTemplates[0]!],
-      [{ ...workflow, definition }],
+      [{ ...guardrail, definition }],
       persona,
     )
     expect(results[0]!.result.checks.some((c) => c.outcome === 'error')).toBe(true)
@@ -79,8 +79,8 @@ describe('attack analysis', () => {
   })
 
   it('does not mutate fixture inputs or the policy snapshot', async () => {
-    const before = JSON.stringify({ trafficTemplates, workflow, persona })
-    await replayTraffic(trafficTemplates, [workflow], persona)
-    expect(JSON.stringify({ trafficTemplates, workflow, persona })).toBe(before)
+    const before = JSON.stringify({ trafficTemplates, guardrail, persona })
+    await replayTraffic(trafficTemplates, [guardrail], persona)
+    expect(JSON.stringify({ trafficTemplates, guardrail, persona })).toBe(before)
   })
 })

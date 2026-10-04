@@ -2,7 +2,7 @@ import {
   type EngineDeps,
   type EvaluationInput,
   type EventKind,
-  evaluateWorkflows,
+  evaluateGuardrails,
 } from '@acl/shared'
 import type { AnalysisRun } from './run-types.ts'
 
@@ -44,11 +44,11 @@ const MAX_REPEATS = 50
  * its own CPU work.
  */
 export async function benchmarkRun(
-  run: Pick<AnalysisRun, 'workflows' | 'results'>,
+  run: Pick<AnalysisRun, 'guardrails' | 'results'>,
   deps: Pick<EngineDeps, 'signatures' | 'models'>,
   onProgress: (done: number) => void = () => {},
 ): Promise<Timing[]> {
-  const decide = (input: EvaluationInput) => evaluateWorkflows(run.workflows, input, deps)
+  const decide = (input: EvaluationInput) => evaluateGuardrails(run.guardrails, input, deps)
   // Let the engine compile its patterns and the JIT warm up before anything is timed.
   for (const { input } of run.results.slice(0, 50)) await decide(input)
   const timings: Timing[] = []

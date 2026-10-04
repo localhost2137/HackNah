@@ -1,5 +1,5 @@
 import type { ApprovalMethod, EventKind } from './events.ts'
-import type { CheckConfig, Condition, PolicyGraph, PolicyNode } from './workflow.ts'
+import type { CheckConfig, Condition, PolicyGraph, PolicyNode } from './guardrail.ts'
 
 /** A trained model and the datasets it was trained on, as a Trained model block stores them. */
 export type LearnedRef = { id: string; datasets: string[] }

@@ -3553,7 +3553,7 @@ declare class MessageChannel {
 interface MessagePortPostMessageOptions {
     transfer?: any[];
 }
-type LoopbackForExport<T extends (new (...args: any[]) => Rpc.EntrypointBranded) | ExportedHandler<any, any, any> | undefined = undefined> = T extends new (...args: any[]) => Rpc.WorkerEntrypointBranded ? LoopbackServiceStub<InstanceType<T>> : T extends new (...args: any[]) => Rpc.DurableObjectBranded ? LoopbackDurableObjectClass<InstanceType<T>> : T extends new (...args: any[]) => CloudflareWorkersModule.WorkflowEntrypoint<any, infer Params> ? Workflow<Params> : T extends ExportedHandler<any, any, any> ? LoopbackServiceStub<undefined> : undefined;
+type LoopbackForExport<T extends (new (...args: any[]) => Rpc.EntrypointBranded) | ExportedHandler<any, any, any> | undefined = undefined> = T extends new (...args: any[]) => Rpc.WorkerEntrypointBranded ? LoopbackServiceStub<InstanceType<T>> : T extends new (...args: any[]) => Rpc.DurableObjectBranded ? LoopbackDurableObjectClass<InstanceType<T>> : T extends new (...args: any[]) => CloudflareWorkersModule.GuardrailEntrypoint<any, infer Params> ? Guardrail<Params> : T extends ExportedHandler<any, any, any> ? LoopbackServiceStub<undefined> : undefined;
 type LoopbackServiceStub<T extends Rpc.WorkerEntrypointBranded | undefined = undefined> = Fetcher<T> & (T extends CloudflareWorkersModule.WorkerEntrypoint<any, infer Props> ? (opts: {
     props?: Props;
 }) => Fetcher<T> : (opts: {
@@ -14201,7 +14201,7 @@ declare namespace Rpc {
     export const __RPC_TARGET_BRAND: '__RPC_TARGET_BRAND';
     export const __WORKER_ENTRYPOINT_BRAND: '__WORKER_ENTRYPOINT_BRAND';
     export const __DURABLE_OBJECT_BRAND: '__DURABLE_OBJECT_BRAND';
-    export const __WORKFLOW_ENTRYPOINT_BRAND: '__WORKFLOW_ENTRYPOINT_BRAND';
+    export const __GUARDRAIL_ENTRYPOINT_BRAND: '__GUARDRAIL_ENTRYPOINT_BRAND';
     export interface RpcTargetBranded {
         [__RPC_TARGET_BRAND]: never;
     }
@@ -14211,10 +14211,10 @@ declare namespace Rpc {
     export interface DurableObjectBranded {
         [__DURABLE_OBJECT_BRAND]: never;
     }
-    export interface WorkflowEntrypointBranded {
-        [__WORKFLOW_ENTRYPOINT_BRAND]: never;
+    export interface GuardrailEntrypointBranded {
+        [__GUARDRAIL_ENTRYPOINT_BRAND]: never;
     }
-    export type EntrypointBranded = WorkerEntrypointBranded | DurableObjectBranded | WorkflowEntrypointBranded;
+    export type EntrypointBranded = WorkerEntrypointBranded | DurableObjectBranded | GuardrailEntrypointBranded;
     // Types that can be used through `Stub`s
     export type Stubable = RpcTargetBranded | ((...args: any[]) => any);
     // Types that can be passed over RPC
@@ -14368,68 +14368,68 @@ declare namespace CloudflareWorkersModule {
         webSocketClose?(ws: WebSocket, code: number, reason: string, wasClean: boolean): void | Promise<void>;
         webSocketError?(ws: WebSocket, error: unknown): void | Promise<void>;
     }
-    export type WorkflowDurationLabel = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
-    export type WorkflowSleepDuration = `${number} ${WorkflowDurationLabel}${'s' | ''}` | number;
-    export type WorkflowDelayDuration = WorkflowSleepDuration;
-    export type WorkflowDynamicDelayContext = {
-        ctx: WorkflowStepContext<WorkflowDelayFunction>;
+    export type GuardrailDurationLabel = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
+    export type GuardrailSleepDuration = `${number} ${GuardrailDurationLabel}${'s' | ''}` | number;
+    export type GuardrailDelayDuration = GuardrailSleepDuration;
+    export type GuardrailDynamicDelayContext = {
+        ctx: GuardrailStepContext<GuardrailDelayFunction>;
         error: Error;
     };
-    export type WorkflowDelayFunction = (input: WorkflowDynamicDelayContext) => WorkflowDelayDuration | Promise<WorkflowDelayDuration>;
-    export type WorkflowTimeoutDuration = WorkflowSleepDuration;
-    export type WorkflowRetentionDuration = WorkflowSleepDuration;
-    export type WorkflowBackoff = 'constant' | 'linear' | 'exponential';
-    export type WorkflowStepSensitivity = 'output';
-    export type WorkflowStepConfig = {
+    export type GuardrailDelayFunction = (input: GuardrailDynamicDelayContext) => GuardrailDelayDuration | Promise<GuardrailDelayDuration>;
+    export type GuardrailTimeoutDuration = GuardrailSleepDuration;
+    export type GuardrailRetentionDuration = GuardrailSleepDuration;
+    export type GuardrailBackoff = 'constant' | 'linear' | 'exponential';
+    export type GuardrailStepSensitivity = 'output';
+    export type GuardrailStepConfig = {
         retries?: {
             limit: number;
-            delay: WorkflowDelayDuration | number | WorkflowDelayFunction;
-            backoff?: WorkflowBackoff;
+            delay: GuardrailDelayDuration | number | GuardrailDelayFunction;
+            backoff?: GuardrailBackoff;
         };
-        timeout?: WorkflowTimeoutDuration | number;
-        sensitive?: WorkflowStepSensitivity;
+        timeout?: GuardrailTimeoutDuration | number;
+        sensitive?: GuardrailStepSensitivity;
     };
-    // Internal discriminators used only for `WorkflowStep.do` overload
-    // resolution. They mirror `WorkflowStepConfig` but pin `retries.delay` to a
+    // Internal discriminators used only for `GuardrailStep.do` overload
+    // resolution. They mirror `GuardrailStepConfig` but pin `retries.delay` to a
     // single kind so the callback context can be narrowed based on the shape of
     // the config argument (rather than on an inferred type parameter, which is
     // lost when the caller supplies an explicit return-type argument). Not
     // exported: they must not widen the public type surface.
-    type WorkflowStepConfigWithStaticDelay = Omit<WorkflowStepConfig, 'retries'> & {
+    type GuardrailStepConfigWithStaticDelay = Omit<GuardrailStepConfig, 'retries'> & {
         retries?: {
             limit: number;
-            delay: WorkflowDelayDuration | number;
-            backoff?: WorkflowBackoff;
+            delay: GuardrailDelayDuration | number;
+            backoff?: GuardrailBackoff;
         };
     };
-    type WorkflowStepConfigWithDelayFunction = Omit<WorkflowStepConfig, 'retries'> & {
+    type GuardrailStepConfigWithDelayFunction = Omit<GuardrailStepConfig, 'retries'> & {
         retries: {
             limit: number;
-            delay: WorkflowDelayFunction;
-            backoff?: WorkflowBackoff;
+            delay: GuardrailDelayFunction;
+            backoff?: GuardrailBackoff;
         };
     };
-    export type WorkflowStepRollbackConfig = Pick<WorkflowStepConfig, 'retries' | 'timeout'>;
-    export type WorkflowCronSchedule = {
+    export type GuardrailStepRollbackConfig = Pick<GuardrailStepConfig, 'retries' | 'timeout'>;
+    export type GuardrailCronSchedule = {
         /** Cron expression that triggered this event. */
         cron: string;
         /** Timestamp of the scheduled trigger, in milliseconds since the Unix epoch. */
         scheduledTime: number;
     };
-    export type WorkflowEvent<T> = {
+    export type GuardrailEvent<T> = {
         payload: Readonly<T>;
         timestamp: Date;
         instanceId: string;
-        workflowName: string;
-        schedule?: WorkflowCronSchedule;
+        guardrailName: string;
+        schedule?: GuardrailCronSchedule;
     };
-    export type WorkflowStepEvent<T> = {
+    export type GuardrailStepEvent<T> = {
         payload: Readonly<T>;
         timestamp: Date;
         type: string;
-        sensitive?: WorkflowStepSensitivity;
+        sensitive?: GuardrailStepSensitivity;
     };
-    export type WorkflowStepContext<Delay = WorkflowDelayDuration | number> = {
+    export type GuardrailStepContext<Delay = GuardrailDelayDuration | number> = {
         step: {
             name: string;
             count: number;
@@ -14438,57 +14438,57 @@ declare namespace CloudflareWorkersModule {
         config: {
             retries?: {
                 limit: number;
-                backoff?: WorkflowBackoff;
-            } & (Delay extends WorkflowDelayFunction ? {} : {
-                delay: WorkflowDelayDuration | number;
+                backoff?: GuardrailBackoff;
+            } & (Delay extends GuardrailDelayFunction ? {} : {
+                delay: GuardrailDelayDuration | number;
             });
-            timeout?: WorkflowTimeoutDuration | number;
-            sensitive?: WorkflowStepSensitivity;
+            timeout?: GuardrailTimeoutDuration | number;
+            sensitive?: GuardrailStepSensitivity;
         };
     };
     // The rollback handler receives the step context, so it mirrors the same
     // delay discriminant as the step callback: when the step was configured with
     // a dynamic delay function the resolved `config.retries.delay` is omitted,
-    // otherwise it is present. `Delay` is threaded from the `WorkflowStep.do`
+    // otherwise it is present. `Delay` is threaded from the `GuardrailStep.do`
     // overload that matched the step config.
-    export type WorkflowRollbackContext<T = unknown, Delay = WorkflowDelayDuration | number> = {
-        ctx: WorkflowStepContext<Delay>;
+    export type GuardrailRollbackContext<T = unknown, Delay = GuardrailDelayDuration | number> = {
+        ctx: GuardrailStepContext<Delay>;
         error: Error;
         output: T | undefined;
         /** @deprecated Use `ctx.step.name` and `ctx.step.count` instead. */
         stepName: string;
     };
-    export type WorkflowRollbackHandler<T = unknown, Delay = WorkflowDelayDuration | number> = (ctx: WorkflowRollbackContext<T, Delay>) => Promise<void>;
-    export type WorkflowStepRollbackOptions<T = unknown, Delay = WorkflowDelayDuration | number> = {
-        rollback: WorkflowRollbackHandler<T, Delay>;
-        rollbackConfig?: WorkflowStepRollbackConfig;
+    export type GuardrailRollbackHandler<T = unknown, Delay = GuardrailDelayDuration | number> = (ctx: GuardrailRollbackContext<T, Delay>) => Promise<void>;
+    export type GuardrailStepRollbackOptions<T = unknown, Delay = GuardrailDelayDuration | number> = {
+        rollback: GuardrailRollbackHandler<T, Delay>;
+        rollbackConfig?: GuardrailStepRollbackConfig;
     };
-    export abstract class WorkflowStep {
-        do<T extends Rpc.Serializable<T>>(name: string, callback: (ctx: WorkflowStepContext) => Promise<T>, rollbackOptions?: WorkflowStepRollbackOptions<T>): Promise<T>;
+    export abstract class GuardrailStep {
+        do<T extends Rpc.Serializable<T>>(name: string, callback: (ctx: GuardrailStepContext) => Promise<T>, rollbackOptions?: GuardrailStepRollbackOptions<T>): Promise<T>;
         // The config overloads discriminate on the shape of `config.retries.delay`
         // so the callback context reflects whether the resolved delay is present
         // (static delay) or omitted (dynamic delay function). Each has a single
         // type parameter, so an explicit return-type argument (`do<T>(...)`) still
-        // resolves here. ORDERING IS LOAD-BEARING: the broad `WorkflowStepConfig`
+        // resolves here. ORDERING IS LOAD-BEARING: the broad `GuardrailStepConfig`
         // fallback MUST remain last, otherwise it shadows the discriminating
         // overloads and narrowing is silently lost.
-        do<T extends Rpc.Serializable<T>>(name: string, config: WorkflowStepConfigWithDelayFunction, callback: (ctx: WorkflowStepContext<WorkflowDelayFunction>) => Promise<T>, rollbackOptions?: WorkflowStepRollbackOptions<T, WorkflowDelayFunction>): Promise<T>;
-        do<T extends Rpc.Serializable<T>>(name: string, config: WorkflowStepConfigWithStaticDelay, callback: (ctx: WorkflowStepContext<WorkflowDelayDuration | number>) => Promise<T>, rollbackOptions?: WorkflowStepRollbackOptions<T, WorkflowDelayDuration | number>): Promise<T>;
-        do<T extends Rpc.Serializable<T>>(name: string, config: WorkflowStepConfig, callback: (ctx: WorkflowStepContext) => Promise<T>, rollbackOptions?: WorkflowStepRollbackOptions<T>): Promise<T>;
-        sleep: (name: string, duration: WorkflowSleepDuration) => Promise<void>;
+        do<T extends Rpc.Serializable<T>>(name: string, config: GuardrailStepConfigWithDelayFunction, callback: (ctx: GuardrailStepContext<GuardrailDelayFunction>) => Promise<T>, rollbackOptions?: GuardrailStepRollbackOptions<T, GuardrailDelayFunction>): Promise<T>;
+        do<T extends Rpc.Serializable<T>>(name: string, config: GuardrailStepConfigWithStaticDelay, callback: (ctx: GuardrailStepContext<GuardrailDelayDuration | number>) => Promise<T>, rollbackOptions?: GuardrailStepRollbackOptions<T, GuardrailDelayDuration | number>): Promise<T>;
+        do<T extends Rpc.Serializable<T>>(name: string, config: GuardrailStepConfig, callback: (ctx: GuardrailStepContext) => Promise<T>, rollbackOptions?: GuardrailStepRollbackOptions<T>): Promise<T>;
+        sleep: (name: string, duration: GuardrailSleepDuration) => Promise<void>;
         sleepUntil: (name: string, timestamp: Date | number) => Promise<void>;
         waitForEvent<T extends Rpc.Serializable<T>>(name: string, options: {
             type: string;
-            timeout?: WorkflowTimeoutDuration | number;
-        }): Promise<WorkflowStepEvent<T>>;
+            timeout?: GuardrailTimeoutDuration | number;
+        }): Promise<GuardrailStepEvent<T>>;
     }
-    export type WorkflowInstanceStatus = 'queued' | 'running' | 'paused' | 'errored' | 'terminated' | 'complete' | 'waiting' | 'waitingForPause' | 'unknown';
-    export abstract class WorkflowEntrypoint<Env = unknown, T extends Rpc.Serializable<T> | unknown = unknown> implements Rpc.WorkflowEntrypointBranded {
-        [Rpc.__WORKFLOW_ENTRYPOINT_BRAND]: never;
+    export type GuardrailInstanceStatus = 'queued' | 'running' | 'paused' | 'errored' | 'terminated' | 'complete' | 'waiting' | 'waitingForPause' | 'unknown';
+    export abstract class GuardrailEntrypoint<Env = unknown, T extends Rpc.Serializable<T> | unknown = unknown> implements Rpc.GuardrailEntrypointBranded {
+        [Rpc.__GUARDRAIL_ENTRYPOINT_BRAND]: never;
         protected ctx: ExecutionContext;
         protected env: Env;
         constructor(ctx: ExecutionContext, env: Env);
-        run(event: Readonly<WorkflowEvent<T>>, step: WorkflowStep): Promise<unknown>;
+        run(event: Readonly<GuardrailEvent<T>>, step: GuardrailStep): Promise<unknown>;
     }
     export function waitUntil(promise: Promise<unknown>): void;
     export function withEnv(newEnv: unknown, fn: () => unknown): unknown;
@@ -15907,45 +15907,45 @@ interface DispatchNamespace {
         [key: string]: any;
     }, options?: DynamicDispatchOptions): Fetcher;
 }
-declare module 'cloudflare:workflows' {
+declare module 'cloudflare:guardrails' {
     /**
      * NonRetryableError allows for a user to throw a fatal error
-     * that makes a Workflow instance fail immediately without triggering a retry
+     * that makes a Guardrail instance fail immediately without triggering a retry
      */
     export class NonRetryableError extends Error {
         public constructor(message: string, name?: string);
     }
 }
-declare abstract class Workflow<PARAMS = unknown> {
+declare abstract class Guardrail<PARAMS = unknown> {
     /**
-     * Get a handle to an existing instance of the Workflow.
-     * @param id Id for the instance of this Workflow
+     * Get a handle to an existing instance of the Guardrail.
+     * @param id Id for the instance of this Guardrail
      * @returns A promise that resolves with a handle for the Instance
      */
-    public get(id: string): Promise<WorkflowInstance>;
+    public get(id: string): Promise<GuardrailInstance>;
     /**
      * Create a new instance and return a handle to it. If a provided id exists, an error will be thrown.
      * @param options Options when creating an instance including id and params
      * @returns A promise that resolves with a handle for the Instance
      */
-    public create(options?: WorkflowInstanceCreateOptions<PARAMS>): Promise<WorkflowInstance>;
+    public create(options?: GuardrailInstanceCreateOptions<PARAMS>): Promise<GuardrailInstance>;
     /**
      * Create a batch of instances and return handle for all of them. If a provided id exists, an error will be thrown.
      * `createBatch` is limited at 100 instances at a time or when the RPC limit for the batch (1MiB) is reached.
      * @param batch List of Options when creating an instance including name and params
      * @returns A promise that resolves with a list of handles for the created instances.
      */
-    public createBatch(batch: WorkflowInstanceCreateOptions<PARAMS>[]): Promise<WorkflowInstance[]>;
+    public createBatch(batch: GuardrailInstanceCreateOptions<PARAMS>[]): Promise<GuardrailInstance[]>;
     /**
-     * Delete a batch of Workflow instances and their stored state.
+     * Delete a batch of Guardrail instances and their stored state.
      * `deleteBatch` is limited to 100 instances at a time. Duplicate IDs are deleted once.
      * The result contains one entry for each input position; IDs that do not exist are returned as per-instance errors.
-     * @param instanceIds IDs of the Workflow instances to delete
+     * @param instanceIds IDs of the Guardrail instances to delete
      * @returns A promise that resolves with the successfully deleted instances and any per-instance errors.
      */
-    public deleteBatch(instanceIds: string[]): Promise<WorkflowBatchDeleteResult>;
+    public deleteBatch(instanceIds: string[]): Promise<GuardrailBatchDeleteResult>;
 }
-type WorkflowBatchDeleteResult = {
+type GuardrailBatchDeleteResult = {
     deleted: {
         id: string;
     }[];
@@ -15955,32 +15955,32 @@ type WorkflowBatchDeleteResult = {
         message: string;
     }[];
 };
-type WorkflowDurationLabel = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
-type WorkflowSleepDuration = `${number} ${WorkflowDurationLabel}${'s' | ''}` | number;
-type WorkflowRetentionDuration = WorkflowSleepDuration;
-/** Geographic regions supported when creating a Workflow instance.
+type GuardrailDurationLabel = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
+type GuardrailSleepDuration = `${number} ${GuardrailDurationLabel}${'s' | ''}` | number;
+type GuardrailRetentionDuration = GuardrailSleepDuration;
+/** Geographic regions supported when creating a Guardrail instance.
  * Location hints are best-effort placement preferences. */
-type WorkflowInstanceLocationHint = 'wnam' | 'enam' | 'sam' | 'weur' | 'eeur' | 'apac' | 'apac-ne' | 'apac-se' | 'oc' | 'afr' | 'me';
-interface WorkflowInstanceCreateOptions<PARAMS = unknown> {
+type GuardrailInstanceLocationHint = 'wnam' | 'enam' | 'sam' | 'weur' | 'eeur' | 'apac' | 'apac-ne' | 'apac-se' | 'oc' | 'afr' | 'me';
+interface GuardrailInstanceCreateOptions<PARAMS = unknown> {
     /**
-     * An id for your Workflow instance. Must be unique within the Workflow.
+     * An id for your Guardrail instance. Must be unique within the Guardrail.
      */
     id?: string;
     /**
-     * The event payload the Workflow instance is triggered with
+     * The event payload the Guardrail instance is triggered with
      */
     params?: PARAMS;
     /**
-     * The retention policy for Workflow instance.
+     * The retention policy for Guardrail instance.
      * Defaults to the maximum retention period available for the owner's account.
      */
     retention?: {
-        successRetention?: WorkflowRetentionDuration;
-        errorRetention?: WorkflowRetentionDuration;
+        successRetention?: GuardrailRetentionDuration;
+        errorRetention?: GuardrailRetentionDuration;
     };
-    /** A best-effort geographic placement preference for the Workflow instance.
-     * See `WorkflowInstanceLocationHint` for supported regions. */
-    locationHint?: WorkflowInstanceLocationHint;
+    /** A best-effort geographic placement preference for the Guardrail instance.
+     * See `GuardrailInstanceLocationHint` for supported regions. */
+    locationHint?: GuardrailInstanceLocationHint;
 }
 type InstanceStatus = {
     status: 'queued' // means that instance is waiting to be started (see concurrency limits)
@@ -15994,25 +15994,25 @@ type InstanceStatus = {
     };
     output?: unknown;
 };
-interface WorkflowError {
+interface GuardrailError {
     code?: number;
     message: string;
 }
-interface WorkflowInstanceTerminateOptions {
+interface GuardrailInstanceTerminateOptions {
     /**
      * If true, run registered rollback handlers before terminating the instance.
      * Only steps that registered rollback handlers are rolled back.
      */
     rollback?: boolean;
 }
-interface WorkflowInstanceRestartOptions {
+interface GuardrailInstanceRestartOptions {
     /**
      * Restart from a specific step. If omitted, the instance restarts from the beginning.
      * The step must exist in the instance's execution history.
      */
     from?: {
         /**
-         * The step name as defined in your workflow code.
+         * The step name as defined in your guardrail code.
          */
         name: string;
         /**
@@ -16026,45 +16026,45 @@ interface WorkflowInstanceRestartOptions {
         type?: 'do' | 'sleep' | 'waitForEvent';
     };
 }
-/** An event emitted by a Workflow instance. */
-type WorkflowInstanceEvent = {
+/** An event emitted by a Guardrail instance. */
+type GuardrailInstanceEvent = {
     instanceId: string;
     eventId: number;
     timestamp: number;
 } & ({
-    type: 'workflow_queued';
+    type: 'guardrail_queued';
 } | {
-    type: 'workflow_started';
+    type: 'guardrail_started';
     params?: unknown;
 } | {
-    type: 'workflow_running';
+    type: 'guardrail_running';
 } | {
-    type: 'workflow_paused';
+    type: 'guardrail_paused';
 } | {
-    type: 'workflow_waiting_for_pause';
+    type: 'guardrail_waiting_for_pause';
 } | {
-    type: 'workflow_waiting';
+    type: 'guardrail_waiting';
 } | {
-    type: 'workflow_completed';
+    type: 'guardrail_completed';
     output?: unknown;
 } | {
-    type: 'workflow_errored';
+    type: 'guardrail_errored';
     error: {
         name: string;
         message: string;
     };
 } | {
-    type: 'workflow_terminated';
+    type: 'guardrail_terminated';
 } | {
     type: 'step_started';
     stepName: string;
     config?: {
         retries: {
             limit: number;
-            delay: WorkflowSleepDuration | '[dynamic]';
+            delay: GuardrailSleepDuration | '[dynamic]';
             backoff?: 'constant' | 'linear' | 'exponential';
         };
-        timeout: WorkflowSleepDuration;
+        timeout: GuardrailSleepDuration;
         sensitive?: 'output';
     };
 } | {
@@ -16116,10 +16116,10 @@ type WorkflowInstanceEvent = {
     config?: {
         retries: {
             limit: number;
-            delay: WorkflowSleepDuration | '[dynamic]';
+            delay: GuardrailSleepDuration | '[dynamic]';
             backoff?: 'constant' | 'linear' | 'exponential';
         };
-        timeout: WorkflowSleepDuration;
+        timeout: GuardrailSleepDuration;
         sensitive?: 'output';
     };
 } | {
@@ -16154,19 +16154,19 @@ type WorkflowInstanceEvent = {
 } | {
     type: 'rollback_errored';
 });
-type WorkflowInstanceEventType = WorkflowInstanceEvent['type'];
-/** Options available for a Workflow instance subscription. */
-type WorkflowInstanceSubscribeOptions = {
+type GuardrailInstanceEventType = GuardrailInstanceEvent['type'];
+/** Options available for a Guardrail instance subscription. */
+type GuardrailInstanceSubscribeOptions = {
     /** The value from which to start the subscription. */
     cursor?: number;
     /** The event types to include in the subscription. */
-    filter?: WorkflowInstanceEventType[];
+    filter?: GuardrailInstanceEventType[];
 };
-/** A disposable subscription to a Workflow instance's events. */
-interface WorkflowInstanceSubscription extends Disposable {
-    next(): Promise<IteratorResult<WorkflowInstanceEvent, void>>;
+/** A disposable subscription to a Guardrail instance's events. */
+interface GuardrailInstanceSubscription extends Disposable {
+    next(): Promise<IteratorResult<GuardrailInstanceEvent, void>>;
 }
-declare abstract class WorkflowInstance {
+declare abstract class GuardrailInstance {
     public id: string;
     /**
      * Pause the instance.
@@ -16180,13 +16180,13 @@ declare abstract class WorkflowInstance {
      * Terminate the instance. If it is errored, terminated or complete, an error will be thrown.
      * @param options Options for termination, including whether registered rollback handlers should run.
      */
-    public terminate(options?: WorkflowInstanceTerminateOptions): Promise<void>;
+    public terminate(options?: GuardrailInstanceTerminateOptions): Promise<void>;
     /**
      * Restart the instance. Optionally restart from a specific step, preserving
      * cached results for all steps before it.
      * @param options Options for the restart, including an optional step to restart from.
      */
-    public restart(options?: WorkflowInstanceRestartOptions): Promise<void>;
+    public restart(options?: GuardrailInstanceRestartOptions): Promise<void>;
     /**
      * Delete the instance and its stored state.
      */
@@ -16205,5 +16205,5 @@ declare abstract class WorkflowInstance {
     /**
      * Subscribe to events emitted by this instance.
      */
-    public subscribe(options?: WorkflowInstanceSubscribeOptions): Promise<WorkflowInstanceSubscription>;
+    public subscribe(options?: GuardrailInstanceSubscribeOptions): Promise<GuardrailInstanceSubscription>;
 }

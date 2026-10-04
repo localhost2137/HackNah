@@ -1,5 +1,5 @@
 import { event, group, mcpServer, resource } from '@acl/db'
-import { decision, eventKind, policyEdge, policyNode, starterWorkflow } from '@acl/shared'
+import { decision, eventKind, policyEdge, policyNode, starterGuardrail } from '@acl/shared'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
 import { catalogVersion } from '../../lib/attack-analysis/catalog.ts'
@@ -11,21 +11,21 @@ import {
   runAnalysisInput,
   runAnalysisService,
 } from '../../server/attack-analysis-service.ts'
-import { exportPolicyYaml, importPolicyYaml } from '../../server/policy.ts'
 import {
-  createWorkflowInput,
-  createWorkflowService,
-  getWorkflowInput,
-  getWorkflowService,
-  listWorkflowsService,
+  createGuardrailInput,
+  createGuardrailService,
+  getGuardrailInput,
+  getGuardrailService,
+  listGuardrailsService,
   type PlatformContext,
   publishDraftInput,
   publishDraftService,
   saveDraftInput,
   saveDraftService,
-  updateWorkflowInput,
-  updateWorkflowService,
-} from '../../server/workflow-service.ts'
+  updateGuardrailInput,
+  updateGuardrailService,
+} from '../../server/guardrail-service.ts'
+import { exportPolicyYaml, importPolicyYaml } from '../../server/policy.ts'
 import type { McpTool } from '../mcp/client.ts'
 
 export type InternalContext = PlatformContext & { env: Pick<Env, 'PAYLOADS'> }
@@ -92,7 +92,7 @@ const summary = (run: AnalysisRun) => ({
 export const internalTools: Tool[] = [
   tool(
     'platform_context',
-    'Inspect Hack?Nah! groups, resources and integration IDs for workflow scopes and synthetic runs. Does not return credentials.',
+    'Inspect Hack?Nah! groups, resources and integration IDs for guardrail scopes and synthetic runs. Does not return credentials.',
     empty,
     true,
     async (_, { db, orgId, user }) => ({
@@ -113,12 +113,12 @@ export const internalTools: Tool[] = [
     }),
   ),
   tool(
-    'list_workflows',
-    'List workflow IDs, names, enabled state, group scope and published/draft versions. Use get_workflow to inspect graphs.',
+    'list_guardrails',
+    'List guardrail IDs, names, enabled state, group scope and published/draft versions. Use get_guardrail to inspect graphs.',
     empty,
     true,
     async (_, context) =>
-      (await listWorkflowsService({ context })).map(
+      (await listGuardrailsService({ context })).map(
         ({ definition: _definition, published, ...w }) => ({
           ...w,
           publishedVersion: published?.version ?? null,
@@ -126,45 +126,45 @@ export const internalTools: Tool[] = [
       ),
   ),
   tool(
-    'get_workflow',
-    'Read one workflow, its working graph, published graph and version history.',
-    getWorkflowInput.strict(),
+    'get_guardrail',
+    'Read one guardrail, its working graph, published graph and version history.',
+    getGuardrailInput.strict(),
     true,
-    (data, context) => getWorkflowService({ data, context }),
+    (data, context) => getGuardrailService({ data, context }),
   ),
   tool(
-    'workflow_schema',
-    'Get the workflow graph JSON schema and a valid starter graph before constructing or editing a draft. Condition blocks branch yes/no; publish is a separate action.',
+    'guardrail_schema',
+    'Get the guardrail graph JSON schema and a valid starter graph before constructing or editing a draft. Condition blocks branch yes/no; publish is a separate action.',
     empty,
     true,
     async () => ({
       schema: z.toJSONSchema(graphInput, { io: 'input' }),
-      starter: starterWorkflow,
+      starter: starterGuardrail,
     }),
   ),
   tool(
-    'create_workflow',
-    'Create an unpublished workflow draft, optionally copying another workflow. Returns the new workflow ID.',
-    createWorkflowInput.strict(),
+    'create_guardrail',
+    'Create an unpublished guardrail draft, optionally copying another guardrail. Returns the new guardrail ID.',
+    createGuardrailInput.strict(),
     false,
-    (data, context) => createWorkflowService({ data, context }),
+    (data, context) => createGuardrailService({ data, context }),
   ),
   tool(
-    'update_workflow',
-    'Change workflow name, description, enabled state or group scope. Changes to enabled state and scope affect production immediately and invalidate saved analysis.',
-    updateWorkflowInput.strict(),
+    'update_guardrail',
+    'Change guardrail name, description, enabled state or group scope. Changes to enabled state and scope affect production immediately and invalidate saved analysis.',
+    updateGuardrailInput.strict(),
     false,
-    (data, context) => updateWorkflowService({ data, context }),
+    (data, context) => updateGuardrailService({ data, context }),
   ),
   tool(
-    'save_workflow_draft',
-    'Save a workflow graph draft. Does not publish it. Get workflow_schema for the graph shape; saving invalidates saved analysis.',
+    'save_guardrail_draft',
+    'Save a guardrail graph draft. Does not publish it. Get guardrail_schema for the graph shape; saving invalidates saved analysis.',
     saveDraftInput.extend({ definition: graphInput }).strict(),
     false,
     (data, context) => saveDraftService({ data: saveDraftInput.parse(data), context }),
   ),
   tool(
-    'publish_workflow',
+    'publish_guardrail',
     'Validate and publish the current draft. This changes production guardrails and invalidates all saved analysis results.',
     publishDraftInput.strict(),
     false,
@@ -172,7 +172,7 @@ export const internalTools: Tool[] = [
   ),
   tool(
     'export_policy',
-    'Export current workflows, limits and model catalog as YAML, excluding stored model API credentials.',
+    'Export current guardrails, limits and model catalog as YAML, excluding stored model API credentials.',
     empty,
     true,
     async (_, { db, orgId }) => ({ yaml: await exportPolicyYaml(db, orgId) }),
@@ -187,7 +187,7 @@ export const internalTools: Tool[] = [
   ),
   tool(
     'apply_policy',
-    'Apply workflows, limits and models from YAML to production. Use preview_policy first. Merge preserves omitted entries; replace disables them. Invalidates saved analysis.',
+    'Apply guardrails, limits and models from YAML to production. Use preview_policy first. Merge preserves omitted entries; replace disables them. Invalidates saved analysis.',
     policyInput,
     false,
     (data, { db, orgId, user }) =>
@@ -263,7 +263,7 @@ export const internalTools: Tool[] = [
   ),
   tool(
     'run_analysis',
-    'Replay a dataset against current published workflows and persist results. Optional group/server/resource/model context defaults to the default groups and dataset values. Returns counts and a run ID; use get_analysis_run for individual results.',
+    'Replay a dataset against current published guardrails and persist results. Optional group/server/resource/model context defaults to the default groups and dataset values. Returns counts and a run ID; use get_analysis_run for individual results.',
     runAnalysisInput
       .extend({
         groupIds: runAnalysisInput.shape.groupIds.default([]),

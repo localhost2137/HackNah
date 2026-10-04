@@ -3,9 +3,9 @@ import type {
   Decision,
   EventKind,
   GroupPermissions,
+  GuardrailRef,
   LimitRule,
   PolicyGraph,
-  WorkflowRef,
 } from '@acl/shared'
 import { sql } from 'drizzle-orm'
 import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
@@ -260,7 +260,7 @@ export const event = sqliteTable(
     decision: text().$type<Decision>().notNull(),
     checks: emptyList<CheckResult>(),
     riskScore: real().notNull().default(0),
-    workflows: emptyList<WorkflowRef>(),
+    guardrails: emptyList<GuardrailRef>(),
     inputTokens: integer(),
     outputTokens: integer(),
     cacheReadTokens: integer(),
@@ -315,11 +315,11 @@ export const approval = sqliteTable(
 // ---------------------------------------------------------------------------
 
 /**
- * A named policy graph. Every enabled workflow whose trigger matches a request and whose groups
+ * A named policy graph. Every enabled guardrail whose trigger matches a request and whose groups
  * include the user runs; the strictest outcome wins.
  */
-export const workflow = sqliteTable(
-  'workflow',
+export const guardrail = sqliteTable(
+  'guardrail',
   {
     id: text().primaryKey(),
     orgId: text().notNull(),
@@ -328,23 +328,23 @@ export const workflow = sqliteTable(
     enabled: bool().notNull().default(true),
     /** Display order, and the order steps show up in an event. */
     position: integer().notNull().default(0),
-    /** Groups whose members this workflow runs for. Empty means every member. */
+    /** Groups whose members this guardrail runs for. Empty means every member. */
     groupIds: emptyList<string>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index('workflow_org_idx').on(t.orgId)],
+  (t) => [index('guardrail_org_idx').on(t.orgId)],
 )
 
-/** Append-only versions of one workflow. Its highest published version is active. */
-export const workflowVersion = sqliteTable(
-  'workflow_version',
+/** Append-only versions of one guardrail. Its highest published version is active. */
+export const guardrailVersion = sqliteTable(
+  'guardrail_version',
   {
     id: text().primaryKey(),
     orgId: text().notNull(),
-    workflowId: text()
+    guardrailId: text()
       .notNull()
-      .references(() => workflow.id, { onDelete: 'cascade' }),
+      .references(() => guardrail.id, { onDelete: 'cascade' }),
     version: integer().notNull(),
     definition: json<PolicyGraph>().notNull(),
     status: text({ enum: ['draft', 'published'] }).notNull(),
@@ -352,7 +352,7 @@ export const workflowVersion = sqliteTable(
     createdBy: text(),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('workflow_version_uq').on(t.workflowId, t.version)],
+  (t) => [uniqueIndex('guardrail_version_uq').on(t.guardrailId, t.version)],
 )
 
 /** Limits page: request rates, concurrency and budgets. The table keeps its original name. */

@@ -1,4 +1,4 @@
-import { defaultWorkflow } from '@acl/shared'
+import { defaultGuardrail } from '@acl/shared'
 import { describe, expect, it } from 'vitest'
 import { benchmarkRun, latencyStats, percentile } from './benchmark.ts'
 import { base } from './catalog.ts'
@@ -20,7 +20,9 @@ describe('latency statistics', () => {
     }))
     const timings = await benchmarkRun(
       {
-        workflows: [{ id: 'w', name: 'W', version: 1, groupIds: [], definition: defaultWorkflow }],
+        guardrails: [
+          { id: 'w', name: 'W', version: 1, groupIds: [], definition: defaultGuardrail },
+        ],
         results: results as never,
       },
       {},

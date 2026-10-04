@@ -1,8 +1,8 @@
-import { type BlockId, blocks, defaultWorkflow, type PolicyGraph, palette } from '@acl/shared'
+import { type BlockId, blocks, defaultGuardrail, type PolicyGraph, palette } from '@acl/shared'
 import { describe, expect, it } from 'vitest'
 import { recommendSteps } from './recommendations.ts'
 
-const graph = () => structuredClone(defaultWorkflow)
+const graph = () => structuredClone(defaultGuardrail)
 const find = (g: PolicyGraph, source: string, handle: string, id: BlockId) =>
   recommendSteps(g, source, handle).find((s) => s.block.id === id)!
 const recommended = (g: PolicyGraph, source: string, handle: string) =>

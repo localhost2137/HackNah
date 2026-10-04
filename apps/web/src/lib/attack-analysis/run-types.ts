@@ -1,4 +1,4 @@
-import type { ActiveWorkflow } from '@acl/shared'
+import type { ActiveGuardrail } from '@acl/shared'
 import type { EventResult, Persona } from './replay.ts'
 
 export type AnalysisRun = {
@@ -9,7 +9,7 @@ export type AnalysisRun = {
   catalogVersion: string
   persona: Persona
   groupNames: string[]
-  workflows: ActiveWorkflow[]
+  guardrails: ActiveGuardrail[]
   results: EventResult[]
 }
 

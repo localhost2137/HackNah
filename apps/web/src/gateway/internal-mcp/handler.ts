@@ -4,11 +4,11 @@ import { audit } from '../../server/audit.ts'
 import { type AppContext, clientInfo } from '../context.ts'
 import { userGroupIds } from '../lib/access.ts'
 import { recordEvent } from '../lib/events.ts'
+import { invalidatePolicyCaches, loadLimits } from '../lib/guardrail.ts'
 import { checkLimits } from '../lib/limits.ts'
 import { invalidateModelCache } from '../lib/models.ts'
 import { runPipeline } from '../lib/pipeline.ts'
 import type { ResolvedSession } from '../lib/session.ts'
-import { invalidatePolicyCaches, loadLimits } from '../lib/workflow.ts'
 import { canManagePlatform } from './access.ts'
 import { findInternalTool, internalTools } from './tools.ts'
 
@@ -53,7 +53,7 @@ export async function callInternalTool(
     decision: 'allow',
     checks: [],
     riskScore: 0,
-    workflows: [],
+    guardrails: [],
     inputTokens: null,
     outputTokens: null,
     latencyMs: 0,
@@ -118,7 +118,7 @@ export async function callInternalTool(
     entry.checks = [...entry.checks, ...policy.checks]
     entry.decision = policy.decision
     entry.riskScore = policy.riskScore
-    entry.workflows = policy.workflows
+    entry.guardrails = policy.guardrails
     if (policy.decision === 'block' || policy.decision === 'declined') {
       outcome = 'blocked'
       return errorResult(`Blocked by Hack?Nah!: ${policy.reasons.join('; ')}`)

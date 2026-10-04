@@ -9,7 +9,7 @@
 # Compare: balanced.yaml (the recommended default) and strict.yaml.
 version: 1
 
-workflows:
+guardrails:
   # Any stage. A new device is let through but still logged; a copied token is still blocked.
   - name: Baseline
     description: Destructive commands and secrets, on every stage.
@@ -75,7 +75,7 @@ workflows:
         - { id: e4, source: redact, sourceHandle: pass, target: allow }
 
   # Destructive MCP tools: the developer confirms in Claude Code, the lightest approval level.
-  # Every other tool call ends in Skip: this workflow does not apply to it.
+  # Every other tool call ends in Skip: this guardrail does not apply to it.
   - name: Destructive MCP tools
     definition:
       fallback: allow

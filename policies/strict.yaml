@@ -9,7 +9,7 @@
 # Compare: balanced.yaml (the recommended default) and permissive.yaml.
 version: 1
 
-workflows:
+guardrails:
   # Any stage. Device posture on top of the fingerprint: FileVault and SIP must be on.
   - name: Baseline
     description: Device, OS protections, dangerous commands and all personal data, on every stage.
@@ -185,7 +185,7 @@ limits:
     windowSec: 604800
     per: group_total
     group: All members
-    action: workflow
+    action: guardrail
     warnAtPct: 70
   - name: Daily tokens per user
     measure: tokens

@@ -32,7 +32,7 @@ const keywords = (patterns) => ({
 })
 
 /** Model output: redact secrets and e-mails, block a destructive command. */
-const outputWorkflow = {
+const outputGuardrail = {
   fallback: 'block',
   nodes: [
     { id: 'start', type: 'trigger', position: at, stages: ['model_output'] },
@@ -50,7 +50,7 @@ const outputWorkflow = {
 }
 
 /** Tool results: a classic injection phrase withholds the result from the model. */
-const resultsWorkflow = {
+const resultsGuardrail = {
   fallback: 'block',
   nodes: [
     { id: 'start', type: 'trigger', position: at, stages: ['tool_result'] },
@@ -63,9 +63,9 @@ const resultsWorkflow = {
 
 /**
  * Condition blocks chained Yes into Yes (AND: model input AND a pilot model) and Skip. A pilot model is blocked; every other request ends in Skip and this
- * workflow does not count.
+ * guardrail does not count.
  */
-const pilotWorkflow = {
+const pilotGuardrail = {
   fallback: 'block',
   nodes: [
     { id: 'start', type: 'trigger', position: at, stages: [] },
@@ -172,9 +172,9 @@ export function fixturesSql(mockPort) {
     'DELETE FROM rate_limit;',
     ...Object.values(models).map((m) => insert('model', m)),
     ...limits.map((l) => insert('rate_limit', l)),
-    `DELETE FROM workflow_version WHERE workflow_id IN ('wf_e2e_out','wf_e2e_res','wf_e2e_pilot');`,
-    `DELETE FROM workflow WHERE id IN ('wf_e2e_out','wf_e2e_res','wf_e2e_pilot');`,
-    insert('workflow', {
+    `DELETE FROM guardrail_version WHERE guardrail_id IN ('wf_e2e_out','wf_e2e_res','wf_e2e_pilot');`,
+    `DELETE FROM guardrail WHERE id IN ('wf_e2e_out','wf_e2e_res','wf_e2e_pilot');`,
+    insert('guardrail', {
       id: 'wf_e2e_pilot',
       org_id: ORG,
       name: 'Pilot models',
@@ -184,16 +184,16 @@ export function fixturesSql(mockPort) {
       created_at: now,
       updated_at: now,
     }),
-    insert('workflow_version', {
+    insert('guardrail_version', {
       id: 'wfv_e2e_pilot',
       org_id: ORG,
-      workflow_id: 'wf_e2e_pilot',
+      guardrail_id: 'wf_e2e_pilot',
       version: 1,
-      definition: JSON.stringify(pilotWorkflow),
+      definition: JSON.stringify(pilotGuardrail),
       status: 'published',
       created_at: now,
     }),
-    insert('workflow', {
+    insert('guardrail', {
       id: 'wf_e2e_out',
       org_id: ORG,
       name: 'Model output',
@@ -203,7 +203,7 @@ export function fixturesSql(mockPort) {
       created_at: now,
       updated_at: now,
     }),
-    insert('workflow', {
+    insert('guardrail', {
       id: 'wf_e2e_res',
       org_id: ORG,
       name: 'Tool results',
@@ -213,21 +213,21 @@ export function fixturesSql(mockPort) {
       created_at: now,
       updated_at: now,
     }),
-    insert('workflow_version', {
+    insert('guardrail_version', {
       id: 'wfv_e2e_out',
       org_id: ORG,
-      workflow_id: 'wf_e2e_out',
+      guardrail_id: 'wf_e2e_out',
       version: 1,
-      definition: JSON.stringify(outputWorkflow),
+      definition: JSON.stringify(outputGuardrail),
       status: 'published',
       created_at: now,
     }),
-    insert('workflow_version', {
+    insert('guardrail_version', {
       id: 'wfv_e2e_res',
       org_id: ORG,
-      workflow_id: 'wf_e2e_res',
+      guardrail_id: 'wf_e2e_res',
       version: 1,
-      definition: JSON.stringify(resultsWorkflow),
+      definition: JSON.stringify(resultsGuardrail),
       status: 'published',
       created_at: now,
     }),

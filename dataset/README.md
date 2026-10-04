@@ -27,7 +27,7 @@ One JSON object per line:
 | `input` | The request the gateway sees: `kind`, `text`, `toolName`, optional `toolArguments` and `deviceStatus` |
 | `expected` | `allow`, `block`, `redact` or `pending` |
 | `mustHide` | For `redact` cases, the value that must not reach the model |
-| `control` | The workflow block expected to act |
+| `control` | The guardrail block expected to act |
 | `hard` | Benign cases written to look like attacks |
 | `source` | The incident or advisory the payload comes from, with a CVE or ATLAS id where one exists |
 | `framework` | OWASP (LLM Top 10 or Agentic Top 10) and MITRE ATLAS ids |
@@ -46,7 +46,7 @@ uses public test numbers.
 ## What "required" means
 
 A case is required when its payload is not obfuscated, it is not a look-alike benign case, and
-the gateway inspects its channel. That covers every stage a workflow can run on: model input
+the gateway inspects its channel. That covers every stage a guardrail can run on: model input
 (`user_input`), tool calls (`tool_arguments`), tool results (`tool_result`), model output
 (`model_output`), messages between agents (`agent_message`) and device identity.
 
@@ -62,7 +62,7 @@ authentication, limits, streaming or the approval queue. `pnpm test:gateway` doe
 gateway against a scripted model and checks what the client receives.
 
 The dashboard's Attack analysis page is the third way to use these rows: it replays any dataset against
-the workflows you have published and shows what was blocked, missed or blocked by mistake.
+the guardrails you have published and shows what was blocked, missed or blocked by mistake.
 `pnpm datasets:upload` loads this folder into it and also builds two kinds of derived set:
 
 - `Mixed check · 200 / 500 / 1000`: half attacks of every kind, half normal requests, taken in turn

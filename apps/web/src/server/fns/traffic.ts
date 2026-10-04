@@ -148,7 +148,7 @@ function latency(values: number[]) {
 
 /**
  * Spend and performance for the Overview. Spend sums the usage recorded on model requests;
- * performance looks at the newest events in the range (at most 5000), since the per-workflow
+ * performance looks at the newest events in the range (at most 5000), since the per-guardrail
  * timings live in a JSON column.
  */
 export const getUsage = createServerFn({ method: 'GET' })
@@ -199,7 +199,7 @@ export const getUsage = createServerFn({ method: 'GET' })
           kind: event.kind,
           decision: event.decision,
           overheadMs: event.overheadMs,
-          workflows: event.workflows,
+          guardrails: event.guardrails,
         })
         .from(event)
         .where(scope)
@@ -209,7 +209,7 @@ export const getUsage = createServerFn({ method: 'GET' })
 
     const blockedDecisions = new Set<string>(BLOCKED_DECISIONS)
     const stages = new Map<string, { n: number; blocked: number; overhead: number[] }>()
-    const workflows = new Map<
+    const guardrails = new Map<
       string,
       { name: string; n: number; blocked: number; durations: number[] }
     >()
@@ -223,13 +223,13 @@ export const getUsage = createServerFn({ method: 'GET' })
         overhead.push(e.overheadMs)
       }
       stages.set(e.kind, stage)
-      for (const w of e.workflows) {
+      for (const w of e.guardrails) {
         // The sample is newest first, so the first name seen is the current one.
-        const entry = workflows.get(w.id) ?? { name: w.name, n: 0, blocked: 0, durations: [] }
+        const entry = guardrails.get(w.id) ?? { name: w.name, n: 0, blocked: 0, durations: [] }
         entry.n++
         if (w.decision === 'block') entry.blocked++
         if (w.durationMs != null) entry.durations.push(w.durationMs)
-        workflows.set(w.id, entry)
+        guardrails.set(w.id, entry)
       }
     }
 
@@ -256,7 +256,7 @@ export const getUsage = createServerFn({ method: 'GET' })
           blocked: s.blocked,
           ...latency(s.overhead),
         })),
-        workflows: [...workflows]
+        guardrails: [...guardrails]
           .map(([id, w]) => ({
             id,
             name: w.name,
@@ -274,8 +274,8 @@ export const eventsSearch = z.object({
   kind: eventKind.optional(),
   user: z.string().optional(),
   session: z.string().optional(),
-  /** Events a workflow took part in. */
-  workflow: z.string().optional(),
+  /** Events a guardrail took part in. */
+  guardrail: z.string().optional(),
   q: z.string().optional(),
   range: timeRange.default('24h'),
   selected: z.string().optional(),
@@ -298,8 +298,8 @@ export const listEvents = createServerFn({ method: 'GET' })
       data.kind ? eq(event.kind, data.kind) : undefined,
       data.user ? eq(event.userId, data.user) : undefined,
       data.session ? eq(event.sessionId, data.session) : undefined,
-      data.workflow
-        ? sql`exists (select 1 from json_each(${event.workflows}) where json_extract(value, '$.id') = ${data.workflow})`
+      data.guardrail
+        ? sql`exists (select 1 from json_each(${event.guardrails}) where json_extract(value, '$.id') = ${data.guardrail})`
         : undefined,
       data.cursor ? lt(event.seq, data.cursor) : undefined,
       data.q

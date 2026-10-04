@@ -3,12 +3,12 @@ import {
   analysisRun,
   type Db,
   group,
+  guardrail,
+  guardrailVersion,
   mcpServer,
   resource,
-  workflow,
-  workflowVersion,
 } from '@acl/db'
-import { type ActiveWorkflow, defaultWorkflow, policyGraph, randomId } from '@acl/shared'
+import { type ActiveGuardrail, defaultGuardrail, policyGraph, randomId } from '@acl/shared'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { loadLearnedModels } from '#/gateway/lib/learned-models.ts'
@@ -137,13 +137,13 @@ export async function runAnalysisService({
   if (!traffic) throw new Error('Dataset not found')
   const revision = await revisionOf(db, orgId)
   const [rules, versions, groups, servers, resources] = await Promise.all([
-    db.query.workflow.findMany({
-      where: eq(workflow.orgId, orgId),
-      orderBy: [asc(workflow.position), asc(workflow.createdAt)],
+    db.query.guardrail.findMany({
+      where: eq(guardrail.orgId, orgId),
+      orderBy: [asc(guardrail.position), asc(guardrail.createdAt)],
     }),
-    db.query.workflowVersion.findMany({
-      where: and(eq(workflowVersion.orgId, orgId), eq(workflowVersion.status, 'published')),
-      orderBy: [desc(workflowVersion.version)],
+    db.query.guardrailVersion.findMany({
+      where: and(eq(guardrailVersion.orgId, orgId), eq(guardrailVersion.status, 'published')),
+      orderBy: [desc(guardrailVersion.version)],
     }),
     db.query.group.findMany({ where: eq(group.orgId, orgId) }),
     db.select({ id: mcpServer.id }).from(mcpServer).where(eq(mcpServer.orgId, orgId)),
@@ -175,8 +175,8 @@ export async function runAnalysisService({
     resourceIds: data.resourceIds,
     model: data.model,
   }
-  const workflows: ActiveWorkflow[] = rules.flatMap((w) => {
-    const version = versions.find((v) => v.workflowId === w.id)
+  const guardrails: ActiveGuardrail[] = rules.flatMap((w) => {
+    const version = versions.find((v) => v.guardrailId === w.id)
     return w.enabled && version
       ? [
           {
@@ -184,7 +184,7 @@ export async function runAnalysisService({
             name: w.name,
             version: version.version,
             groupIds: w.groupIds,
-            definition: policyGraph.safeParse(version.definition).data ?? defaultWorkflow,
+            definition: policyGraph.safeParse(version.definition).data ?? defaultGuardrail,
           },
         ]
       : []
@@ -195,14 +195,14 @@ export async function runAnalysisService({
     signatures: (await loadSignatures(env)).signatures,
     models: await loadLearnedModels(
       env,
-      workflows.flatMap((w) =>
+      guardrails.flatMap((w) =>
         w.definition.nodes.flatMap((n) =>
           n.type === 'check' && n.enabled && n.check.type === 'learned' ? n.check.models : [],
         ),
       ),
     ),
   }
-  const results = await replayTraffic(traffic, workflows, persona, undefined, deps)
+  const results = await replayTraffic(traffic, guardrails, persona, undefined, deps)
   if ((await revisionOf(db, orgId)) !== revision) throw changed()
   const id = randomId('arun')
   const at = new Date()
@@ -214,7 +214,7 @@ export async function runAnalysisService({
     catalogVersion,
     persona,
     groupNames: selectedGroups.map((g) => g.name),
-    workflows,
+    guardrails,
     results,
   }
   const payloadKey = `${orgId}/analysis/${id}.json`

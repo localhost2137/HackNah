@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateGraph } from './engine.ts'
+import { validateGraph } from './guardrail.ts'
 import { policyPreset } from './presets.ts'
 import {
   baselineSignatures,
@@ -9,7 +10,6 @@ import {
   signatureFeed,
   textVariants,
 } from './signatures.ts'
-import { validateGraph } from './workflow.ts'
 
 const hit = (text: string, list = baselineSignatures) => matchSignatures(text, list)?.id ?? null
 

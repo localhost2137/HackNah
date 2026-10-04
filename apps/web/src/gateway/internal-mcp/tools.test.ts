@@ -8,8 +8,8 @@ describe('built-in platform MCP tools', () => {
     const names = internalTools.map((t) => t.definition.name)
     expect(new Set(names).size).toBe(names.length)
     expect(names.every(isInternalTool)).toBe(true)
-    expect(isInternalTool('hacknah__create_workflow')).toBe(false)
-    expect(isInternalTool('github__hacknah_create_workflow')).toBe(false)
+    expect(isInternalTool('hacknah__create_guardrail')).toBe(false)
+    expect(isInternalTool('github__hacknah_create_guardrail')).toBe(false)
     for (const tool of internalTools) {
       expect(tool.definition.inputSchema).toMatchObject({ type: 'object' })
       expect(tool.definition.annotations).toMatchObject({
@@ -20,7 +20,7 @@ describe('built-in platform MCP tools', () => {
   })
   it('validates arguments before touching platform services', async () => {
     await expect(async () =>
-      findInternalTool('hacknah_create_workflow')!.invoke({ name: '' }, context),
+      findInternalTool('hacknah_create_guardrail')!.invoke({ name: '' }, context),
     ).rejects.toThrow()
     await expect(async () =>
       findInternalTool('hacknah_run_analysis')!.invoke(
@@ -32,8 +32,8 @@ describe('built-in platform MCP tools', () => {
       findInternalTool('hacknah_list_events')!.invoke({ limit: 10000 }, context),
     ).rejects.toThrow()
   })
-  it('exposes a usable workflow schema and the curated datasets without a connection', async () => {
-    const schema = await findInternalTool('hacknah_workflow_schema')!.invoke({}, context)
+  it('exposes a usable guardrail schema and the curated datasets without a connection', async () => {
+    const schema = await findInternalTool('hacknah_guardrail_schema')!.invoke({}, context)
     expect(schema).toMatchObject({
       schema: {
         type: 'object',

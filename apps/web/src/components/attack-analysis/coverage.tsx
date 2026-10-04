@@ -16,13 +16,13 @@ export function CoverageCharts({ run }: { run: AnalysisRun }) {
     ...o,
     count: run.results.filter((r) => r.outcome === o.key).length,
   }))
-  const covered = run.results.filter((r) => r.result.workflows.length > 0).length
-  const workflowCounts = new Map<string, number>()
+  const covered = run.results.filter((r) => r.result.guardrails.length > 0).length
+  const guardrailCounts = new Map<string, number>()
   for (const result of run.results)
-    for (const workflow of result.result.workflows)
-      workflowCounts.set(workflow.id, (workflowCounts.get(workflow.id) ?? 0) + 1)
-  const workflows = run.workflows
-    .map((w) => ({ ...w, count: workflowCounts.get(w.id) ?? 0 }))
+    for (const guardrail of result.result.guardrails)
+      guardrailCounts.set(guardrail.id, (guardrailCounts.get(guardrail.id) ?? 0) + 1)
+  const guardrails = run.guardrails
+    .map((w) => ({ ...w, count: guardrailCounts.get(w.id) ?? 0 }))
     .sort((a, b) => b.count - a.count)
   return (
     <div className="mt-4 grid gap-4 xl:grid-cols-2">
@@ -117,7 +117,7 @@ export function CoverageCharts({ run }: { run: AnalysisRun }) {
             checks.
           </p>
           <div className="space-y-3">
-            {workflows.slice(0, 6).map((w) => (
+            {guardrails.slice(0, 6).map((w) => (
               <div key={w.id}>
                 <div className="mb-1.5 flex justify-between gap-3 text-xs">
                   <span className="truncate text-muted" title={w.name}>
@@ -137,7 +137,7 @@ export function CoverageCharts({ run }: { run: AnalysisRun }) {
             ))}
           </div>
           <p className="mt-4 text-[10px] text-subtle">
-            {workflows.length > 6 ? 'Top 6 guardrails shown. ' : ''}An event can match multiple
+            {guardrails.length > 6 ? 'Top 6 guardrails shown. ' : ''}An event can match multiple
             guardrails. Coverage does not imply detection.
           </p>
         </div>

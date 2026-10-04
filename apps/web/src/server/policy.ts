@@ -1,4 +1,4 @@
-import { type Db, group, model, rateLimit, workflow, workflowVersion } from '@acl/db'
+import { type Db, group, guardrail, guardrailVersion, model, rateLimit } from '@acl/db'
 import {
   canonicalJson,
   diffPolicy,
@@ -21,26 +21,26 @@ import { and, asc, desc, eq } from 'drizzle-orm'
 import { audit } from './audit.ts'
 
 /**
- * Export and import of the instance's policy file (workflows, limits, model catalog). Used by the
+ * Export and import of the instance's policy file (guardrails, limits, model catalog). Used by the
  * Settings page and by `pnpm policy:export` / `pnpm policy:apply` through `/api/policy`.
  */
 
 async function policyState(db: Db, orgId: string): Promise<PolicyState> {
-  const [groups, workflows, versions, limits, models] = await Promise.all([
+  const [groups, guardrails, versions, limits, models] = await Promise.all([
     db.query.group.findMany({ where: eq(group.orgId, orgId) }),
-    db.query.workflow.findMany({
-      where: eq(workflow.orgId, orgId),
-      orderBy: [asc(workflow.position), asc(workflow.createdAt)],
+    db.query.guardrail.findMany({
+      where: eq(guardrail.orgId, orgId),
+      orderBy: [asc(guardrail.position), asc(guardrail.createdAt)],
     }),
     db
       .select({
-        workflowId: workflowVersion.workflowId,
-        status: workflowVersion.status,
-        definition: workflowVersion.definition,
+        guardrailId: guardrailVersion.guardrailId,
+        status: guardrailVersion.status,
+        definition: guardrailVersion.definition,
       })
-      .from(workflowVersion)
-      .where(and(eq(workflowVersion.orgId, orgId), eq(workflowVersion.status, 'published')))
-      .orderBy(desc(workflowVersion.version)),
+      .from(guardrailVersion)
+      .where(and(eq(guardrailVersion.orgId, orgId), eq(guardrailVersion.status, 'published')))
+      .orderBy(desc(guardrailVersion.version)),
     db.query.rateLimit.findMany({
       where: eq(rateLimit.orgId, orgId),
       orderBy: asc(rateLimit.createdAt),
@@ -52,8 +52,8 @@ async function policyState(db: Db, orgId: string): Promise<PolicyState> {
   ])
   return {
     groups: groups.map((g) => ({ id: g.id, name: g.name, isDefault: g.isDefault })),
-    workflows: workflows.map((w) => {
-      const published = versions.find((v) => v.workflowId === w.id)
+    guardrails: guardrails.map((w) => {
+      const published = versions.find((v) => v.guardrailId === w.id)
       const parsed = published ? policyGraph.safeParse(published.definition) : null
       return {
         name: w.name,
@@ -105,7 +105,7 @@ export type ImportResult =
 
 /**
  * Validates a policy file and, unless `dryRun`, applies it. Nothing is written when the file has
- * any error. Limits go first so Usage limit blocks can point at their ids; a workflow whose
+ * any error. Limits go first so Usage limit blocks can point at their ids; a guardrail whose
  * graph changed gets a new published version (an unpublished draft is replaced by it).
  */
 export async function importPolicyYaml(
@@ -125,7 +125,9 @@ export async function importPolicyYaml(
       ok: false,
       errors: groups.unknown.map((name) => {
         const where = [
-          ...file.workflows.flatMap((w, i) => (w.groups.includes(name) ? [`workflows[${i}]`] : [])),
+          ...file.guardrails.flatMap((w, i) =>
+            w.groups.includes(name) ? [`guardrails[${i}]`] : [],
+          ),
           ...file.limits.flatMap((l, i) => (l.group === name ? [`limits[${i}]`] : [])),
         ]
         return `${where.join(', ')}: no group named "${name}". Create it on the Groups page or use "All members".`
@@ -137,7 +139,7 @@ export async function importPolicyYaml(
 
   const limitIds = await applyLimits(db, orgId, file, state.groups, groups.ids, opts.mode)
   await applyModels(db, orgId, file, opts.mode)
-  await applyWorkflows(db, orgId, actorId, file, groups.ids, limitIds, opts.mode)
+  await applyGuardrails(db, orgId, actorId, file, groups.ids, limitIds, opts.mode)
 
   const count = (action: PolicyChange['action']) =>
     changes.filter((c) => c.action === action).length
@@ -219,7 +221,7 @@ async function applyModels(db: Db, orgId: string, file: PolicyFile, mode: 'repla
   }
 }
 
-async function applyWorkflows(
+async function applyGuardrails(
   db: Db,
   orgId: string,
   actorId: string,
@@ -228,10 +230,10 @@ async function applyWorkflows(
   limitIds: Map<string, string>,
   mode: 'replace' | 'merge',
 ) {
-  const rows = await db.query.workflow.findMany({ where: eq(workflow.orgId, orgId) })
+  const rows = await db.query.guardrail.findMany({ where: eq(guardrail.orgId, orgId) })
   const byName = new Map(rows.map((r) => [r.name, r]))
   const note = 'Applied from a policy file'
-  for (const [position, w] of file.workflows.entries()) {
+  for (const [position, w] of file.guardrails.entries()) {
     const definition: PolicyGraph = mapLimitRefs(w.definition, (ref) => limitIds.get(ref) ?? ref)
     const meta = {
       name: w.name,
@@ -243,11 +245,11 @@ async function applyWorkflows(
     const existing = byName.get(w.name)
     if (!existing) {
       const id = randomId('wf')
-      await db.insert(workflow).values({ id, orgId, ...meta })
-      await db.insert(workflowVersion).values({
+      await db.insert(guardrail).values({ id, orgId, ...meta })
+      await db.insert(guardrailVersion).values({
         id: randomId('wfv'),
         orgId,
-        workflowId: id,
+        guardrailId: id,
         version: 1,
         definition,
         status: 'published',
@@ -256,18 +258,18 @@ async function applyWorkflows(
       })
       continue
     }
-    await db.update(workflow).set(meta).where(eq(workflow.id, existing.id))
+    await db.update(guardrail).set(meta).where(eq(guardrail.id, existing.id))
     const [latest, published] = await Promise.all([
-      db.query.workflowVersion.findFirst({
-        where: eq(workflowVersion.workflowId, existing.id),
-        orderBy: desc(workflowVersion.version),
+      db.query.guardrailVersion.findFirst({
+        where: eq(guardrailVersion.guardrailId, existing.id),
+        orderBy: desc(guardrailVersion.version),
       }),
-      db.query.workflowVersion.findFirst({
+      db.query.guardrailVersion.findFirst({
         where: and(
-          eq(workflowVersion.workflowId, existing.id),
-          eq(workflowVersion.status, 'published'),
+          eq(guardrailVersion.guardrailId, existing.id),
+          eq(guardrailVersion.status, 'published'),
         ),
-        orderBy: desc(workflowVersion.version),
+        orderBy: desc(guardrailVersion.version),
       }),
     ])
     const live = published ? policyGraph.safeParse(published.definition) : null
@@ -278,14 +280,14 @@ async function applyWorkflows(
       continue
     if (latest?.status === 'draft') {
       await db
-        .update(workflowVersion)
+        .update(guardrailVersion)
         .set({ definition, status: 'published', note, createdBy: actorId, createdAt: new Date() })
-        .where(eq(workflowVersion.id, latest.id))
+        .where(eq(guardrailVersion.id, latest.id))
     } else {
-      await db.insert(workflowVersion).values({
+      await db.insert(guardrailVersion).values({
         id: randomId('wfv'),
         orgId,
-        workflowId: existing.id,
+        guardrailId: existing.id,
         version: (latest?.version ?? 0) + 1,
         definition,
         status: 'published',
@@ -294,14 +296,14 @@ async function applyWorkflows(
       })
     }
   }
-  // Workflows the file leaves out come after the ones it lists.
-  const listed = new Set(file.workflows.map((w) => w.name))
-  let position = file.workflows.length
+  // Guardrails the file leaves out come after the ones it lists.
+  const listed = new Set(file.guardrails.map((w) => w.name))
+  let position = file.guardrails.length
   for (const r of rows) {
     if (listed.has(r.name)) continue
     await db
-      .update(workflow)
+      .update(guardrail)
       .set({ position: position++, ...(mode === 'replace' ? { enabled: false } : {}) })
-      .where(eq(workflow.id, r.id))
+      .where(eq(guardrail.id, r.id))
   }
 }

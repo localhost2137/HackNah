@@ -1,4 +1,4 @@
-import type { PiiKind } from './workflow.ts'
+import type { PiiKind } from './guardrail.ts'
 
 type Detector = {
   label: string

@@ -45,8 +45,8 @@ import { datasetTraffic } from '#/lib/attack-analysis/traffic.ts'
 import { datasetRowsQuery, datasetsQuery } from '#/lib/datasets.ts'
 import { listGroups, listResources } from '#/server/fns/access.ts'
 import { runAnalysis } from '#/server/fns/attack-analysis.ts'
+import { listGuardrails } from '#/server/fns/guardrail.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
-import { listWorkflows } from '#/server/fns/workflow.ts'
 
 export const Route = createFileRoute('/_app/attack-analysis/$datasetId')({
   beforeLoad: ({ params }) => {
@@ -119,7 +119,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
   const groups = useQuery({ queryKey: ['groups'], queryFn: () => listGroups() })
   const servers = useQuery({ queryKey: ['mcp-servers'], queryFn: () => listMcpServers() })
   const resources = useQuery({ queryKey: ['resources'], queryFn: () => listResources() })
-  const workflows = useQuery({ queryKey: ['workflows'], queryFn: () => listWorkflows() })
+  const guardrails = useQuery({ queryKey: ['guardrails'], queryFn: () => listGuardrails() })
   const [groupIds, setGroupIds] = useState<string[]>([])
   const [serverId, setServerId] = useState('')
   const [resourceId, setResourceId] = useState('')
@@ -158,7 +158,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
     persisted.error ??
     loaded.error ??
     groups.error ??
-    workflows.error ??
+    guardrails.error ??
     servers.error ??
     resources.error
 
@@ -236,7 +236,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
                 busy ||
                 !traffic.length ||
                 groups.isPending ||
-                workflows.isPending ||
+                guardrails.isPending ||
                 persisted.isPending ||
                 Boolean(loadError)
               }
@@ -350,7 +350,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
       {run ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-subtle">
           <span>
-            {run.workflows.length} guardrail snapshots · Synthetic traffic ·{' '}
+            {run.guardrails.length} guardrail snapshots · Synthetic traffic ·{' '}
             {run.groupNames.join(', ') || 'No groups'}
           </span>
           <button
@@ -586,8 +586,8 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
           <div className="space-y-5 text-xs">
             <div>
               <h3 className="mb-2 font-medium">Guardrail snapshots</h3>
-              {run.workflows.length ? (
-                run.workflows.map((w) => (
+              {run.guardrails.length ? (
+                run.guardrails.map((w) => (
                   <div key={w.id} className="flex justify-between border-b border-line py-2">
                     <span>{w.name}</span>
                     <span className="font-mono text-muted">v{w.version}</span>
@@ -600,7 +600,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
               )}
             </div>
             <p className="leading-relaxed text-muted">
-              {run.results.filter((r) => r.result.workflows.length === 0).length} events matched no
+              {run.results.filter((r) => r.result.guardrails.length === 0).length} events matched no
               guardrail. LLM judges are not called; unavailable checks are inconclusive. This replay
               evaluates policy decisions, not live model behavior, access grants or rate limits.
             </p>
@@ -691,7 +691,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
                     decision ({detail.result.decision}) is not evidence of detection.
                   </p>
                 ) : null}
-                <CheckList checks={detail.result.checks} workflows={detail.result.workflows} />
+                <CheckList checks={detail.result.checks} guardrails={detail.result.guardrails} />
               </section>
             ) : (
               <p className="text-xs text-muted">

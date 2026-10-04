@@ -12,11 +12,11 @@ import { sessionStub } from '../do/session.ts'
 import { accessibleResources, userGroupIds } from '../lib/access.ts'
 import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
+import { loadLimits } from '../lib/guardrail.ts'
 import { checkLimits } from '../lib/limits.ts'
 import { runPipeline } from '../lib/pipeline.ts'
 import { resolveSession } from '../lib/session.ts'
 import { recallVerdict, rememberVerdict } from '../lib/verdicts.ts'
-import { loadLimits } from '../lib/workflow.ts'
 
 /** Tools exposed by our own MCP aggregator are checked there, not in the hook. */
 const AGGREGATOR_TOOL_PREFIX = 'mcp__acl__'
@@ -110,7 +110,7 @@ export const pluginApi = new Hono<AppEnv>()
       decision: 'allow',
       checks: [],
       riskScore: 0,
-      workflows: [],
+      guardrails: [],
       inputTokens: null,
       outputTokens: null,
       latencyMs: 0,
@@ -162,7 +162,7 @@ export const pluginApi = new Hono<AppEnv>()
     event.decision = result.decision
     event.checks = [...limits.checks, ...result.checks]
     event.riskScore = result.riskScore
-    event.workflows = result.workflows
+    event.guardrails = result.guardrails
     record()
     const allowed = result.decision === 'allow' || result.decision === 'approved'
     c.executionCtx.waitUntil(
@@ -178,7 +178,7 @@ export const pluginApi = new Hono<AppEnv>()
   /**
    * Agent-to-agent traffic. An orchestrator, an A2A proxy or an SDK wrapper posts each message
    * one agent hands to another here before delivering it, and delivers `text` from the answer:
-   * the message runs through the same workflow as a prompt, as untrusted input, and comes back
+   * the message runs through the same guardrail as a prompt, as untrusted input, and comes back
    * redacted when the path includes a redaction block. Route on the kind "Agent-to-agent
    * messages" to give this traffic its own path.
    */
@@ -231,7 +231,7 @@ export const pluginApi = new Hono<AppEnv>()
       decision: result.decision,
       checks: result.checks,
       riskScore: result.riskScore,
-      workflows: result.workflows,
+      guardrails: result.guardrails,
       inputTokens: null,
       outputTokens: null,
       latencyMs: Date.now() - started,

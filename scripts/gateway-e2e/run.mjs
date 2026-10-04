@@ -131,14 +131,15 @@ async function main() {
   await run('pnpm', ['exec', 'wrangler', 'd1', 'migrations', 'apply', 'acl', '--local'], {
     cwd: web,
   })
-  await run('node', ['scripts/seed.mjs'], { cwd: web })
+  // The suite brings its own guardrails and needs no datasets.
+  await run('node', ['scripts/seed.mjs', '--skip-guardrails', '--skip-datasets'], { cwd: web })
 
   step('starting the mock model server')
   const mock = startProcess('node', [join(here, 'mock-upstream.mjs')], { cwd: work })
   const [, mockPort] = await waitFor(mock, /"port":(\d+)/, 10_000)
 
   // The gateway caches configuration for 10 s, so fixtures go in before it starts.
-  step('loading fixtures (models, limits, workflows, device)')
+  step('loading fixtures (models, limits, guardrails, device)')
   const fixtures = join(work, 'e2e-fixtures.sql')
   writeFileSync(fixtures, fixturesSql(mockPort))
   await run('pnpm', ['exec', 'wrangler', 'd1', 'execute', 'acl', '--local', '--file', fixtures], {
@@ -199,6 +200,7 @@ async function main() {
       events: ms.length,
       p50: percentile(ms, 50),
       p95: percentile(ms, 95),
+      p99: percentile(ms, 99),
       max: Math.max(...ms),
     })),
   )

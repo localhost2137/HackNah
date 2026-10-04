@@ -26,10 +26,10 @@ import { ApprovalRecords } from '#/components/approval-records.tsx'
 import {
   CheckList,
   DecisionBadge,
+  GuardrailRuns,
   JsonBlock,
   KindLabel,
   RiskMeter,
-  WorkflowRuns,
 } from '#/components/event-bits.tsx'
 import { FilterChip, Segmented } from '#/components/filters.tsx'
 import { dateTime, decisionMeta, num, timeAgo } from '#/lib/format.ts'
@@ -59,7 +59,7 @@ function matchesLive(e: GatewayEvent, s: EventsSearch) {
   if (s.kind && e.kind !== s.kind) return false
   if (s.user && e.userId !== s.user) return false
   if (s.session && e.sessionId !== s.session) return false
-  if (s.workflow && !e.workflows.some((w) => w.id === s.workflow)) return false
+  if (s.guardrail && !e.guardrails.some((w) => w.id === s.guardrail)) return false
   if (
     s.q &&
     !`${e.toolName ?? ''} ${e.model ?? ''} ${e.id}`.toLowerCase().includes(s.q.toLowerCase())
@@ -170,7 +170,7 @@ function EventsPage() {
             <div className="flex max-w-64 gap-1 overflow-hidden">
               {failed.map((c) => (
                 <Badge
-                  key={`${c.workflowId}:${c.stepId}`}
+                  key={`${c.guardrailId}:${c.stepId}`}
                   tone={c.action === 'block' ? 'bad' : 'warn'}
                 >
                   {c.type}
@@ -299,10 +299,10 @@ function EventsPage() {
             onClear={() => setSearch({ session: undefined })}
           />
         ) : null}
-        {search.workflow ? (
+        {search.guardrail ? (
           <FilterChip
-            label={`Guardrail ${search.workflow}`}
-            onClear={() => setSearch({ workflow: undefined })}
+            label={`Guardrail ${search.guardrail}`}
+            onClear={() => setSearch({ guardrail: undefined })}
           />
         ) : null}
       </div>
@@ -442,13 +442,13 @@ function EventDrawer({ id, onClose }: { id: string | undefined; onClose: () => v
             <div className="col-span-2">
               <dt className="text-[11px] text-subtle">Guardrails</dt>
               <dd className="mt-1">
-                <WorkflowRuns workflows={data.workflows} />
+                <GuardrailRuns guardrails={data.guardrails} />
               </dd>
             </div>
           </dl>
           <section>
             <h4 className="mb-2 text-xs font-semibold text-muted uppercase">Checks</h4>
-            <CheckList checks={data.checks} workflows={data.workflows} />
+            <CheckList checks={data.checks} guardrails={data.guardrails} />
           </section>
           {data.payload ? (
             <>

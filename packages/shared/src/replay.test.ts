@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import type { ActiveWorkflow } from './engine.ts'
+import type { ActiveGuardrail } from './engine.ts'
 import type { CheckResult } from './events.ts'
+import { defaultGuardrail, type PolicyGraph } from './guardrail.ts'
 import { recordedDeviceStatus, recordedResult, replayWithShadow } from './replay.ts'
-import { defaultWorkflow, type PolicyGraph } from './workflow.ts'
 
-const shadow: ActiveWorkflow = {
+const shadow: ActiveGuardrail = {
   id: 'wf-shadow',
   name: 'Shadow',
   version: 0,
   groupIds: [],
-  definition: defaultWorkflow,
+  definition: defaultGuardrail,
 }
 const clean = {
   kind: 'model_request' as const,
@@ -19,8 +19,8 @@ const clean = {
 }
 const dangerous = { ...clean, text: 'please run rm -rf / now' }
 
-const ranDecision = (workflowId: string, action?: 'block' | 'require_approval'): CheckResult => ({
-  workflowId,
+const ranDecision = (guardrailId: string, action?: 'block' | 'require_approval'): CheckResult => ({
+  guardrailId,
   stepId: 'end',
   type: 'decision',
   outcome: action ? 'fail' : 'pass',
@@ -36,7 +36,7 @@ const permissionDenied: CheckResult = {
 }
 
 describe('recordedResult', () => {
-  it('tells workflow blocks apart from requests stopped before workflows', () => {
+  it('tells guardrail blocks apart from requests stopped before guardrails', () => {
     expect(recordedResult('block', [ranDecision('a', 'block')])).toBe('block')
     expect(recordedResult('block', [permissionDenied])).toBe('denied')
     expect(recordedResult('block', [])).toBe('denied')
@@ -70,8 +70,8 @@ describe('replayWithShadow', () => {
 
   it('keeps the outcome when the rule does not start', async () => {
     const toolsOnly: PolicyGraph = {
-      ...defaultWorkflow,
-      nodes: defaultWorkflow.nodes.map((n) =>
+      ...defaultGuardrail,
+      nodes: defaultGuardrail.nodes.map((n) =>
         n.type === 'trigger' ? { ...n, stages: ['tool_call' as const] } : n,
       ),
     }
@@ -108,9 +108,9 @@ describe('replayWithShadow', () => {
     expect(v).toMatchObject({ shadow: 'not_started', before: 'block', after: 'block' })
   })
 
-  it('ignores recorded workflows that skipped', async () => {
+  it('ignores recorded guardrails that skipped', async () => {
     const skipped: CheckResult = {
-      workflowId: 'other',
+      guardrailId: 'other',
       stepId: 'skip',
       type: 'decision',
       outcome: 'skipped',

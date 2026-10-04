@@ -32,15 +32,15 @@ import { Route as AppAccessMembersRouteImport } from './routes/_app/access/membe
 import { Route as AppAccessResourcesRouteImport } from './routes/_app/access/resources'
 import { Route as AppAttackAnalysisIndexRouteImport } from './routes/_app/attack-analysis/index'
 import { Route as AppAttackAnalysisDatasetIdRouteImport } from './routes/_app/attack-analysis/$datasetId'
+import { Route as AppGuardrailsIndexRouteImport } from './routes/_app/guardrails/index'
+import { Route as AppGuardrailsGuardrailIdRouteImport } from './routes/_app/guardrails/$guardrailId'
 import { Route as AppIntegrationsServerIdRouteImport } from './routes/_app/integrations_.$serverId'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsConnectRouteImport } from './routes/_app/settings/connect'
-import { Route as AppWorkflowsIndexRouteImport } from './routes/_app/workflows/index'
-import { Route as AppWorkflowsWorkflowIdRouteImport } from './routes/_app/workflows/$workflowId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiOauthCallbackRouteImport } from './routes/api/oauth/callback'
 import { Route as AppAccessResourcesResourceIdRouteImport } from './routes/_app/access/resources_.$resourceId'
-import { Route as AppWorkflowsWorkflowIdImpactRouteImport } from './routes/_app/workflows/$workflowId_.impact'
+import { Route as AppGuardrailsGuardrailIdImpactRouteImport } from './routes/_app/guardrails/$guardrailId_.impact'
 import { Route as ApiOauthStartServerIdRouteImport } from './routes/api/oauth/start.$serverId'
 
 const AppRoute = AppRouteImport.update({
@@ -158,6 +158,17 @@ const AppAttackAnalysisDatasetIdRoute =
     path: '/$datasetId',
     getParentRoute: () => AppAttackAnalysisRoute,
   } as any)
+const AppGuardrailsIndexRoute = AppGuardrailsIndexRouteImport.update({
+  id: '/guardrails/',
+  path: '/guardrails/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGuardrailsGuardrailIdRoute =
+  AppGuardrailsGuardrailIdRouteImport.update({
+    id: '/guardrails/$guardrailId',
+    path: '/guardrails/$guardrailId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppIntegrationsServerIdRoute = AppIntegrationsServerIdRouteImport.update({
   id: '/integrations_/$serverId',
   path: '/integrations/$serverId',
@@ -171,16 +182,6 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
 const AppSettingsConnectRoute = AppSettingsConnectRouteImport.update({
   id: '/settings/connect',
   path: '/settings/connect',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppWorkflowsIndexRoute = AppWorkflowsIndexRouteImport.update({
-  id: '/workflows/',
-  path: '/workflows/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppWorkflowsWorkflowIdRoute = AppWorkflowsWorkflowIdRouteImport.update({
-  id: '/workflows/$workflowId',
-  path: '/workflows/$workflowId',
   getParentRoute: () => AppRoute,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -199,10 +200,10 @@ const AppAccessResourcesResourceIdRoute =
     path: '/access/resources/$resourceId',
     getParentRoute: () => AppRoute,
   } as any)
-const AppWorkflowsWorkflowIdImpactRoute =
-  AppWorkflowsWorkflowIdImpactRouteImport.update({
-    id: '/workflows/$workflowId_/impact',
-    path: '/workflows/$workflowId/impact',
+const AppGuardrailsGuardrailIdImpactRoute =
+  AppGuardrailsGuardrailIdImpactRouteImport.update({
+    id: '/guardrails/$guardrailId_/impact',
+    path: '/guardrails/$guardrailId/impact',
     getParentRoute: () => AppRoute,
   } as any)
 const ApiOauthStartServerIdRoute = ApiOauthStartServerIdRouteImport.update({
@@ -233,16 +234,16 @@ export interface FileRoutesByFullPath {
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
   '/attack-analysis/$datasetId': typeof AppAttackAnalysisDatasetIdRoute
+  '/guardrails/$guardrailId': typeof AppGuardrailsGuardrailIdRoute
   '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
-  '/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/attack-analysis/': typeof AppAttackAnalysisIndexRoute
+  '/guardrails/': typeof AppGuardrailsIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
-  '/workflows/': typeof AppWorkflowsIndexRoute
   '/access/resources/$resourceId': typeof AppAccessResourcesResourceIdRoute
-  '/workflows/$workflowId/impact': typeof AppWorkflowsWorkflowIdImpactRoute
+  '/guardrails/$guardrailId/impact': typeof AppGuardrailsGuardrailIdImpactRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRoutesByTo {
@@ -266,16 +267,16 @@ export interface FileRoutesByTo {
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
   '/attack-analysis/$datasetId': typeof AppAttackAnalysisDatasetIdRoute
+  '/guardrails/$guardrailId': typeof AppGuardrailsGuardrailIdRoute
   '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
-  '/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/attack-analysis': typeof AppAttackAnalysisIndexRoute
+  '/guardrails': typeof AppGuardrailsIndexRoute
   '/settings': typeof AppSettingsIndexRoute
-  '/workflows': typeof AppWorkflowsIndexRoute
   '/access/resources/$resourceId': typeof AppAccessResourcesResourceIdRoute
-  '/workflows/$workflowId/impact': typeof AppWorkflowsWorkflowIdImpactRoute
+  '/guardrails/$guardrailId/impact': typeof AppGuardrailsGuardrailIdImpactRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRoutesById {
@@ -302,16 +303,16 @@ export interface FileRoutesById {
   '/_app/access/members': typeof AppAccessMembersRoute
   '/_app/access/resources': typeof AppAccessResourcesRoute
   '/_app/attack-analysis/$datasetId': typeof AppAttackAnalysisDatasetIdRoute
+  '/_app/guardrails/$guardrailId': typeof AppGuardrailsGuardrailIdRoute
   '/_app/integrations_/$serverId': typeof AppIntegrationsServerIdRoute
   '/_app/settings/connect': typeof AppSettingsConnectRoute
-  '/_app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/_app/attack-analysis/': typeof AppAttackAnalysisIndexRoute
+  '/_app/guardrails/': typeof AppGuardrailsIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
-  '/_app/workflows/': typeof AppWorkflowsIndexRoute
   '/_app/access/resources_/$resourceId': typeof AppAccessResourcesResourceIdRoute
-  '/_app/workflows/$workflowId_/impact': typeof AppWorkflowsWorkflowIdImpactRoute
+  '/_app/guardrails/$guardrailId_/impact': typeof AppGuardrailsGuardrailIdImpactRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRouteTypes {
@@ -338,16 +339,16 @@ export interface FileRouteTypes {
     | '/access/members'
     | '/access/resources'
     | '/attack-analysis/$datasetId'
+    | '/guardrails/$guardrailId'
     | '/integrations/$serverId'
     | '/settings/connect'
-    | '/workflows/$workflowId'
     | '/api/auth/$'
     | '/api/oauth/callback'
     | '/attack-analysis/'
+    | '/guardrails/'
     | '/settings/'
-    | '/workflows/'
     | '/access/resources/$resourceId'
-    | '/workflows/$workflowId/impact'
+    | '/guardrails/$guardrailId/impact'
     | '/api/oauth/start/$serverId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -371,16 +372,16 @@ export interface FileRouteTypes {
     | '/access/members'
     | '/access/resources'
     | '/attack-analysis/$datasetId'
+    | '/guardrails/$guardrailId'
     | '/integrations/$serverId'
     | '/settings/connect'
-    | '/workflows/$workflowId'
     | '/api/auth/$'
     | '/api/oauth/callback'
     | '/attack-analysis'
+    | '/guardrails'
     | '/settings'
-    | '/workflows'
     | '/access/resources/$resourceId'
-    | '/workflows/$workflowId/impact'
+    | '/guardrails/$guardrailId/impact'
     | '/api/oauth/start/$serverId'
   id:
     | '__root__'
@@ -406,16 +407,16 @@ export interface FileRouteTypes {
     | '/_app/access/members'
     | '/_app/access/resources'
     | '/_app/attack-analysis/$datasetId'
+    | '/_app/guardrails/$guardrailId'
     | '/_app/integrations_/$serverId'
     | '/_app/settings/connect'
-    | '/_app/workflows/$workflowId'
     | '/api/auth/$'
     | '/api/oauth/callback'
     | '/_app/attack-analysis/'
+    | '/_app/guardrails/'
     | '/_app/settings/'
-    | '/_app/workflows/'
     | '/_app/access/resources_/$resourceId'
-    | '/_app/workflows/$workflowId_/impact'
+    | '/_app/guardrails/$guardrailId_/impact'
     | '/api/oauth/start/$serverId'
   fileRoutesById: FileRoutesById
 }
@@ -596,6 +597,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAttackAnalysisDatasetIdRouteImport
       parentRoute: typeof AppAttackAnalysisRoute
     }
+    '/_app/guardrails/': {
+      id: '/_app/guardrails/'
+      path: '/guardrails'
+      fullPath: '/guardrails/'
+      preLoaderRoute: typeof AppGuardrailsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/guardrails/$guardrailId': {
+      id: '/_app/guardrails/$guardrailId'
+      path: '/guardrails/$guardrailId'
+      fullPath: '/guardrails/$guardrailId'
+      preLoaderRoute: typeof AppGuardrailsGuardrailIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/integrations_/$serverId': {
       id: '/_app/integrations_/$serverId'
       path: '/integrations/$serverId'
@@ -615,20 +630,6 @@ declare module '@tanstack/react-router' {
       path: '/settings/connect'
       fullPath: '/settings/connect'
       preLoaderRoute: typeof AppSettingsConnectRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/workflows/': {
-      id: '/_app/workflows/'
-      path: '/workflows'
-      fullPath: '/workflows/'
-      preLoaderRoute: typeof AppWorkflowsIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/workflows/$workflowId': {
-      id: '/_app/workflows/$workflowId'
-      path: '/workflows/$workflowId'
-      fullPath: '/workflows/$workflowId'
-      preLoaderRoute: typeof AppWorkflowsWorkflowIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/api/auth/$': {
@@ -652,11 +653,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessResourcesResourceIdRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/workflows/$workflowId_/impact': {
-      id: '/_app/workflows/$workflowId_/impact'
-      path: '/workflows/$workflowId/impact'
-      fullPath: '/workflows/$workflowId/impact'
-      preLoaderRoute: typeof AppWorkflowsWorkflowIdImpactRouteImport
+    '/_app/guardrails/$guardrailId_/impact': {
+      id: '/_app/guardrails/$guardrailId_/impact'
+      path: '/guardrails/$guardrailId/impact'
+      fullPath: '/guardrails/$guardrailId/impact'
+      preLoaderRoute: typeof AppGuardrailsGuardrailIdImpactRouteImport
       parentRoute: typeof AppRoute
     }
     '/api/oauth/start/$serverId': {
@@ -696,13 +697,13 @@ interface AppRouteChildren {
   AppAccessGroupsRoute: typeof AppAccessGroupsRoute
   AppAccessMembersRoute: typeof AppAccessMembersRoute
   AppAccessResourcesRoute: typeof AppAccessResourcesRoute
+  AppGuardrailsGuardrailIdRoute: typeof AppGuardrailsGuardrailIdRoute
   AppIntegrationsServerIdRoute: typeof AppIntegrationsServerIdRoute
   AppSettingsConnectRoute: typeof AppSettingsConnectRoute
-  AppWorkflowsWorkflowIdRoute: typeof AppWorkflowsWorkflowIdRoute
+  AppGuardrailsIndexRoute: typeof AppGuardrailsIndexRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
-  AppWorkflowsIndexRoute: typeof AppWorkflowsIndexRoute
   AppAccessResourcesResourceIdRoute: typeof AppAccessResourcesResourceIdRoute
-  AppWorkflowsWorkflowIdImpactRoute: typeof AppWorkflowsWorkflowIdImpactRoute
+  AppGuardrailsGuardrailIdImpactRoute: typeof AppGuardrailsGuardrailIdImpactRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -719,13 +720,13 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessGroupsRoute: AppAccessGroupsRoute,
   AppAccessMembersRoute: AppAccessMembersRoute,
   AppAccessResourcesRoute: AppAccessResourcesRoute,
+  AppGuardrailsGuardrailIdRoute: AppGuardrailsGuardrailIdRoute,
   AppIntegrationsServerIdRoute: AppIntegrationsServerIdRoute,
   AppSettingsConnectRoute: AppSettingsConnectRoute,
-  AppWorkflowsWorkflowIdRoute: AppWorkflowsWorkflowIdRoute,
+  AppGuardrailsIndexRoute: AppGuardrailsIndexRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
-  AppWorkflowsIndexRoute: AppWorkflowsIndexRoute,
   AppAccessResourcesResourceIdRoute: AppAccessResourcesResourceIdRoute,
-  AppWorkflowsWorkflowIdImpactRoute: AppWorkflowsWorkflowIdImpactRoute,
+  AppGuardrailsGuardrailIdImpactRoute: AppGuardrailsGuardrailIdImpactRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

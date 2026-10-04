@@ -119,7 +119,7 @@ export function PerformancePanel({
   performance: Usage['performance']
   range: TimeRange
 }) {
-  const { overhead, stages, workflows, sampled } = performance
+  const { overhead, stages, guardrails, sampled } = performance
   return (
     <Card>
       <CardHeader
@@ -178,12 +178,12 @@ export function PerformancePanel({
               </tr>
             </THead>
             <TBody>
-              {workflows.map((w) => (
+              {guardrails.map((w) => (
                 <TR key={w.id}>
                   <TD className="text-xs">
                     <Link
                       to="/events"
-                      search={{ workflow: w.id, range }}
+                      search={{ guardrail: w.id, range }}
                       className="hover:text-accent-strong"
                     >
                       {w.name}
@@ -197,7 +197,7 @@ export function PerformancePanel({
                   <TD className="text-right font-mono text-xs text-muted">{ms(w.p95)}</TD>
                 </TR>
               ))}
-              {workflows.length === 0 ? (
+              {guardrails.length === 0 ? (
                 <TR>
                   <TD className="text-xs text-muted">No guardrail ran in this range</TD>
                 </TR>

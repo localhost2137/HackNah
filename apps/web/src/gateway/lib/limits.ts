@@ -51,7 +51,7 @@ function reasonFor(rule: LimitRule, state: LimitState, used: number): string {
 /**
  * Checks every limit that applies to a request. Budgets (tokens, USD, GPU time) are compared with
  * what was spent so far, since a call's cost is only known after it; request and concurrency
- * limits count this request. Limits set to `warn` or `workflow` never block here.
+ * limits count this request. Limits set to `warn` or `guardrail` never block here.
  */
 export async function checkLimits(
   env: Env,
@@ -70,7 +70,7 @@ export async function checkLimits(
   const note = (rule: LimitRule, state: LimitState, used: number, resetAt: number | null) => {
     const reason = reasonFor(rule, state, used)
     states.set(rule.id, { state, reason })
-    if (state === 'ok' || rule.action === 'workflow') return
+    if (state === 'ok' || rule.action === 'guardrail') return
     const blocks = state === 'over' && rule.action === 'block'
     checks.push({
       stepId: `limit:${rule.id}`,

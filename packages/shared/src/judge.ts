@@ -1,5 +1,5 @@
 import type { EvaluationInput, JudgeVerdict } from './engine.ts'
-import type { JudgeCheck } from './workflow.ts'
+import type { JudgeCheck } from './guardrail.ts'
 
 const SYSTEM_PROMPT = `You are a security reviewer for an AI coding agent used inside a company.
 You receive one item from an agent's session: input it sends to a model, a tool call it is about to

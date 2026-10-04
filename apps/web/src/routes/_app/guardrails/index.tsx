@@ -1,4 +1,4 @@
-import { kindLabels, type PolicyGraph } from '@acl/shared'
+import { eventKind, kindLabels, type PolicyGraph } from '@acl/shared'
 import {
   Badge,
   Button,
@@ -24,35 +24,35 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, ArrowUp, Plus, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
-import { CheckboxGroup } from '#/components/workflow/step-form.tsx'
+import { CheckboxGroup } from '#/components/guardrail/step-form.tsx'
 import { listGroups, listResources } from '#/server/fns/access.ts'
-import { listMcpServers } from '#/server/fns/integrations.ts'
 import {
-  createWorkflow,
-  deleteWorkflow,
-  listWorkflows,
-  reorderWorkflows,
-  updateWorkflow,
-} from '#/server/fns/workflow.ts'
+  createGuardrail,
+  deleteGuardrail,
+  listGuardrails,
+  reorderGuardrails,
+  updateGuardrail,
+} from '#/server/fns/guardrail.ts'
+import { listMcpServers } from '#/server/fns/integrations.ts'
 
-const workflowsQuery = queryOptions({ queryKey: ['workflows'], queryFn: () => listWorkflows() })
+const guardrailsQuery = queryOptions({ queryKey: ['guardrails'], queryFn: () => listGuardrails() })
 const groupsQuery = queryOptions({ queryKey: ['groups'], queryFn: () => listGroups() })
 const serversQuery = queryOptions({ queryKey: ['mcp-servers'], queryFn: () => listMcpServers() })
 const resourcesQuery = queryOptions({ queryKey: ['resources'], queryFn: () => listResources() })
 
-export const Route = createFileRoute('/_app/workflows/')({
+export const Route = createFileRoute('/_app/guardrails/')({
   loader: ({ context: { queryClient } }) =>
     Promise.all([
-      queryClient.ensureQueryData(workflowsQuery),
+      queryClient.ensureQueryData(guardrailsQuery),
       queryClient.ensureQueryData(groupsQuery),
     ]),
-  component: WorkflowsPage,
+  component: GuardrailsPage,
 })
 
-type Workflow = Awaited<ReturnType<typeof listWorkflows>>[number]
-type Settings = { workflowId: string; name: string; description: string; groupIds: string[] }
+type Guardrail = Awaited<ReturnType<typeof listGuardrails>>[number]
+type Settings = { guardrailId: string; name: string; description: string; groupIds: string[] }
 
-/** The stages a workflow runs on; what it asks after that lives in its condition blocks. */
+/** The stages a guardrail runs on; what it asks after that lives in its condition blocks. */
 function triggerText(graph: PolicyGraph): string {
   const trigger = graph.nodes.find((n) => n.type === 'trigger')
   const stages = trigger?.type === 'trigger' ? trigger.stages : []
@@ -60,17 +60,17 @@ function triggerText(graph: PolicyGraph): string {
   return stages.map((k) => kindLabels[k]).join(', ')
 }
 
-function WorkflowsPage() {
+function GuardrailsPage() {
   const { isAdmin } = Route.useRouteContext()
   const qc = useQueryClient()
   const navigate = useNavigate()
-  const [workflows, groups, servers, resources] = useQueries({
-    queries: [workflowsQuery, groupsQuery, serversQuery, resourcesQuery],
+  const [guardrails, groups, servers, resources] = useQueries({
+    queries: [guardrailsQuery, groupsQuery, serversQuery, resourcesQuery],
   })
   const [creating, setCreating] = useState<{ name: string; copyOf: string } | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
 
-  const list = workflows.data ?? []
+  const list = guardrails.data ?? []
   const groupList = groups.data ?? []
   const names: Record<string, string> = {
     ...Object.fromEntries(groupList.map((g) => [g.id, g.name])),
@@ -79,29 +79,29 @@ function WorkflowsPage() {
   }
   const everyoneId = groupList.find((g) => g.isDefault)?.id
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['workflows'] })
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['guardrails'] })
   const create = useMutation({
     mutationFn: (d: { name: string; copyOf: string }) =>
-      createWorkflow({ data: { name: d.name, copyOf: d.copyOf || undefined } }),
+      createGuardrail({ data: { name: d.name, copyOf: d.copyOf || undefined } }),
     onSuccess: async ({ id }) => {
       setCreating(null)
       await invalidate()
-      await navigate({ to: '/workflows/$workflowId', params: { workflowId: id } })
+      await navigate({ to: '/guardrails/$guardrailId', params: { guardrailId: id } })
     },
   })
   const update = useMutation({
-    mutationFn: (d: Parameters<typeof updateWorkflow>[0]['data']) => updateWorkflow({ data: d }),
+    mutationFn: (d: Parameters<typeof updateGuardrail>[0]['data']) => updateGuardrail({ data: d }),
     onSuccess: async () => {
       setSettings(null)
       await invalidate()
     },
   })
   const reorder = useMutation({
-    mutationFn: (ids: string[]) => reorderWorkflows({ data: { ids } }),
+    mutationFn: (ids: string[]) => reorderGuardrails({ data: { ids } }),
     onSuccess: invalidate,
   })
   const remove = useMutation({
-    mutationFn: (workflowId: string) => deleteWorkflow({ data: { workflowId } }),
+    mutationFn: (guardrailId: string) => deleteGuardrail({ data: { guardrailId } }),
     onSuccess: async () => {
       setSettings(null)
       await invalidate()
@@ -115,14 +115,17 @@ function WorkflowsPage() {
     reorder.mutate(ids)
   }
 
-  const runsForEveryone = (w: Workflow) =>
+  const runsForEveryone = (w: Guardrail) =>
     w.groupIds.length === 0 || (everyoneId != null && w.groupIds.includes(everyoneId))
-  const catchAll = list.some((w) => {
-    const trigger = w.published?.definition.nodes.find((n) => n.type === 'trigger')
-    return (
-      w.enabled && trigger?.type === 'trigger' && trigger.stages.length === 0 && runsForEveryone(w)
-    )
-  })
+  // Every stage has a live guardrail that runs for everyone; one guardrail need not cover them all.
+  const covered = new Set(
+    list.flatMap((w) => {
+      const trigger = w.published?.definition.nodes.find((n) => n.type === 'trigger')
+      if (!w.enabled || trigger?.type !== 'trigger' || !runsForEveryone(w)) return []
+      return trigger.stages.length === 0 ? eventKind.options : trigger.stages
+    }),
+  )
+  const catchAll = eventKind.options.every((stage) => covered.has(stage))
 
   return (
     <>
@@ -141,7 +144,7 @@ function WorkflowsPage() {
         <div className="mb-3 flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
           <span>
-            No live guardrail covers every request for every member. A request that starts no
+            Some stages have no live guardrail that runs for every member. A request that starts no
             guardrail is allowed without any checks, including the device fingerprint.
           </span>
         </div>
@@ -194,8 +197,8 @@ function WorkflowsPage() {
                   ) : null}
                   <TD>
                     <Link
-                      to="/workflows/$workflowId"
-                      params={{ workflowId: w.id }}
+                      to="/guardrails/$guardrailId"
+                      params={{ guardrailId: w.id }}
                       className="text-sm font-medium hover:text-accent-strong"
                     >
                       {w.name}
@@ -230,7 +233,7 @@ function WorkflowsPage() {
                     <Switch
                       checked={w.enabled}
                       disabled={!isAdmin}
-                      onCheckedChange={(enabled) => update.mutate({ workflowId: w.id, enabled })}
+                      onCheckedChange={(enabled) => update.mutate({ guardrailId: w.id, enabled })}
                       label="Enabled"
                     />
                   </TD>
@@ -241,7 +244,7 @@ function WorkflowsPage() {
                         variant="ghost"
                         onClick={() =>
                           setSettings({
-                            workflowId: w.id,
+                            guardrailId: w.id,
                             name: w.name,
                             description: w.description ?? '',
                             groupIds: w.groupIds,
@@ -328,7 +331,7 @@ function WorkflowsPage() {
               onClick={() =>
                 settings &&
                 window.confirm(`Delete "${settings.name}" and all its versions?`) &&
-                remove.mutate(settings.workflowId)
+                remove.mutate(settings.guardrailId)
               }
             >
               Delete
