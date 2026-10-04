@@ -1,0 +1,782 @@
+# Hack?Nah! policy file.
+#
+# Apply with `pnpm policy:apply <file>` or Settings > Policy file > Import. Applying publishes a
+# new version of every guardrail whose graph changed; in replace mode, guardrails, limits and models
+# missing from this file are disabled, never deleted. API keys are never exported: set them on the
+# Models page after importing.
+
+version: 1
+
+# Guardrails. Every enabled guardrail whose start node runs on the request's stage runs, and the
+# strictest outcome wins: block over approval over allow. A guardrail whose path ends in skip does
+# not count. A start node without stages runs on every stage: model_request, tool_call,
+# tool_result, model_output and agent_message.
+#   groups:     group names the guardrail runs for; empty means every member.
+#   definition: the graph. nodes are trigger (start: stages), condition (one question about the
+#               request: field + values; outputs yes / no), check and decision (allow, block,
+#               require_approval, skip) blocks. edges connect a node's output (sourceHandle) to
+#               the next node: chain yes into the next condition for AND, no for OR; a node may
+#               have several incoming edges. fallback decides when an output is not connected or
+#               a check fails (allow or block).
+guardrails:
+  # Any stage · every member · disabled
+  - name: Default
+    description: Runs for every member and every request.
+    enabled: false
+    groups: []
+    definition:
+      nodes:
+        - id: start
+          position: { x: 0, y: 100 }
+          type: trigger
+          stages: []
+        - id: fingerprint
+          position: { x: 320, y: 100 }
+          type: check
+          enabled: true
+          check:
+            type: fingerprint
+        - id: keywords
+          position: { x: 660, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: keywords
+            patterns:
+              - rm -rf /
+              - DROP DATABASE
+              - curl * | sh
+              - aws_secret_access_key
+            mode: substring
+            caseSensitive: false
+        - id: allow
+          position: { x: 1000, y: 0 }
+          type: decision
+          action: allow
+          method: admin
+          timeoutSec: 300
+          reason: ""
+        - id: approve
+          position: { x: 660, y: 340 }
+          type: decision
+          action: require_approval
+          method: admin
+          timeoutSec: 300
+          reason: Request from a new device
+        - id: block
+          position: { x: 1000, y: 220 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: ""
+      edges:
+        - { id: e1, source: start, sourceHandle: next, target: fingerprint }
+        - { id: e2, source: fingerprint, sourceHandle: pass, target: keywords }
+        - { id: e3, source: fingerprint, sourceHandle: new, target: approve }
+        - { id: e4, source: fingerprint, sourceHandle: mismatch, target: block }
+        - { id: e5, source: keywords, sourceHandle: pass, target: allow }
+        - { id: e6, source: keywords, sourceHandle: fail, target: block }
+      fallback: block
+  # Model input, Tool call, Agent message · every member
+  - name: Device trust
+    description: Copied tokens, new or unhealthy devices, impossible travel.
+    enabled: true
+    groups: []
+    definition:
+      nodes:
+        - id: start
+          position: { x: 0, y: 0 }
+          type: trigger
+          stages:
+            - model_request
+            - tool_call
+            - agent_message
+        - id: device
+          position: { x: 340, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: fingerprint
+        - id: edr
+          position: { x: 680, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: posture
+            minScore: 60
+        - id: network
+          position: { x: 1020, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: network
+            maxTravelKmh: 900
+        - id: os
+          position: { x: 1360, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: os_posture
+            require: [ fv, sip ]
+        - id: risky_tool
+          position: { x: 1700, y: 200 }
+          type: condition
+          condition:
+            field: tier
+            values: [ write, destructive ]
+        - id: allow
+          position: { x: 2040, y: 0 }
+          type: decision
+          action: allow
+          method: admin
+          timeoutSec: 300
+          reason: ""
+        - id: copied_token
+          position: { x: 680, y: 400 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: This token belongs to another device
+        - id: new_device
+          position: { x: 680, y: 200 }
+          type: decision
+          action: require_approval
+          method: admin
+          timeoutSec: 300
+          reason: Request from a new device
+        - id: compromised
+          position: { x: 1020, y: 400 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: The device is reported as compromised
+        - id: weak_device
+          position: { x: 1020, y: 200 }
+          type: decision
+          action: require_approval
+          method: admin
+          timeoutSec: 300
+          reason: Device health score is low
+        - id: travel
+          position: { x: 1360, y: 400 }
+          type: decision
+          action: require_approval
+          method: browser
+          timeoutSec: 120
+          reason: "Sign in again: the location changed too fast"
+        - id: unprotected
+          position: { x: 2040, y: 400 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Tools that change data need disk encryption and SIP on
+      edges:
+        - { id: start-next, source: start, sourceHandle: next, target: device }
+        - { id: device-pass, source: device, sourceHandle: pass, target: edr }
+        - { id: device-new, source: device, sourceHandle: new, target: new_device }
+        - { id: device-mismatch, source: device, sourceHandle: mismatch, target: copied_token }
+        - { id: edr-pass, source: edr, sourceHandle: pass, target: network }
+        - { id: edr-unknown, source: edr, sourceHandle: unknown, target: network }
+        - { id: edr-low, source: edr, sourceHandle: low, target: weak_device }
+        - { id: edr-compromised, source: edr, sourceHandle: compromised, target: compromised }
+        - { id: network-pass, source: network, sourceHandle: pass, target: os }
+        - { id: network-new_network, source: network, sourceHandle: new_network, target: os }
+        - { id: network-travel, source: network, sourceHandle: travel, target: travel }
+        - { id: os-pass, source: os, sourceHandle: pass, target: allow }
+        - { id: os-fail, source: os, sourceHandle: fail, target: risky_tool }
+        - { id: risky_tool-yes, source: risky_tool, sourceHandle: yes, target: unprotected }
+        - { id: risky_tool-no, source: risky_tool, sourceHandle: no, target: allow }
+      fallback: block
+  # Model input · every member
+  - name: Prompt screening
+    description: Known attacks, prompt injections and jailbreaks.
+    enabled: true
+    groups: []
+    definition:
+      nodes:
+        - id: start
+          position: { x: 0, y: 0 }
+          type: trigger
+          stages:
+            - model_request
+        - id: known
+          position: { x: 340, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: signatures
+            minSeverity: medium
+            categories: []
+        - id: injection
+          position: { x: 680, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: learned
+            threshold: 0.8
+            datasets:
+              - deepset-prompt-injections
+              - jackhhao-jailbreak-classification
+              - lakera-gandalf-ignore-instructions
+              - meta-llama-purplellama-cyberseceval-prompt-injection
+              - rubend18-chatgpt-jailbreak-prompts
+              - trustairlab-in-the-wild-jailbreak-prompts
+              - xtram1-safe-guard-prompt-injection
+              - yanismiraoui-prompt-injections
+            models:
+              - mdl_ga6s6r1lni26d
+        - id: redact
+          position: { x: 1020, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: redact
+            secrets: true
+            pii: [ email, phone, iban, credit_card, pesel ]
+        - id: allow
+          position: { x: 1360, y: 0 }
+          type: decision
+          action: allow
+          method: admin
+          timeoutSec: 300
+          reason: ""
+        - id: attack
+          position: { x: 680, y: 200 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Matches a known attack
+        - id: looks_like_attack
+          position: { x: 1020, y: 200 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Looks like a prompt injection or jailbreak
+      edges:
+        - { id: start-next, source: start, sourceHandle: next, target: known }
+        - { id: known-pass, source: known, sourceHandle: pass, target: injection }
+        - { id: known-fail, source: known, sourceHandle: fail, target: attack }
+        - { id: injection-pass, source: injection, sourceHandle: pass, target: redact }
+        - { id: injection-fail, source: injection, sourceHandle: fail, target: looks_like_attack }
+        - { id: redact-pass, source: redact, sourceHandle: pass, target: allow }
+      fallback: block
+  # Tool call · every member
+  - name: Tool call safety
+    description: Known attacks, dangerous commands, changed tools. Risky tools need confirmation.
+    enabled: true
+    groups: []
+    definition:
+      nodes:
+        - id: start
+          position: { x: 0, y: 0 }
+          type: trigger
+          stages:
+            - tool_call
+        - id: hook
+          position: { x: 340, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: hook
+        - id: rogue_writes
+          position: { x: 340, y: 200 }
+          type: condition
+          condition:
+            field: tier
+            values: [ write, destructive ]
+        - id: pin
+          position: { x: 680, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: tool_pinning
+        - id: known
+          position: { x: 1020, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: signatures
+            minSeverity: low
+            categories: []
+        - id: keywords
+          position: { x: 1360, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: keywords
+            patterns:
+              - DROP DATABASE
+              - DROP TABLE
+              - TRUNCATE TABLE
+              - aws_secret_access_key
+              - mkfs.
+              - dd if=* of=/dev/
+              - git push --force
+              - chmod -R 777
+            mode: substring
+            caseSensitive: false
+        - id: arguments
+          position: { x: 1700, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: arguments
+            rules:
+              - tool: "*email*"
+                argument: to
+                pattern: "@company\\.com$"
+                message: Email may only go to @company.com addresses (to)
+              - tool: "*email*"
+                argument: cc
+                pattern: "@company\\.com$"
+                message: Email may only go to @company.com addresses (cc)
+              - tool: "*email*"
+                argument: bcc
+                pattern: "@company\\.com$"
+                message: Email may only go to @company.com addresses (bcc)
+        - id: untrusted
+          position: { x: 2040, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: untrusted_content
+            windowMinutes: 10
+        - id: tainted_writes
+          position: { x: 2040, y: 200 }
+          type: condition
+          condition:
+            field: tier
+            values: [ write, destructive ]
+        - id: destructive
+          position: { x: 2380, y: 0 }
+          type: condition
+          condition:
+            field: tier
+            values: [ destructive ]
+        - id: present
+          position: { x: 2380, y: 200 }
+          type: check
+          enabled: true
+          check:
+            type: idle
+            maxMinutes: 30
+        - id: allow
+          position: { x: 2720, y: 0 }
+          type: decision
+          action: allow
+          method: admin
+          timeoutSec: 300
+          reason: ""
+        - id: rogue
+          position: { x: 680, y: 400 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Tool call was not started by Claude Code
+        - id: poisoned
+          position: { x: 1020, y: 200 }
+          type: decision
+          action: require_approval
+          method: admin
+          timeoutSec: 300
+          reason: The tool changed since it was approved
+        - id: attack
+          position: { x: 1360, y: 200 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Matches a known attack
+        - id: dangerous
+          position: { x: 1700, y: 200 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Dangerous command
+        - id: bad_argument
+          position: { x: 2040, y: 400 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: ""
+        - id: confirm
+          position: { x: 2380, y: 400 }
+          type: decision
+          action: require_approval
+          method: confirm
+          timeoutSec: 120
+          reason: Untrusted content was read just before this change
+        - id: away
+          position: { x: 2720, y: 400 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Destructive tool while the user is away
+        - id: touch
+          position: { x: 2720, y: 200 }
+          type: decision
+          action: require_approval
+          method: touchid
+          timeoutSec: 120
+          reason: Destructive tool
+      edges:
+        - { id: start-next, source: start, sourceHandle: next, target: hook }
+        - { id: hook-pass, source: hook, sourceHandle: pass, target: pin }
+        - { id: hook-fail, source: hook, sourceHandle: fail, target: rogue_writes }
+        - { id: rogue_writes-yes, source: rogue_writes, sourceHandle: yes, target: rogue }
+        - { id: rogue_writes-no, source: rogue_writes, sourceHandle: no, target: pin }
+        - { id: pin-pass, source: pin, sourceHandle: pass, target: known }
+        - { id: pin-changed, source: pin, sourceHandle: changed, target: poisoned }
+        - { id: known-pass, source: known, sourceHandle: pass, target: keywords }
+        - { id: known-fail, source: known, sourceHandle: fail, target: attack }
+        - { id: keywords-pass, source: keywords, sourceHandle: pass, target: arguments }
+        - { id: keywords-fail, source: keywords, sourceHandle: fail, target: dangerous }
+        - { id: arguments-pass, source: arguments, sourceHandle: pass, target: untrusted }
+        - { id: arguments-fail, source: arguments, sourceHandle: fail, target: bad_argument }
+        - { id: untrusted-pass, source: untrusted, sourceHandle: pass, target: destructive }
+        - { id: untrusted-tainted, source: untrusted, sourceHandle: tainted, target: tainted_writes }
+        - { id: tainted_writes-yes, source: tainted_writes, sourceHandle: yes, target: confirm }
+        - { id: tainted_writes-no, source: tainted_writes, sourceHandle: no, target: destructive }
+        - { id: destructive-no, source: destructive, sourceHandle: no, target: allow }
+        - { id: destructive-yes, source: destructive, sourceHandle: yes, target: present }
+        - { id: present-pass, source: present, sourceHandle: pass, target: touch }
+        - { id: present-idle, source: present, sourceHandle: idle, target: away }
+      fallback: block
+  # Tool result · every member
+  - name: Tool result screening
+    description: Instructions and secrets hidden in what tools return.
+    enabled: true
+    groups: []
+    definition:
+      nodes:
+        - id: start
+          position: { x: 0, y: 0 }
+          type: trigger
+          stages:
+            - tool_result
+        - id: known
+          position: { x: 340, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: signatures
+            minSeverity: medium
+            categories: []
+        - id: injection
+          position: { x: 680, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: learned
+            threshold: 0.8
+            datasets:
+              - lakera-gandalf-summarization
+              - microsoft-bipia
+              - uiuc-kang-lab-injecagent
+            models:
+              - mdl_qyy937c8897l
+        - id: redact
+          position: { x: 1020, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: redact
+            secrets: true
+            pii: [ email, phone, iban, credit_card, pesel ]
+        - id: allow
+          position: { x: 1360, y: 0 }
+          type: decision
+          action: allow
+          method: admin
+          timeoutSec: 300
+          reason: ""
+        - id: attack
+          position: { x: 680, y: 200 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Tool result matches a known attack
+        - id: injected
+          position: { x: 1020, y: 200 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Tool result looks like it carries instructions
+      edges:
+        - { id: start-next, source: start, sourceHandle: next, target: known }
+        - { id: known-pass, source: known, sourceHandle: pass, target: injection }
+        - { id: known-fail, source: known, sourceHandle: fail, target: attack }
+        - { id: injection-pass, source: injection, sourceHandle: pass, target: redact }
+        - { id: injection-fail, source: injection, sourceHandle: fail, target: injected }
+        - { id: redact-pass, source: redact, sourceHandle: pass, target: allow }
+      fallback: block
+  # Model output · every member
+  - name: Model output
+    description: Known attacks and secrets in the answer.
+    enabled: true
+    groups: []
+    definition:
+      nodes:
+        - id: start
+          position: { x: 0, y: 0 }
+          type: trigger
+          stages:
+            - model_output
+        - id: known
+          position: { x: 340, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: signatures
+            minSeverity: medium
+            categories: []
+        - id: redact
+          position: { x: 680, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: redact
+            secrets: true
+            pii: []
+        - id: allow
+          position: { x: 1020, y: 0 }
+          type: decision
+          action: allow
+          method: admin
+          timeoutSec: 300
+          reason: ""
+        - id: attack
+          position: { x: 680, y: 200 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Model output matches a known attack
+      edges:
+        - { id: start-next, source: start, sourceHandle: next, target: known }
+        - { id: known-pass, source: known, sourceHandle: pass, target: redact }
+        - { id: known-fail, source: known, sourceHandle: fail, target: attack }
+        - { id: redact-pass, source: redact, sourceHandle: pass, target: allow }
+      fallback: block
+  # Agent message · every member
+  - name: Agent messages
+    description: Attacks one agent passes on to another.
+    enabled: true
+    groups: []
+    definition:
+      nodes:
+        - id: start
+          position: { x: 0, y: 0 }
+          type: trigger
+          stages:
+            - agent_message
+        - id: known
+          position: { x: 340, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: signatures
+            minSeverity: low
+            categories: []
+        - id: injection
+          position: { x: 680, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: learned
+            threshold: 0.8
+            datasets:
+              - deepset-prompt-injections
+              - jackhhao-jailbreak-classification
+              - lakera-gandalf-ignore-instructions
+              - meta-llama-purplellama-cyberseceval-prompt-injection
+              - rubend18-chatgpt-jailbreak-prompts
+              - trustairlab-in-the-wild-jailbreak-prompts
+              - xtram1-safe-guard-prompt-injection
+              - yanismiraoui-prompt-injections
+            models:
+              - mdl_ga6s6r1lni26d
+        - id: instructions
+          position: { x: 1020, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: learned
+            threshold: 0.8
+            datasets:
+              - lakera-gandalf-summarization
+              - microsoft-bipia
+              - uiuc-kang-lab-injecagent
+            models:
+              - mdl_qyy937c8897l
+        - id: redact
+          position: { x: 1360, y: 0 }
+          type: check
+          enabled: true
+          check:
+            type: redact
+            secrets: true
+            pii: [ email, phone, iban, credit_card, pesel ]
+        - id: allow
+          position: { x: 1700, y: 0 }
+          type: decision
+          action: allow
+          method: admin
+          timeoutSec: 300
+          reason: ""
+        - id: attack
+          position: { x: 680, y: 200 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Agent message matches a known attack
+        - id: injected
+          position: { x: 1360, y: 200 }
+          type: decision
+          action: block
+          method: admin
+          timeoutSec: 300
+          reason: Agent message looks like a prompt injection
+      edges:
+        - { id: start-next, source: start, sourceHandle: next, target: known }
+        - { id: known-pass, source: known, sourceHandle: pass, target: injection }
+        - { id: known-fail, source: known, sourceHandle: fail, target: attack }
+        - { id: injection-pass, source: injection, sourceHandle: pass, target: instructions }
+        - { id: injection-fail, source: injection, sourceHandle: fail, target: injected }
+        - { id: instructions-pass, source: instructions, sourceHandle: pass, target: redact }
+        - { id: instructions-fail, source: instructions, sourceHandle: fail, target: injected }
+        - { id: redact-pass, source: redact, sourceHandle: pass, target: allow }
+      fallback: block
+
+# Limits, checked at the gateway before guardrails run.
+#   measure:   requests | concurrent | tokens | cost (USD) | gpu_seconds
+#   scope:     model | mcp | tool | resource | guardrails (the judge's own calls)
+#   target:    model or tool glob, MCP server id or resource id; * for anything
+#   per:       user | group_member | group_total | org   (group: a group name, or "All members")
+#   action:    block | warn (allow and flag) | guardrail (a Usage limit block decides)
+#   warnAtPct: percent of the limit from which requests count as near the limit
+limits:
+  - name: Daily spend per user
+    measure: cost
+    scope: model
+    target: "*"
+    limit: 10
+    windowSec: 86400
+    per: user
+    action: block
+    warnAtPct: 80
+    enabled: true
+    group: null
+  - name: Local GPU time per user
+    measure: gpu_seconds
+    scope: model
+    target: qwen*
+    limit: 3600
+    windowSec: 86400
+    per: user
+    action: block
+    warnAtPct: 80
+    enabled: true
+    group: null
+  - name: Local model concurrency
+    measure: concurrent
+    scope: model
+    target: qwen*
+    limit: 2
+    windowSec: 60
+    per: user
+    action: block
+    warnAtPct: 80
+    enabled: true
+    group: null
+  - name: Judge spend
+    measure: cost
+    scope: guardrails
+    target: "*"
+    limit: 5
+    windowSec: 86400
+    per: org
+    action: warn
+    warnAtPct: 80
+    enabled: true
+    group: null
+  - name: Tool calls per user
+    measure: requests
+    scope: tool
+    target: "*"
+    limit: 120
+    windowSec: 60
+    per: user
+    action: block
+    warnAtPct: 80
+    enabled: true
+    group: null
+
+# Model catalog, in routing order: the first enabled entry whose pattern matches serves the model.
+# With any entry here, models outside the catalog are refused.
+#   kind:      external (priced per token) | local (priced per GPU-hour)
+#   apiFormat: anthropic (passed through) | openai (chat completions, translated)
+#   baseUrl:   empty for the gateway's default upstream (OpenRouter)
+#   prices:    USD per million tokens; cache write/read for prompt caching
+models:
+  - pattern: claude-sonnet-4-5*
+    label: Claude Sonnet 4.5
+    kind: external
+    apiFormat: anthropic
+    baseUrl: ""
+    upstreamModel: ""
+    inputUsdPerMTok: 3
+    outputUsdPerMTok: 15
+    cacheWriteUsdPerMTok: 3.75
+    cacheReadUsdPerMTok: 0.3
+    gpuUsdPerHour: 0
+    enabled: true
+  - pattern: claude-haiku-4-5*
+    label: Claude Haiku 4.5
+    kind: external
+    apiFormat: anthropic
+    baseUrl: ""
+    upstreamModel: ""
+    inputUsdPerMTok: 1
+    outputUsdPerMTok: 5
+    cacheWriteUsdPerMTok: 1.25
+    cacheReadUsdPerMTok: 0.1
+    gpuUsdPerHour: 0
+    enabled: true
+  - pattern: claude-opus-4-5*
+    label: Claude Opus 4.5
+    kind: external
+    apiFormat: anthropic
+    baseUrl: ""
+    upstreamModel: ""
+    inputUsdPerMTok: 5
+    outputUsdPerMTok: 25
+    cacheWriteUsdPerMTok: 6.25
+    cacheReadUsdPerMTok: 0.5
+    gpuUsdPerHour: 0
+    enabled: true
+  - pattern: qwen*
+    label: Qwen (local, Ollama)
+    kind: local
+    apiFormat: openai
+    baseUrl: http://localhost:11434/v1
+    upstreamModel: ""
+    inputUsdPerMTok: 0
+    outputUsdPerMTok: 0
+    cacheWriteUsdPerMTok: 0
+    cacheReadUsdPerMTok: 0
+    gpuUsdPerHour: 1.5
+    enabled: true
