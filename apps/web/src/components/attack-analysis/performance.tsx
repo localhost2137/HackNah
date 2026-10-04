@@ -65,7 +65,7 @@ export function RunPerformance({ run }: { run: AnalysisRun }) {
     <Card className="mt-6 overflow-hidden">
       <CardHeader
         title="Performance"
-        description="Time the guardrails take to decide on one request, on one core. Measured in this browser by replaying the run; LLM judges are not called."
+        description="Time to decide on one request, measured in this browser. LLM judges are not called."
       />
       {state.phase === 'error' ? (
         <p className="p-5 text-xs text-bad">Could not measure: {state.message}</p>

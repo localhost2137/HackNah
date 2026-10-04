@@ -80,7 +80,9 @@ type Option = { value: string; label: string }
 export type BlockField = { key: string; label: string; hint?: string } & (
   | { kind: 'text' | 'longtext' | 'lines'; placeholder?: string }
   | { kind: 'number'; min: number; max: number; step?: number }
-  | { kind: 'select' | 'multi'; options: Option[] }
+  | { kind: 'select'; options: Option[] }
+  /** `allWhenEmpty`: an empty list is stored for "all of them", and the form shows all ticked. */
+  | { kind: 'multi'; options: Option[]; allWhenEmpty?: boolean }
   | { kind: 'switch' }
   | { kind: 'argument_rules' }
   | { kind: 'limit' }
@@ -354,8 +356,7 @@ const specs: BlockSpec[] = [
     label: 'Start',
     description: 'Picks which stages run this guardrail.',
     source: 'The request',
-    details:
-      'Picks the stages this guardrail runs on. None ticked: every stage (model input, tool calls, tool results, model output and agent messages). Ask about tools, models or groups with condition blocks after it; a request that ends in Skip, or starts no guardrail, is allowed.',
+    details: 'The stages this guardrail runs on. Narrow it further with condition blocks.',
     inputs: [],
     outputs: [
       {
@@ -371,7 +372,7 @@ const specs: BlockSpec[] = [
         kind: 'multi',
         key: 'stages',
         label: 'Runs on',
-        hint: 'None ticked runs on every stage.',
+        allWhenEmpty: true,
         options: eventKind.options.map((value) => ({ value, label: kindLabels[value] })),
       },
     ],
@@ -388,8 +389,7 @@ const specs: BlockSpec[] = [
     label: 'Device check',
     description: 'Is this the device the token was issued to?',
     source: 'Device token, checked by the gateway',
-    details:
-      'Compares the device presenting the token with the one it was issued to. Approving a request that came through New device also trusts that device.',
+    details: 'Approving a request from a new device also trusts that device.',
     inputs: ['device'],
     outputs: [
       pass('Known device', ['keywords', 'posture', 'judge', 'redact', 'if_tool']),
@@ -410,8 +410,7 @@ const specs: BlockSpec[] = [
     label: 'EDR score',
     description: 'Reads the device health score.',
     source: 'CrowdStrike, sent by the plugin',
-    details:
-      'Reads the CrowdStrike Zero Trust score for the device. A raised detection or a contained host leaves through Compromised; a stale, missing or unconfirmed score through Unknown.',
+    details: 'Compromised: a detection or a contained host. Unknown: no score, or a stale one.',
     inputs: ['posture'],
     outputs: [
       pass('Healthy', ['os_posture', 'network', 'keywords', 'if_tool']),
@@ -448,8 +447,7 @@ const specs: BlockSpec[] = [
     label: 'OS security',
     description: 'Checks disk encryption, SIP, Gatekeeper and firewall.',
     source: 'The device, sent by the plugin',
-    details:
-      'Built-in checks the device reports about itself. A baseline for machines without an EDR; fails when a required protection is off.',
+    details: 'Fails when a required protection is off. Works without an EDR.',
     inputs: ['os_posture'],
     outputs: [
       pass('All on', ['network', 'keywords', 'if_tool']),
@@ -471,7 +469,7 @@ const specs: BlockSpec[] = [
     description: 'Flags a new network or impossible travel.',
     source: 'Request IP, checked by the gateway',
     details:
-      'Flags the first request from a network this device has not used before, and jumps in location faster than a plane.',
+      'New network: first request from it. Impossible travel: the location moved faster than a plane.',
     inputs: ['network'],
     outputs: [
       pass('Known network', ['hook', 'idle', 'keywords', 'allow']),
@@ -539,7 +537,7 @@ const specs: BlockSpec[] = [
     description: 'Matches known bad packages, commands and code.',
     source: 'Built-in list and the signature feed',
     details:
-      'Matches the request against signatures of attacks that already happened: code execution, unsafe deserialization, malicious packages and model-repository exploits, tool poisoning. Uses the built-in baseline plus the external signature feed, and sees through base64 and Unicode tricks.',
+      'Signatures of real attacks: malicious packages, code execution, unsafe deserialization, tool poisoning. Sees through base64 and Unicode tricks.',
     inputs: ['content'],
     outputs: [
       pass('No match', ['judge', 'redact', 'untrusted_content', 'allow']),
@@ -562,7 +560,7 @@ const specs: BlockSpec[] = [
         kind: 'multi',
         key: 'categories',
         label: 'Categories',
-        hint: 'Leave all unchecked to match every category.',
+        allWhenEmpty: true,
         options: [
           { value: 'code_execution', label: 'Code execution' },
           { value: 'deserialization', label: 'Unsafe deserialization' },
@@ -584,8 +582,7 @@ const specs: BlockSpec[] = [
     label: 'Trained model',
     description: 'Flags requests that look like attacks in your datasets.',
     source: 'Datasets you pick',
-    details:
-      'Flags requests that look like the attacks in the datasets you pick. Select datasets and train: a small model learns them in seconds and scores each request in well under a millisecond. It only knows what it was trained on.',
+    details: 'Pick datasets and train. It only knows the attacks it was trained on.',
     inputs: ['content'],
     outputs: [
       pass('No match', ['judge', 'redact', 'allow']),
@@ -619,7 +616,7 @@ const specs: BlockSpec[] = [
     description: 'Asks a model to rate the risk from 0 to 1.',
     source: 'The model endpoint you set',
     details:
-      'Sends the input to a model on OpenRouter, or to any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM), and asks for a risk score between 0 and 1. When the judge is down or times out, the guardrail fallback decides.',
+      'Works with OpenRouter or any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM). If the judge is down, the fallback decides.',
     inputs: ['content', 'tool'],
     outputs: [
       pass('Low risk', ['redact', 'allow', 'untrusted_content']),
@@ -663,7 +660,7 @@ const specs: BlockSpec[] = [
     description: 'Hides secrets and personal data from the model.',
     source: 'Built-in detectors',
     details:
-      'Replaces secrets and personal data with stable placeholders like [REDACTED_EMAIL_1] before they reach the model, and in MCP tool results. When the agent passes a placeholder back into a tool call, the gateway swaps the real value in. Never blocks.',
+      'Replaces values with placeholders like [REDACTED_EMAIL_1]. Tools still get the real value. Never blocks.',
     inputs: ['content'],
     outputs: [pass('Next', ['allow', 'judge', 'keywords'])],
     fields: [
@@ -684,8 +681,7 @@ const specs: BlockSpec[] = [
     label: 'Argument rules',
     description: 'Checks tool arguments against your rules.',
     source: 'Your rules',
-    details:
-      'Refuses a tool call when an argument does not match its allowed pattern, for example email_send may only send to @company.com.',
+    details: 'Example: email_send may only send to @company.com.',
     inputs: ['tool', 'arguments'],
     outputs: [
       pass('OK', ['untrusted_content', 'approve_confirm', 'allow']),
@@ -709,7 +705,7 @@ const specs: BlockSpec[] = [
     description: 'Checks the tool is the one an admin approved.',
     source: 'Pinned tool definitions, sent by the plugin',
     details:
-      'Compares the tool with the definition an admin pinned. A changed name, description or schema is how tool poisoning and rug pulls arrive.',
+      'Changed: the name, description or schema differs from the pinned one (tool poisoning).',
     inputs: ['definition'],
     outputs: [
       pass('Same', ['arguments', 'untrusted_content', 'allow']),
@@ -725,7 +721,7 @@ const specs: BlockSpec[] = [
     description: 'Did the session read outside content recently?',
     source: 'Session history, sent by the plugin',
     details:
-      'Prompt-injection guard. After the session reads untrusted content (a web page, an inbox, a ticket), requests leave through Recently read for the length of the window.',
+      'Untrusted content is a web page, an inbox or a ticket. Guards against prompt injection.',
     inputs: ['untrusted'],
     outputs: [
       pass('Clean', ['allow', 'redact', 'approve_confirm']),
@@ -748,8 +744,7 @@ const specs: BlockSpec[] = [
     label: 'Hook check',
     description: 'Did Claude Code start this tool call?',
     source: 'Claude Code hook, sent by the plugin',
-    details:
-      "Checks that Claude Code's own hook recorded this exact tool call. A call without a record came from something else holding the session.",
+    details: 'No record: something other than Claude Code made this call with the session.',
     inputs: ['hook'],
     outputs: [
       pass('From Claude Code', ['idle', 'untrusted_content', 'allow']),
@@ -769,8 +764,7 @@ const specs: BlockSpec[] = [
     label: 'User present',
     description: 'Is someone at the keyboard?',
     source: 'Device idle time, sent by the plugin',
-    details:
-      'Uses keyboard and mouse idle time on the device. An agent acting while nobody is there is worth a second look.',
+    details: 'Uses keyboard and mouse idle time.',
     inputs: ['idle'],
     outputs: [
       pass('Present', ['untrusted_content', 'allow', 'redact']),
@@ -792,8 +786,7 @@ const specs: BlockSpec[] = [
     label: 'Usage limit',
     description: 'Checks spend or usage against a limit.',
     source: 'A rule from the Limits page',
-    details:
-      'Reads a rule from the Limits page set to "let the guardrail decide": spend in USD, tokens, GPU time or requests for the user, their group or the org. Under the warning level the request passes; past it, it leaves through Near limit; past the limit, through Over limit.',
+    details: 'Uses a limit set to "let the guardrail decide" on the Limits page.',
     inputs: ['usage', 'identity'],
     appliesTo: ['model_request', 'tool_call', 'agent_message'],
     outputs: [
@@ -879,8 +872,7 @@ const specs: BlockSpec[] = [
     label: 'Skip',
     description: 'Ends this guardrail with no decision.',
     source: '—',
-    details:
-      'End this guardrail without a decision. It does not count towards the outcome, as if it had not started; other guardrails still decide.',
+    details: 'Other guardrails still decide.',
     inputs: [],
     outputs: [],
     through: null,

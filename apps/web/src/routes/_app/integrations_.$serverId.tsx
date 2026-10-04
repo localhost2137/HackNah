@@ -121,7 +121,7 @@ function ServerPage() {
       <Card className="mb-4">
         <CardHeader
           title="Tools"
-          description="What this server offers, and the resources each tool is in. A tool in no resource can only be called by admins. Change that on the Resources page."
+          description="A tool in no resource can only be called by admins."
           actions={
             <Input
               value={filter}

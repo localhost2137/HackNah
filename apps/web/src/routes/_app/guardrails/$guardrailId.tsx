@@ -191,7 +191,7 @@ function GuardrailPage() {
       </Link>
       <PageHeader
         title={data.guardrail.name}
-        description="Pick the stages this guardrail runs on in its first step, ask about the request with condition blocks, then follow it from left to right to an allow, a block, an approval or Skip."
+        description="A request enters at Start and follows the outputs to a decision."
         actions={
           isAdmin ? (
             <>

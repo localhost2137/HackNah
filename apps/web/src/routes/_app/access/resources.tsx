@@ -56,7 +56,7 @@ function ResourcesPage() {
     <>
       <PageHeader
         title="Resources"
-        description="A resource is a named set of MCP tools, from one server or several. Grant it to people or groups: it is the only way to give them MCP tools. In Claude Code a session can narrow itself to some resources with /acl resources."
+        description="A named set of MCP tools. Granting a resource is the only way to give people MCP tools."
         actions={
           isAdmin ? (
             <Link to="/access/resources/$resourceId" params={{ resourceId: 'new' }}>

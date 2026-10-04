@@ -129,7 +129,7 @@ function GroupsPage() {
     <>
       <PageHeader
         title="Groups"
-        description="Groups decide what their members may use: models, Claude Code's built-in tools, and the resources (sets of MCP tools) granted to them. Everyone is in the default group; permissions from all of a member's groups add up."
+        description="What members may use: models, built-in tools and resources. Permissions from all of a member's groups add up."
         actions={
           isAdmin ? (
             <Button

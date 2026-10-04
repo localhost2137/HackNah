@@ -131,7 +131,7 @@ function GuardrailsPage() {
     <>
       <PageHeader
         title="Guardrails"
-        description="Every enabled guardrail that runs on the request's stage, and whose groups include the user, runs. The strictest outcome wins: block, then approval, then allow; a guardrail that ends in Skip does not count."
+        description="Every enabled guardrail that matches a request runs. The strictest outcome wins."
         actions={
           isAdmin ? (
             <Button variant="primary" onClick={() => setCreating({ name: '', copyOf: '' })}>

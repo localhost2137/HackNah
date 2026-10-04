@@ -157,7 +157,7 @@ function IntegrationsPage() {
     <>
       <PageHeader
         title="Integrations"
-        description="MCP servers behind the gateway. Claude Code connects to a single endpoint; credentials stay encrypted in the gateway and never reach the laptop."
+        description="MCP servers behind the gateway. Their credentials never reach the laptop."
         actions={
           isAdmin ? (
             <Button variant="primary" onClick={() => setDraft(fromPreset(mcpPresets[0]!))}>

@@ -1,6 +1,5 @@
 import type { ApprovalMethod, EventKind } from './events.ts'
 import type { CheckConfig, Condition, PolicyGraph, PolicyNode } from './guardrail.ts'
-import { signatureCategory } from './signatures.ts'
 
 /** A trained model and the datasets it was trained on, as a Trained model block stores them. */
 export type LearnedRef = { id: string; datasets: string[] }
@@ -48,9 +47,6 @@ function builder(stages: EventKind[]) {
     graph: (): PolicyGraph => ({ fallback: 'block', nodes, edges }),
   }
 }
-
-// Every category ticked, so the editor shows what the block looks for.
-const ALL_ATTACKS = [...signatureCategory.options]
 
 const PII = ['email', 'phone', 'iban', 'credit_card', 'pesel'] as const
 
@@ -105,7 +101,7 @@ function deviceTrust(): PolicyGraph {
 /** What the user and the context send to the model. */
 function modelInput(prompts: LearnedRef | null): PolicyGraph {
   const g = builder(['model_request'])
-  g.check('known', 1, 0, { type: 'signatures', minSeverity: 'medium', categories: ALL_ATTACKS })
+  g.check('known', 1, 0, { type: 'signatures', minSeverity: 'medium', categories: [] })
   g.check('injection', 2, 0, learned(prompts, 0.8))
   g.check('redact', 3, 0, { type: 'redact', secrets: true, pii: [...PII] })
   g.end('allow', 4, 0, 'allow')
@@ -126,7 +122,7 @@ function toolCalls(): PolicyGraph {
   g.check('hook', 1, 0, { type: 'hook' })
   g.when('rogue_writes', 1, 1, { field: 'tier', values: ['write', 'destructive'] })
   g.check('pin', 2, 0, { type: 'tool_pinning' })
-  g.check('known', 3, 0, { type: 'signatures', minSeverity: 'low', categories: ALL_ATTACKS })
+  g.check('known', 3, 0, { type: 'signatures', minSeverity: 'low', categories: [] })
   g.check('keywords', 4, 0, {
     type: 'keywords',
     mode: 'substring',
@@ -198,7 +194,7 @@ function toolCalls(): PolicyGraph {
 /** What tools hand back: the way indirect prompt injection gets in. */
 function toolResults(indirect: LearnedRef | null): PolicyGraph {
   const g = builder(['tool_result'])
-  g.check('known', 1, 0, { type: 'signatures', minSeverity: 'medium', categories: ALL_ATTACKS })
+  g.check('known', 1, 0, { type: 'signatures', minSeverity: 'medium', categories: [] })
   g.check('injection', 2, 0, learned(indirect, 0.8))
   g.check('redact', 3, 0, { type: 'redact', secrets: true, pii: [...PII] })
   g.end('allow', 4, 0, 'allow')
@@ -216,7 +212,7 @@ function toolResults(indirect: LearnedRef | null): PolicyGraph {
 /** What the model answers. Streamed output cannot wait for an approval, so it only blocks. */
 function modelOutput(): PolicyGraph {
   const g = builder(['model_output'])
-  g.check('known', 1, 0, { type: 'signatures', minSeverity: 'medium', categories: ALL_ATTACKS })
+  g.check('known', 1, 0, { type: 'signatures', minSeverity: 'medium', categories: [] })
   g.check('redact', 2, 0, { type: 'redact', secrets: true, pii: [] })
   g.end('allow', 3, 0, 'allow')
   g.end('attack', 2, 1, 'block', 'Model output matches a known attack')
@@ -230,7 +226,7 @@ function modelOutput(): PolicyGraph {
 /** What one agent sends to another. */
 function agentMessages(prompts: LearnedRef | null, indirect: LearnedRef | null): PolicyGraph {
   const g = builder(['agent_message'])
-  g.check('known', 1, 0, { type: 'signatures', minSeverity: 'low', categories: ALL_ATTACKS })
+  g.check('known', 1, 0, { type: 'signatures', minSeverity: 'low', categories: [] })
   g.check('injection', 2, 0, learned(prompts, 0.8))
   g.check('instructions', 3, 0, learned(indirect, 0.8))
   g.check('redact', 4, 0, { type: 'redact', secrets: true, pii: [...PII] })
@@ -261,32 +257,32 @@ export function recommendedGuardrails(models: {
     {
       id: 'wf_device_trust',
       name: 'Device trust',
-      description: 'Copied tokens, new or unhealthy devices and impossible travel.',
+      description: 'Copied tokens, new or unhealthy devices, impossible travel.',
       graph: deviceTrust(),
     },
     {
       id: 'wf_model_input',
       name: 'Prompt screening',
-      description: 'Known attacks, prompt injections and jailbreaks in what goes to the model.',
+      description: 'Known attacks, prompt injections and jailbreaks.',
       graph: modelInput(models.prompts),
     },
     {
       id: 'wf_tool_calls',
       name: 'Tool call safety',
       description:
-        'Known attacks, dangerous commands, changed tools and confirmation for risky tools.',
+        'Known attacks, dangerous commands, changed tools. Risky tools need confirmation.',
       graph: toolCalls(),
     },
     {
       id: 'wf_tool_results',
       name: 'Tool result screening',
-      description: 'Instructions hidden in what tools return, and secrets in it.',
+      description: 'Instructions and secrets hidden in what tools return.',
       graph: toolResults(models.indirect),
     },
     {
       id: 'wf_model_output',
       name: 'Model output',
-      description: 'Known attacks and secrets in what the model answers.',
+      description: 'Known attacks and secrets in the answer.',
       graph: modelOutput(),
     },
     {

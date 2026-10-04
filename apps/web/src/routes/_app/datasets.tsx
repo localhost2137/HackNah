@@ -145,7 +145,7 @@ function DatasetsPage() {
     <>
       <PageHeader
         title="Attack analysis"
-        description="Datasets of attack and normal requests to test your guardrails against. Run one to see what your rules block, miss or block by mistake. Labelled datasets can also train a model in a Trained model step."
+        description="Run a dataset to see what your guardrails block, miss or block by mistake."
         actions={
           <>
             <input

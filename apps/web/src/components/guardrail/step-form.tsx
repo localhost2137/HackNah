@@ -116,8 +116,18 @@ export function FieldForm({
               <Field group key={field.key} label={field.label} hint={field.hint}>
                 <CheckboxGroup
                   options={field.options}
-                  value={(current as string[]) ?? []}
-                  onChange={set}
+                  value={
+                    field.allWhenEmpty && !(current as string[])?.length
+                      ? field.options.map((o) => o.value)
+                      : ((current as string[]) ?? [])
+                  }
+                  onChange={(next) => {
+                    if (!field.allWhenEmpty) return set(next)
+                    // At least one stays ticked; all ticked is stored as "all", so later
+                    // additions are included.
+                    if (next.length === 0) return
+                    set(next.length === field.options.length ? [] : next)
+                  }}
                 />
               </Field>
             )

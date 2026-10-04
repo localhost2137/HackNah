@@ -144,7 +144,7 @@ function LimitsPage() {
     <>
       <PageHeader
         title="Limits"
-        description="Request rates, concurrency and budgets in USD, tokens or GPU time, per user, per group or for the whole organization. Checked at the gateway before the guardrails run; spend is added once the model answers."
+        description="Request rates, concurrency and budgets, per user, group or organization."
         actions={
           isAdmin ? (
             <Button
