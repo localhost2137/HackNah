@@ -1,0 +1,62 @@
+$ node scripts/gateway-e2e/run.mjs
+• copying the working tree to /var/folders/74/d_tcwgy97d7dkmzfhq5ptwn40000gn/T/acl-gateway-e2e-jMEy38
+• installing dependencies (offline from the pnpm store)
+• creating a local database: secrets, migrations, seed
+• starting the mock model server
+• loading fixtures (models, limits, guardrails, device)
+• starting the gateway
+• gateway on http://localhost:57557, mock model server on http://127.0.0.1:57550
+
+┌─────────┬────────┬──────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────────┬──────┐
+│ (index) │ result │ check                                                                        │ control                             │ ms   │
+├─────────┼────────┼──────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────┼──────┤
+│ 0       │ 'PASS' │ '[anthropic] clean answer streams through unchanged'                         │ 'Guardrail, positive'               │ 61   │
+│ 1       │ 'PASS' │ '[anthropic] secret in model output is redacted'                             │ 'Output filtering (redact)'         │ 138  │
+│ 2       │ 'PASS' │ '[anthropic] dangerous output is cut short with a notice'                    │ 'Output filtering (block)'          │ 131  │
+│ 3       │ 'PASS' │ '[anthropic] refused tool call becomes a notice'                             │ 'Guardrail, negative (tool call)'   │ 16   │
+│ 4       │ 'PASS' │ '[anthropic] allowed tool call passes whole'                                 │ 'Guardrail, positive (tool call)'   │ 14   │
+│ 5       │ 'PASS' │ '[anthropic] non-streamed output is redacted'                                │ 'Output filtering (redact)'         │ 12   │
+│ 6       │ 'PASS' │ '[openai] clean answer streams through unchanged'                            │ 'Guardrail, positive'               │ 13   │
+│ 7       │ 'PASS' │ '[openai] secret in model output is redacted'                                │ 'Output filtering (redact)'         │ 122  │
+│ 8       │ 'PASS' │ '[openai] dangerous output is cut short with a notice'                       │ 'Output filtering (block)'          │ 132  │
+│ 9       │ 'PASS' │ '[openai] refused tool call becomes a notice'                                │ 'Guardrail, negative (tool call)'   │ 16   │
+│ 10      │ 'PASS' │ '[openai] allowed tool call passes whole'                                    │ 'Guardrail, positive (tool call)'   │ 11   │
+│ 11      │ 'PASS' │ '[openai] non-streamed output is redacted'                                   │ 'Output filtering (redact)'         │ 12   │
+│ 12      │ 'PASS' │ 'PreToolUse hook reuses the verdict on the same call'                        │ 'Single decision per tool call'     │ 8    │
+│ 13      │ 'PASS' │ 'injected tool result is withheld before the model sees it'                  │ 'Prompt injection (indirect)'       │ 15   │
+│ 14      │ 'PASS' │ 'local model is sent as OpenAI chat completions, renamed'                    │ 'Model routing'                     │ 14   │
+│ 15      │ 'PASS' │ 'condition chain blocks a matching request; others skip the guardrail'       │ 'Conditions (AND, Skip)'            │ 19   │
+│ 16      │ 'PASS' │ 'model outside the catalog is refused'                                       │ 'Allowed models'                    │ 7    │
+│ 17      │ 'PASS' │ 'USD budget blocks once spent, max_tokens capped first'                      │ 'Budget (USD, cache priced)'        │ 56   │
+│ 18      │ 'PASS' │ 'concurrency limit lets one request run at a time'                           │ 'Resource governance (concurrency)' │ 4140 │
+│ 19      │ 'PASS' │ 'GPU-seconds budget on a local model blocks after use'                       │ 'Budget (local GPU time)'           │ 1535 │
+│ 20      │ 'PASS' │ 'audit log records every stage with its decision'                            │ 'Security reporting'                │ 0    │
+│ 21      │ 'PASS' │ 'a skipped guardrail is listed but does not decide'                          │ 'Conditions (Skip)'                 │ 0    │
+│ 22      │ 'PASS' │ 'cost and GPU time are recorded per request'                                 │ 'Budget reporting'                  │ 0    │
+│ 23      │ 'PASS' │ 'the hook decision created no second event'                                  │ 'Single decision per tool call'     │ 0    │
+│ 24      │ 'PASS' │ 'members cannot discover or invoke platform tools'                           │ 'Internal MCP authorization'        │ 18   │
+│ 25      │ 'PASS' │ 'built-in tools initialize and list without an integration'                  │ 'Internal MCP discovery'            │ 640  │
+│ 26      │ 'PASS' │ 'mismatched fingerprints cannot invoke platform tools'                       │ 'Internal MCP device binding'       │ 8    │
+│ 27      │ 'PASS' │ 'invalid arguments return an MCP tool error'                                 │ 'Internal MCP input validation'     │ 11   │
+│ 28      │ 'PASS' │ 'create, inspect, save and publish a guardrail through MCP'                  │ 'Internal MCP actions'              │ 62   │
+│ 29      │ 'PASS' │ 'unknown and foreign guardrail IDs cannot be edited'                         │ 'Internal MCP scope'                │ 9    │
+│ 30      │ 'PASS' │ 'foreign guardrail scope is rejected without mutation'                       │ 'Internal MCP scope'                │ 1274 │
+│ 31      │ 'PASS' │ 'unknown group scope cannot widen a guardrail to everyone'                   │ 'Internal MCP scope'                │ 14   │
+│ 32      │ 'PASS' │ 'policy export and preview do not change the current rule revision'          │ 'Internal MCP policy preview'       │ 1290 │
+│ 33      │ 'PASS' │ 'run, retrieve and invalidate persisted analysis through MCP'                │ 'Internal MCP attack analysis'      │ 207  │
+│ 34      │ 'PASS' │ 'platform actions have attributable audit records'                           │ 'Internal MCP audit'                │ 618  │
+│ 35      │ 'PASS' │ 'revoking the device takes effect without waiting for cached gateway claims' │ 'Internal MCP revocation'           │ 9    │
+│ 36      │ 'PASS' │ 'removing admin rights takes effect on the next call'                        │ 'Internal MCP role changes'         │ 9    │
+└─────────┴────────┴──────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────────┴──────┘
+
+Control-layer overhead per stage (ms, from the audit log):
+┌─────────┬─────────────────┬────────┬─────┬─────┬─────┬─────┐
+│ (index) │ stage           │ events │ p50 │ p95 │ p99 │ max │
+├─────────┼─────────────────┼────────┼─────┼─────┼─────┼─────┤
+│ 0       │ 'model_request' │ 26     │ 1   │ 11  │ 14  │ 14  │
+│ 1       │ 'model_output'  │ 21     │ 0   │ 0   │ 1   │ 1   │
+│ 2       │ 'tool_call'     │ 4      │ 0   │ 0   │ 0   │ 0   │
+│ 3       │ 'tool_result'   │ 1      │ 0   │ 0   │ 0   │ 0   │
+└─────────┴─────────────────┴────────┴─────┴─────┴─────┴─────┘
+
+37/37 passed in 28 s

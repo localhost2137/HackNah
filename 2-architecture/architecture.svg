@@ -1,0 +1,194 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 860" width="1600" height="860" font-family="Inter, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+  <title>Hack?Nah! architecture</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#be123c"/>
+    </marker>
+    <style>
+      .grp { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; }
+      .sub { fill: #eef2ff; stroke: #c7d2fe; stroke-width: 1.5; }
+      .box { fill: #ffffff; stroke: #94a3b8; stroke-width: 1.3; }
+      .key { fill: #ffffff; stroke: #6366f1; stroke-width: 2; }
+      .opt { fill: #ffffff; stroke: #94a3b8; stroke-width: 1.3; stroke-dasharray: 5 4; }
+      .store { fill: #fff7ed; stroke: #fdba74; stroke-width: 1.3; }
+      .gt { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .t { font-size: 14px; font-weight: 600; fill: #0f172a; }
+      .s { font-size: 12px; fill: #475569; }
+      .chip { fill: #e0e7ff; }
+      .ct { font-size: 11.5px; fill: #3730a3; font-weight: 600; }
+      .l { font-size: 12px; fill: #334155; }
+      .lr { font-size: 12px; fill: #be123c; font-weight: 600; }
+      .ln { stroke: #475569; stroke-width: 1.6; fill: none; }
+      .lnd { stroke: #475569; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+      .lnr { stroke: #be123c; stroke-width: 1.8; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="860" fill="#ffffff"/>
+  <text x="20" y="34" font-size="20" font-weight="800" fill="#0f172a">Hack?Nah! architecture</text>
+  <text x="270" y="34" font-size="13" fill="#64748b">Every model request, tool call, tool result and agent message passes one policy pipeline in a single Cloudflare Worker</text>
+
+  <!-- Developer machine -->
+  <rect class="grp" rx="14" x="20" y="60" width="300" height="580"/>
+  <text class="gt" x="40" y="86">Developer machine</text>
+  <rect class="box" rx="9" x="50" y="104" width="240" height="56"/>
+  <text class="t" x="70" y="128">Claude Code</text>
+  <text class="s" x="70" y="147">agent, subagents, built-in tools</text>
+
+  <rect class="sub" rx="12" x="40" y="190" width="260" height="430"/>
+  <text class="gt" x="56" y="214">hy-guard plugin</text>
+  <rect class="box" rx="9" x="60" y="230" width="220" height="56"/>
+  <text class="t" x="76" y="254">Local LLM proxy</text>
+  <text class="s" x="76" y="273">ANTHROPIC_BASE_URL</text>
+  <rect class="box" rx="9" x="60" y="310" width="220" height="56"/>
+  <text class="t" x="76" y="334">MCP bridge</text>
+  <text class="s" x="76" y="353">company MCP tools</text>
+  <rect class="box" rx="9" x="60" y="390" width="220" height="56"/>
+  <text class="t" x="76" y="414">PreToolUse hook</text>
+  <text class="s" x="76" y="433">Bash, Edit, WebFetch, ...</text>
+  <rect class="key" rx="9" x="60" y="500" width="220" height="96"/>
+  <text class="t" x="76" y="524">Device key</text>
+  <text class="s" x="76" y="544">Secure Enclave, non-exportable</text>
+  <text class="s" x="76" y="562">DPoP proof on every request</text>
+  <text class="s" x="76" y="580">Touch ID for destructive tools</text>
+  <path class="lnd" d="M170,500 V446"/>
+
+  <path class="ln" d="M240,160 V230" marker-end="url(#a)"/>
+  <path class="ln" d="M50,132 H30 V338 H60" marker-end="url(#a)"/>
+  <path class="ln" d="M290,146 H305 V418 H280" marker-end="url(#a)"/>
+
+  <!-- Worker -->
+  <rect class="grp" rx="14" x="360" y="60" width="830" height="580"/>
+  <text class="gt" x="380" y="86">Cloudflare Worker: gateway + admin dashboard (one deployable)</text>
+
+  <rect class="box" rx="9" x="390" y="230" width="210" height="56"/>
+  <text class="t" x="406" y="254">/v1/messages</text>
+  <text class="s" x="406" y="273">Anthropic Messages API</text>
+  <rect class="box" rx="9" x="390" y="310" width="210" height="56"/>
+  <text class="t" x="406" y="334">/mcp</text>
+  <text class="s" x="406" y="353">MCP proxy + hacknah_* tools</text>
+  <rect class="box" rx="9" x="390" y="390" width="210" height="56"/>
+  <text class="t" x="406" y="414">/v1/acl/hooks/pre-tool-use</text>
+  <text class="s" x="406" y="433">cached verdict, else checks</text>
+
+  <path class="ln" d="M280,258 H390" marker-end="url(#a)"/>
+  <path class="ln" d="M280,338 H390" marker-end="url(#a)"/>
+  <path class="ln" d="M280,418 H390" marker-end="url(#a)"/>
+  <text class="l" x="318" y="250">HTTPS</text>
+
+  <rect class="box" rx="9" x="630" y="230" width="160" height="216"/>
+  <text class="t" x="646" y="256">Identity</text>
+  <text class="s" x="646" y="280">device-bound JWT</text>
+  <text class="s" x="646" y="298">(15 min, rotating</text>
+  <text class="s" x="646" y="316">refresh token)</text>
+  <text class="s" x="646" y="340">DPoP proof check</text>
+  <text class="s" x="646" y="364">session pinned to</text>
+  <text class="s" x="646" y="382">first user + device</text>
+  <text class="s" x="646" y="406">trace id per turn</text>
+  <path class="ln" d="M600,258 H630" marker-end="url(#a)"/>
+  <path class="ln" d="M600,338 H630" marker-end="url(#a)"/>
+  <path class="ln" d="M600,418 H630" marker-end="url(#a)"/>
+
+  <!-- Pipeline -->
+  <rect class="sub" rx="12" x="820" y="96" width="350" height="420"/>
+  <text class="gt" x="836" y="120">Policy pipeline</text>
+  <rect class="box" rx="9" x="836" y="134" width="318" height="50"/>
+  <text class="t" x="852" y="156">Model catalog + access rules</text>
+  <text class="s" x="852" y="174">allowed models, groups, MCP resources</text>
+  <rect class="box" rx="9" x="836" y="196" width="318" height="50"/>
+  <text class="t" x="852" y="218">Limits</text>
+  <text class="s" x="852" y="236">requests, concurrency, tokens, USD, GPU-seconds</text>
+  <rect class="key" rx="9" x="836" y="258" width="318" height="166"/>
+  <text class="t" x="852" y="282">Guardrail engine: evaluateGraph()</text>
+  <text class="s" x="852" y="300">versioned graphs; strictest outcome wins</text>
+  <rect class="chip" rx="6" x="852" y="312" width="92" height="22"/><text class="ct" x="862" y="327">Model input</text>
+  <rect class="chip" rx="6" x="950" y="312" width="70" height="22"/><text class="ct" x="960" y="327">Tool call</text>
+  <rect class="chip" rx="6" x="1026" y="312" width="80" height="22"/><text class="ct" x="1036" y="327">Tool result</text>
+  <rect class="chip" rx="6" x="852" y="340" width="98" height="22"/><text class="ct" x="862" y="355">Model output</text>
+  <rect class="chip" rx="6" x="956" y="340" width="110" height="22"/><text class="ct" x="966" y="355">Agent message</text>
+  <text class="s" x="852" y="384">deterministic: keywords, signatures, redaction,</text>
+  <text class="s" x="852" y="400">trained model, device, args, tool pin, session</text>
+  <text class="s" x="852" y="416">model-based: judge / classifier</text>
+  <rect class="box" rx="9" x="836" y="436" width="318" height="64"/>
+  <text class="t" x="852" y="458">Output guard</text>
+  <text class="s" x="852" y="476">streams with 200-char hold-back, redacts,</text>
+  <text class="s" x="852" y="492">holds tool calls until arguments complete</text>
+
+  <path class="ln" d="M790,300 H820" marker-end="url(#a)"/>
+  <path class="ln" d="M995,184 V196" marker-end="url(#a)"/>
+  <path class="ln" d="M995,246 V258" marker-end="url(#a)"/>
+
+  <!-- response back to the agent -->
+  <path class="ln" d="M836,470 H340 V132 H290" marker-end="url(#a)"/>
+  <text class="l" x="420" y="462">filtered response, refusal notice or withheld tool result</text>
+
+  <!-- Dashboard + SSO -->
+  <rect class="box" rx="9" x="390" y="530" width="150" height="80"/>
+  <text class="t" x="404" y="554">Admin dashboard</text>
+  <text class="s" x="404" y="573">logs, approvals,</text>
+  <text class="s" x="404" y="590">policy editor, analysis</text>
+  <rect class="box" rx="9" x="552" y="530" width="140" height="80"/>
+  <text class="t" x="566" y="554">SSO (OIDC)</text>
+  <text class="s" x="566" y="573">dashboard login,</text>
+  <text class="s" x="566" y="590">member groups</text>
+
+  <!-- Upstreams -->
+  <rect class="grp" rx="14" x="1220" y="60" width="360" height="580"/>
+  <text class="gt" x="1240" y="86">Upstreams</text>
+  <rect class="box" rx="9" x="1240" y="104" width="320" height="56"/>
+  <text class="t" x="1256" y="128">Anthropic Messages API</text>
+  <text class="s" x="1256" y="147">OpenRouter, Anthropic (passed through)</text>
+  <rect class="box" rx="9" x="1240" y="176" width="320" height="56"/>
+  <text class="t" x="1256" y="200">OpenAI-compatible models</text>
+  <text class="s" x="1256" y="219">Ollama, vLLM, LM Studio (translated both ways)</text>
+  <rect class="box" rx="9" x="1240" y="248" width="320" height="56"/>
+  <text class="t" x="1256" y="272">MCP servers</text>
+  <text class="s" x="1256" y="291">credentials AES-GCM encrypted per user + server</text>
+  <rect class="opt" rx="9" x="1240" y="360" width="320" height="76"/>
+  <text class="t" x="1256" y="384">Judges (optional, model-based)</text>
+  <text class="s" x="1256" y="403">Llama Prompt Guard 2 classifier (local)</text>
+  <text class="s" x="1256" y="420">any OpenAI-compatible LLM, System One</text>
+
+  <path class="ln" d="M1170,132 H1240" marker-start="url(#a)" marker-end="url(#a)"/>
+  <path class="ln" d="M1170,204 H1240" marker-start="url(#a)" marker-end="url(#a)"/>
+  <path class="ln" d="M1170,276 H1240" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="l" x="1180" y="124">allow</text>
+  <path class="lnd" d="M1154,398 H1240" marker-end="url(#a)"/>
+  <text class="l" x="1176" y="390">score</text>
+
+  <!-- Cloudflare services -->
+  <rect class="grp" rx="14" x="360" y="670" width="1220" height="170"/>
+  <text class="gt" x="1170" y="696">Cloudflare services (the only backing infrastructure)</text>
+  <rect class="store" rx="9" x="390" y="712" width="200" height="90"/>
+  <text class="t" x="406" y="736">D1 (SQLite)</text>
+  <text class="s" x="406" y="756">policy, members, devices,</text>
+  <text class="s" x="406" y="773">events, audit log, runs index</text>
+  <rect class="store" rx="9" x="610" y="712" width="280" height="90"/>
+  <text class="t" x="626" y="736">Durable Objects</text>
+  <text class="s" x="626" y="756">SessionDO: session pin, verdict cache, vault</text>
+  <text class="s" x="626" y="773">ApprovalDO: pending requests, WebSocket</text>
+  <text class="s" x="626" y="790">RateLimiterDO: counters, concurrency</text>
+  <rect class="store" rx="9" x="910" y="712" width="240" height="90"/>
+  <text class="t" x="926" y="736">Queue: acl-events</text>
+  <text class="s" x="926" y="756">batched audit writes,</text>
+  <text class="s" x="926" y="773">dead-letter queue</text>
+  <rect class="store" rx="9" x="1170" y="712" width="390" height="90"/>
+  <text class="t" x="1186" y="736">R2</text>
+  <text class="s" x="1186" y="756">request payloads, attack datasets,</text>
+  <text class="s" x="1186" y="773">analysis results and policy snapshots</text>
+
+  <path class="ln" d="M1030,516 V712" marker-end="url(#a)"/>
+  <text class="l" x="1038" y="600">event: stage, decision,</text>
+  <text class="l" x="1038" y="616">path, cost, timing</text>
+  <path class="ln" d="M1150,757 H1170" marker-end="url(#a)"/>
+  <path class="ln" d="M1000,802 V826 H500 V802" marker-end="url(#a)"/>
+  <path class="ln" d="M710,446 V712" marker-start="url(#a)" marker-end="url(#a)"/>
+  <path class="lnr" d="M900,500 V650 H790 V712" marker-end="url(#r)"/>
+  <text class="lr" x="800" y="642">pending approval</text>
+  <path class="lnr" d="M650,712 V630 H465 V610" marker-end="url(#r)"/>
+  <text class="lr" x="476" y="645">live (WebSocket)</text>
+  <path class="ln" d="M420,610 V712" marker-start="url(#a)" marker-end="url(#a)"/>
+</svg>

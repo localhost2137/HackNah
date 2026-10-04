@@ -1,0 +1,69 @@
+$ node dataset/build.mjs && node scripts/controls.ts
+1165 cases: 998 attack, 167 benign, from 114 base payloads
+
+Hack?Nah! control suite
+  preset balanced · 38 signatures · 12965 cases
+
+Required controls: 294/294 passed
+  control      blocked or redacted  allowed (benign twins)
+  signatures   194/194              -                     
+  keywords     5/5                  -                     
+  redact       24/24                -                     
+  arguments    2/2                  1/1                   
+  fingerprint  2/2                  -                     
+
+Coverage by attack and channel (plain payloads, caught/total)
+                       user_input  tool_result  tool_arguments  model_output  agent_message  tool_description  identity
+  code_execution       9/9         9/9          8/8             9/9           9/9            not inspected     ·       
+  deserialization      6/6         6/6          6/6             6/6           6/6            ·                 ·       
+  supply_chain         10/10       10/10        10/10           10/10         10/10          ·                 ·       
+  exfiltration         4/4         4/4          5/5             4/4           4/4            not inspected     ·       
+  agent_tampering      4/4         4/4          4/4             4/4           4/4            ·                 ·       
+  destructive_command  5/5         5/5          4/4             5/5           5/5            not inspected     ·       
+  prompt_injection     2/2         2/2          ·               2/2           2/2            not inspected     ·       
+  tool_poisoning       1/1         1/1          ·               1/1           1/1            not inspected     ·       
+  secret_leak          4/4         4/4          ·               4/4           ·              ·                 ·       
+  pii                  4/4         4/4          ·               4/4           ·              ·                 ·       
+  identity             ·           ·            ·               ·             ·              ·                 2/2     
+
+Resilience to obfuscation (inspected channels)
+  obfuscation  caught   rate
+  none         227/227  100%
+  base64       199/199  100%
+  unicode      199/199  100%
+  polish       175/187  94% 
+  split        159/159  100%
+
+Benign requests
+  set                allowed  false positive rate
+  everyday           67/67    0%                 
+  look like attacks  98/100   2%                 
+
+Public datasets (not required; measures detection on prompts we did not write)
+  dataset                                               attacks caught  rate  benign blocked  false positive rate
+  deepset/prompt-injections                             4/263           2%    0/399           0%                 
+  Hack?Nah! tool results                                -               -     0/657           0%                 
+  jackhhao/jailbreak-classification                     26/666          4%    0/640           0%                 
+  JailbreakBench/JBB-Behaviors                          0/100           0%    0/100           0%                 
+  Lakera/gandalf_ignore_instructions                    202/777         26%   -               -                  
+  Lakera/gandalf_summarization                          0/114           0%    -               -                  
+  lmsys/toxic-chat                                      0/150           0%    1/1850          0%                 
+  meta-llama/PurpleLlama CyberSecEval prompt injection  17/251          7%    -               -                  
+  microsoft/BIPIA                                       3/125           2%    -               -                  
+  rubend18/ChatGPT-Jailbreak-Prompts                    0/79            0%    -               -                  
+  TrustAIRLab/in-the-wild-jailbreak-prompts             45/1405         3%    -               -                  
+  uiuc-kang-lab/InjecAgent                              0/1054          0%    0/136           0%                 
+  xTRam1/safe-guard-prompt-injection                    67/627          11%   0/1373          0%                 
+  yanismiraoui/prompt_injections                        0/1034          0%    -               -                  
+  all                                                   364/6645        5%    1/5155          0%                 
+
+Public datasets by attack type and channel
+  attack · channel                  caught    rate
+  prompt_injection · user_input     279/2897  10% 
+  jailbreak · user_input            71/2186   3%  
+  harmful_request · user_input      0/214     0%  
+  indirect_injection · tool_result  14/1348   1%  
+
+Policy evaluation latency: p50 0.02 ms · p95 0.21 ms · p99 0.42 ms · max 4.22 ms
+
+Full results: dataset/results.json

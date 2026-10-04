@@ -1,0 +1,72 @@
+
+   • turbo 2.11.6
+   • Packages in scope: @acl/db, @acl/shared, @acl/ui, @acl/web
+   • Running test in 4 packages
+   • Remote caching disabled, using shared worktree cache
+
+@acl/shared:test: cache bypass, force executing aefbf1e7f63909dd
+@acl/web:test: cache bypass, force executing 181e6c269820c4d4
+@acl/web:test: $ vitest run
+@acl/shared:test: $ vitest run
+@acl/shared:test: 
+@acl/shared:test:  RUN  v5.0.3 /Users/pilif/projects/golden-sach-submission/packages/shared
+@acl/shared:test: 
+@acl/shared:test:  ✓ src/openai-compat.test.ts (5 tests) 14ms
+@acl/shared:test:  ✓ src/anthropic.test.ts (6 tests) 4ms
+@acl/shared:test:  ✓ src/redaction.test.ts (6 tests) 4ms
+@acl/shared:test:  ✓ src/judge.test.ts (4 tests) 18ms
+@acl/shared:test:  ✓ src/trace.test.ts (9 tests) 12ms
+@acl/shared:test:  ✓ src/limits.test.ts (11 tests) 8ms
+@acl/shared:test:  ✓ src/path.test.ts (7 tests) 4ms
+@acl/shared:test:  ✓ src/blocks.test.ts (20 tests) 13ms
+@acl/shared:test:  ✓ src/replay.test.ts (8 tests) 4ms
+@acl/shared:test:  ✓ src/engine.test.ts (42 tests) 21ms
+@acl/shared:test:  ✓ src/crypto.test.ts (2 tests) 9ms
+@acl/web:test: 
+@acl/web:test:  RUN  v5.0.3 /Users/pilif/projects/golden-sach-submission/apps/web
+@acl/web:test: 
+@acl/shared:test:  ✓ src/signatures.test.ts (14 tests) 48ms
+@acl/shared:test:  ✓ src/permissions.test.ts (6 tests) 3ms
+@acl/shared:test:  ✓ src/learned.test.ts (9 tests) 124ms
+@acl/shared:test:  ✓ src/recommended.test.ts (5 tests) 8ms
+@acl/shared:test:  ✓ src/policy-file.test.ts (19 tests) 157ms
+@acl/shared:test: 
+@acl/shared:test:  Test Files  16 passed (16)
+@acl/shared:test:       Tests  173 passed (173)
+@acl/shared:test:    Start at  09:40:47
+@acl/shared:test:    Duration  483ms (transform 46%, import 32%, tests 20%, worker 2%)
+@acl/shared:test: 
+@acl/web:test:  ✓ src/server/instance-migration.test.ts (6 tests) 11ms
+@acl/web:test:  ✓ src/gateway/lib/output-guard.test.ts (8 tests) 15ms
+@acl/web:test:  ✓ src/server/analysis-persistence.test.ts (3 tests) 38ms
+@acl/web:test:  ✓ src/server/huggingface.test.ts (5 tests) 2ms
+@acl/web:test:  ✓ src/mock-mcp/server.test.ts (9 tests) 43ms
+@acl/web:test:  ✓ src/components/guardrail/recommendations.test.ts (13 tests) 4ms
+@acl/web:test:  ✓ src/lib/attack-analysis/replay.test.ts (5 tests) 4ms
+@acl/web:test:  ✓ src/gateway/lib/demo-model.test.ts (7 tests) 16ms
+@acl/web:test:  ✓ src/lib/attack-analysis/labelled.test.ts (4 tests) 7ms
+@acl/web:test: stderr | src/gateway/plugin/vectors.test.ts > §6 response signature > accepts the key as base64url of the JWK and is absent without one
+@acl/web:test: RESPONSE_SIGNING_JWK is not a private ES256 JWK
+@acl/web:test: 
+@acl/web:test:  ✓ src/gateway/plugin/vectors.test.ts (29 tests) 31ms
+@acl/web:test:  ✓ src/lib/attack-analysis/timeline.test.ts (2 tests) 37ms
+@acl/web:test:  ✓ src/gateway/plugin/dpop.test.ts (25 tests) 50ms
+@acl/web:test:  ✓ src/lib/attack-analysis/benchmark.test.ts (3 tests) 4ms
+@acl/web:test:  ✓ src/components/guardrail/glass-optics.test.ts (3 tests) 30ms
+@acl/web:test:  ✓ src/server/events-export.test.ts (3 tests) 3ms
+@acl/web:test:  ✓ src/gateway/lib/policy.test.ts (11 tests) 3ms
+@acl/web:test:  ✓ src/lib/attack-analysis/traffic.test.ts (2 tests) 262ms
+@acl/web:test:  ✓ src/gateway/plugin/policy.test.ts (13 tests) 10ms
+@acl/web:test:  ✓ src/gateway/internal-mcp/tools.test.ts (3 tests) 5ms
+@acl/web:test: 
+@acl/web:test:  Test Files  19 passed (19)
+@acl/web:test:       Tests  154 passed (154)
+@acl/web:test:    Start at  09:40:47
+@acl/web:test:    Duration  635ms (import 47%, transform 38%, tests 13%, worker 1%)
+@acl/web:test: 
+
+ Tasks:    2 successful, 2 total
+Cached:    0 cached, 2 total
+  Time:    1.494s 
+
+exit=0
