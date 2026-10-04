@@ -58,6 +58,20 @@ export class SessionDO extends DurableObject<Env> {
     await this.ctx.storage.put('vault', { ...vault, ...entries })
   }
 
+  /**
+   * The trace of the session's latest model request; MCP calls and hooks join it. A request
+   * outside the agent loop (no tools: titles, summaries) never replaces the loop's trace.
+   */
+  async setTrace(traceId: string, loop: boolean): Promise<void> {
+    const current = await this.ctx.storage.get<{ id: string; loop: boolean }>('trace')
+    if (current?.id === traceId || (current?.loop && !loop)) return
+    await this.ctx.storage.put('trace', { id: traceId, loop })
+  }
+
+  async getTrace(): Promise<string | null> {
+    return (await this.ctx.storage.get<{ id: string }>('trace'))?.id ?? null
+  }
+
   /** Short-lived notes between stages, e.g. a tool call's verdict for the hook to reuse. */
   async remember(key: string, value: unknown, ttlMs: number): Promise<void> {
     const now = Date.now()

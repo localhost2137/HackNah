@@ -1,4 +1,5 @@
 import { createDb } from '@acl/db'
+import { HEADER_TRACE_ID } from '@acl/shared'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { AppEnv } from './context.ts'
@@ -19,6 +20,8 @@ export const gatewayApp = new Hono<AppEnv>()
   .use('*', async (c, next) => {
     c.set('db', createDb(c.env.DB))
     await next()
+    const traceId = c.get('traceId')
+    if (traceId) c.res.headers.set(HEADER_TRACE_ID, traceId)
   })
   .get('/health', (c) => c.json({ ok: true }))
   .use('/auth/*', cors({ origin: (origin, c) => (origin === c.env.PUBLIC_URL ? origin : null) }))

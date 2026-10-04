@@ -252,6 +252,8 @@ export const event = sqliteTable(
     userId: text().notNull(),
     deviceId: text(),
     sessionId: text(),
+    /** One user turn: the prompt and everything it led to. Null on rows from before 0014. */
+    traceId: text(),
     kind: text().$type<EventKind>().notNull(),
     model: text(),
     mcpServerId: text(),
@@ -282,6 +284,7 @@ export const event = sqliteTable(
     index('event_org_decision_idx').on(t.orgId, t.decision, t.createdAt),
     index('event_org_user_idx').on(t.orgId, t.userId, t.createdAt),
     index('event_session_idx').on(t.sessionId),
+    index('event_trace_idx').on(t.traceId),
   ],
 )
 

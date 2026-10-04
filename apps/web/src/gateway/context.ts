@@ -14,6 +14,8 @@ export type AppEnv = {
   Variables: {
     db: Db
     principal: Principal
+    /** Set once a model request has a trace; returned to the client as a header. */
+    traceId?: string
   }
 }
 

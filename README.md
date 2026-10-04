@@ -120,6 +120,13 @@ Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Mod
   their result, and every path ends in allow, approval, block or *Skip* (the guardrail does not apply). Graphs
   saved with the older start-node conditions and Route blocks are converted when they are loaded. `evaluateGraph()` in `packages/shared` runs it in the gateway and
   in the editor's dry run, and each event stores the path it took.
+- **Traces.** One trace is one user turn: the prompt and every model request, tool call, tool result, model
+  output and agent message it leads to. Each event stores a `trace_id`, and model responses return it as
+  `x-acl-trace-id`. Claude Code 2.1.283+ sends a prompt id when `CLAUDE_CODE_GATEWAY_HINT_HEADERS=1` is set
+  (`x-claude-code-prompt-id`); the gateway uses it when present. Otherwise the trace is derived from the session
+  and the prompt that started the turn, and MCP calls and hooks join the session's latest trace. In Logs, click
+  a trace id to list its events, or **Path** on a line to see the guardrail chart of the version that ran, with
+  the path the request took (`/events/<event id>`; step through the trace with the arrow keys).
 - **Models.** The Models page is the catalog: a pattern over model ids, where it is served, and what it costs
   (per million input, output, cache-write and cache-read tokens for API models; per GPU-hour for local ones).
   Requests go to the first matching entry; once the catalog has entries, other models are refused, `/v1/models`

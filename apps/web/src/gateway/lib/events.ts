@@ -1,5 +1,6 @@
 import type { EventPayload, GatewayEvent } from '@acl/shared'
 import { approvalsStub } from '../do/approvals.ts'
+import { sessionStub } from '../do/session.ts'
 
 /** Raw bodies are capped so one huge prompt can't blow up storage or memory. */
 const MAX_PAYLOAD_BYTES = 2 * 1024 * 1024
@@ -17,6 +18,13 @@ export async function recordEvent(
   event: GatewayEvent,
   payload: EventPayload | null,
 ): Promise<void> {
+  // Events built outside a model request (MCP calls, hooks) join the session's current trace.
+  if (event.traceId === undefined)
+    event.traceId = event.sessionId
+      ? await sessionStub(env, event.orgId, event.sessionId)
+          .getTrace()
+          .catch(() => null)
+      : null
   const tasks: Promise<unknown>[] = []
   if (payload) {
     let body = JSON.stringify(payload)

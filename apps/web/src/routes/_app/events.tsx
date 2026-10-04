@@ -1,5 +1,5 @@
 import type { Decision, EventKind, GatewayEvent } from '@acl/shared'
-import { eventKind, formatAmount, kindLabels } from '@acl/shared'
+import { eventKind, formatAmount, kindLabels, shortTraceId } from '@acl/shared'
 import {
   Badge,
   Button,
@@ -20,7 +20,7 @@ import {
 import { keepPreviousData, queryOptions, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
-import { Radio } from 'lucide-react'
+import { Radio, Waypoints } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { ApprovalRecords } from '#/components/approval-records.tsx'
 import {
@@ -30,6 +30,7 @@ import {
   JsonBlock,
   KindLabel,
   RiskMeter,
+  TraceId,
 } from '#/components/event-bits.tsx'
 import { FilterChip, Segmented } from '#/components/filters.tsx'
 import { dateTime, decisionMeta, num, timeAgo } from '#/lib/format.ts'
@@ -59,10 +60,13 @@ function matchesLive(e: GatewayEvent, s: EventsSearch) {
   if (s.kind && e.kind !== s.kind) return false
   if (s.user && e.userId !== s.user) return false
   if (s.session && e.sessionId !== s.session) return false
+  if (s.trace && e.traceId !== s.trace) return false
   if (s.guardrail && !e.guardrails.some((w) => w.id === s.guardrail)) return false
   if (
     s.q &&
-    !`${e.toolName ?? ''} ${e.model ?? ''} ${e.id}`.toLowerCase().includes(s.q.toLowerCase())
+    !`${e.toolName ?? ''} ${e.model ?? ''} ${e.id} ${e.traceId ?? ''}`
+      .toLowerCase()
+      .includes(s.q.toLowerCase())
   )
     return false
   return true
@@ -107,6 +111,7 @@ function EventsPage() {
         outputTokens: e.outputTokens,
         costUsd: e.costUsd ?? null,
         sessionId: e.sessionId,
+        traceId: e.traceId ?? null,
         country: e.country,
         createdAt: new Date(e.createdAt),
         userId: e.userId,
@@ -161,6 +166,7 @@ function EventsPage() {
           </button>
         ),
       },
+      { header: 'Trace', cell: ({ row }) => <TraceId traceId={row.original.traceId} /> },
       { header: 'Risk', cell: ({ row }) => <RiskMeter score={row.original.riskScore} /> },
       {
         header: 'Signals',
@@ -198,6 +204,21 @@ function EventsPage() {
       {
         header: 'Latency',
         cell: ({ row }) => <Mono className="text-muted">{row.original.latencyMs}ms</Mono>,
+      },
+      {
+        id: 'path',
+        header: '',
+        cell: ({ row }) => (
+          <Link
+            to="/events/$eventId"
+            params={{ eventId: row.original.id }}
+            className="inline-flex items-center gap-1 text-xs text-muted hover:text-accent-strong"
+            title="Show the path through the guardrails"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Waypoints className="size-3.5" /> Path
+          </Link>
+        ),
       },
     ],
     [setSearch],
@@ -281,7 +302,7 @@ function EventsPage() {
         </Select>
         <Input
           className="w-64"
-          placeholder="Tool, model or event id"
+          placeholder="Tool, model, event or trace id"
           defaultValue={search.q}
           onKeyDown={(e) => {
             if (e.key === 'Enter') setSearch({ q: e.currentTarget.value || undefined })
@@ -297,6 +318,12 @@ function EventsPage() {
           <FilterChip
             label={`Session ${search.session.slice(0, 8)}`}
             onClear={() => setSearch({ session: undefined })}
+          />
+        ) : null}
+        {search.trace ? (
+          <FilterChip
+            label={`Trace ${shortTraceId(search.trace)}`}
+            onClear={() => setSearch({ trace: undefined })}
           />
         ) : null}
         {search.guardrail ? (
@@ -411,6 +438,7 @@ function EventDrawer({ id, onClose }: { id: string | undefined; onClose: () => v
                 )
               }
             />
+            <Meta label="Trace" value={<TraceId traceId={data.traceId} />} />
             <Meta label="Time" value={dateTime(data.createdAt)} sub={`${data.latencyMs}ms`} />
             <Meta
               label="Tokens"
@@ -447,7 +475,16 @@ function EventDrawer({ id, onClose }: { id: string | undefined; onClose: () => v
             </div>
           </dl>
           <section>
-            <h4 className="mb-2 text-xs font-semibold text-muted uppercase">Checks</h4>
+            <div className="mb-2 flex items-center justify-between">
+              <h4 className="text-xs font-semibold text-muted uppercase">Checks</h4>
+              <Link
+                to="/events/$eventId"
+                params={{ eventId: data.id }}
+                className="inline-flex items-center gap-1 text-xs text-accent-strong hover:underline"
+              >
+                <Waypoints className="size-3.5" /> Show path
+              </Link>
+            </div>
             <CheckList checks={data.checks} guardrails={data.guardrails} />
           </section>
           {data.payload ? (
