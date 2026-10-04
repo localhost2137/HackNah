@@ -12,6 +12,7 @@ import {
 import { loadDatasets, root, starterModelRefs } from '../../../scripts/lib/dataset-files.mjs'
 import { mockClient, mockIssuer, mockSsoDomain, seededSsoUsers, subjectFor } from './mock-sso.mjs'
 import { seedMockMcp } from './seed-mcp.mjs'
+import { seedTraffic } from './seed-traffic.mjs'
 
 // Development fixtures only. Always targets Wrangler's local D1 database.
 const cwd = fileURLToPath(new URL('..', import.meta.url))
@@ -112,37 +113,12 @@ for (const { email, name, role } of seededSsoUsers) {
   )
 }
 
-for (let i = 0; i < 48; i++) {
-  const blocked = i % 7 === 0
-  insert('event', {
-    id: `seed-event-${i}`,
-    org_id: 'seed-org',
-    user_id: 'seed-member',
-    kind: i % 2 ? 'tool_call' : 'model_request',
-    ...(i % 2 ? { tool_name: 'Bash' } : { model: 'anthropic/claude-sonnet-4' }),
-    resource_ids: '[]',
-    decision: blocked ? 'block' : 'allow',
-    checks: JSON.stringify([
-      {
-        stepId: 'keywords',
-        type: 'keywords',
-        outcome: blocked ? 'fail' : 'pass',
-        ...(blocked ? { action: 'block', reason: 'Demo dangerous keyword match' } : {}),
-        durationMs: 1,
-      },
-    ]),
-    risk_score: blocked ? 0.9 : 0,
-    latency_ms: blocked ? 15 : 450 + i * 20,
-    ...(!blocked && i % 2 === 0 ? { input_tokens: 1000 + i * 10, output_tokens: 250 } : {}),
-    created_at: now - i * 30 * 60 * 1000,
-  })
-}
-
 // The recommended guardrails, published. The Default one they replace is switched off the first
 // time only; `--reset-guardrails` publishes the current graphs as a new version.
-const guardrails = process.argv.includes('--skip-guardrails')
-  ? []
-  : recommendedGuardrails(starterModelRefs(loadDatasets().sets, selectionModelId))
+const skipGuardrails = process.argv.includes('--skip-guardrails')
+const data = skipGuardrails ? null : loadDatasets()
+const modelRefs = data ? starterModelRefs(data.sets, selectionModelId) : {}
+const guardrails = data ? recommendedGuardrails(modelRefs) : []
 const resetGuardrails = process.argv.includes('--reset-guardrails')
 if (guardrails.length)
   sql.push(
@@ -180,6 +156,11 @@ guardrails.forEach(({ id, name, description, graph }, i) => {
   )
 })
 
+// A week of sessions, decided by the guardrails above.
+const traffic = data
+  ? await seedTraffic({ insert, sql, now, guardrails, modelRefs, data })
+  : { events: 0, blocked: 0, sessions: 0 }
+
 const mockSummary = await seedMockMcp({ cwd, insert, expr, quote, now })
 
 const temporary = mkdtempSync(join(tmpdir(), 'acl-seed-'))
@@ -194,7 +175,7 @@ try {
   if (!process.argv.includes('--skip-datasets'))
     execFileSync('node', ['scripts/datasets-upload.mjs'], { cwd: root, stdio: 'inherit' })
   console.log(
-    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nMock SSO accounts (pnpm mock:idp): ${seededSsoUsers.map((u) => u.email).join(', ')}\nMock MCPs: Datadog, Confluence, Jira (${mockSummary.records} records, dataset clock ${mockSummary.asOf}).${guardrails.length ? `\nGuardrails: ${guardrails.map((g) => g.name).join(', ')}.` : ''}\nExisting fixtures are preserved on subsequent runs.`,
+    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nMock SSO accounts (pnpm mock:idp): ${seededSsoUsers.map((u) => u.email).join(', ')}\nMock MCPs: Datadog, Confluence, Jira (${mockSummary.records} records, dataset clock ${mockSummary.asOf}).${traffic.events ? `\nTraffic: ${traffic.events} events in ${traffic.sessions} sessions over the last week, ${traffic.blocked} blocked.` : ''}${guardrails.length ? `\nGuardrails: ${guardrails.map((g) => g.name).join(', ')}.` : ''}\nExisting fixtures are preserved on subsequent runs.`,
   )
 } finally {
   rmSync(temporary, { recursive: true, force: true })

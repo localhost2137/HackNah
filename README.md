@@ -155,8 +155,8 @@ pnpm dev                                           # http://localhost:3000 (dash
 This is a single-tenant installation. The first account becomes admin automatically; later accounts need access granted by an admin or SSO. Local data lives in
 `apps/web/.wrangler/state`; delete that folder and run `pnpm db:migrate` again to start over.
 
-For local test data, run `pnpm db:seed` after migrations. This adds 48 sample
-traffic events to the existing instance, plus `admin@demo.test` and `member@demo.test` accounts with their
+For local test data, run `pnpm db:seed` after migrations. This adds a week of traffic (about 1,200
+events in 130 sessions from seven people, decided by the seeded guardrails), plus `admin@demo.test` and `member@demo.test` accounts with their
 respective roles. Both use password `LocalDemo123!`. The seed always targets local D1 and preserves
 existing fixtures when rerun. These credentials are for local development only.
 
