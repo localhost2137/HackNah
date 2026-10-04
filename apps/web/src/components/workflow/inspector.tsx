@@ -269,6 +269,7 @@ function ConditionForm({
 
   return (
     <Field
+      group={condition.field !== 'tool' && condition.field !== 'model'}
       label="Yes when it is any of"
       hint={
         condition.field === 'tool' || condition.field === 'model'

@@ -236,7 +236,7 @@ export function DryRun({
         />
       </Field>
       {options.groups.length > 0 ? (
-        <Field label="User groups">
+        <Field group label="User groups">
           <CheckboxGroup
             options={options.groups}
             value={form.groupIds}
@@ -245,7 +245,7 @@ export function DryRun({
         </Field>
       ) : null}
       {options.resources.length > 0 ? (
-        <Field label="Resources">
+        <Field group label="Resources">
           <CheckboxGroup
             options={options.resources}
             value={form.resourceIds}
@@ -298,7 +298,7 @@ export function DryRun({
           </>
         ) : null}
         {reads.has('os_posture') ? (
-          <Field label="OS protections turned off" className="col-span-2">
+          <Field group label="OS protections turned off" className="col-span-2">
             <CheckboxGroup
               options={osProtections}
               value={form.osOff}

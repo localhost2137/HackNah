@@ -113,7 +113,7 @@ export function FieldForm({
             )
           case 'multi':
             return (
-              <Field key={field.key} label={field.label} hint={field.hint}>
+              <Field group key={field.key} label={field.label} hint={field.hint}>
                 <CheckboxGroup
                   options={field.options}
                   value={(current as string[]) ?? []}
@@ -144,7 +144,7 @@ export function FieldForm({
             )
           case 'argument_rules':
             return (
-              <Field key={field.key} label={field.label} hint={field.hint}>
+              <Field group key={field.key} label={field.label} hint={field.hint}>
                 <ArgumentRules value={(current as ArgumentRule[]) ?? []} onChange={set} />
               </Field>
             )

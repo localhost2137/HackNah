@@ -115,7 +115,7 @@ export function LearnedForm({
 
   return (
     <>
-      <Field label="Datasets" hint="The model learns the attacks in every dataset you tick.">
+      <Field group label="Datasets" hint="The model learns the attacks in every dataset you tick.">
         <div className="flex max-h-56 min-w-0 flex-col gap-1.5 overflow-x-hidden overflow-y-auto rounded-md border border-line p-2.5">
           {trainable.map((d) => (
             <label key={d.slug} className="flex min-w-0 items-center gap-2 text-xs text-fg">

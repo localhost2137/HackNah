@@ -57,18 +57,32 @@ export function Field({
   hint,
   children,
   className,
+  group,
 }: {
   label: string
   hint?: React.ReactNode
   children: React.ReactNode
   className?: string
+  /**
+   * Set when the field holds several controls (checkboxes, a list of rows). A `<label>` hands
+   * every click inside it to its first control, so a group gets a plain container instead.
+   */
+  group?: boolean
 }) {
-  return (
-    <label className={cn('flex flex-col gap-1.5', className)}>
+  const content = (
+    <>
       <span className="text-xs font-medium text-muted">{label}</span>
       {children}
       {hint ? <span className="text-[11px] text-subtle">{hint}</span> : null}
-    </label>
+    </>
+  )
+  return group ? (
+    // biome-ignore lint/a11y/useSemanticElements: a fieldset cannot be a flex container in every browser
+    <div role="group" aria-label={label} className={cn('flex flex-col gap-1.5', className)}>
+      {content}
+    </div>
+  ) : (
+    <label className={cn('flex flex-col gap-1.5', className)}>{content}</label>
   )
 }
 
