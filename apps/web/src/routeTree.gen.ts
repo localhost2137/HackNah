@@ -24,6 +24,7 @@ import { Route as AppLimitsRouteImport } from './routes/_app/limits'
 import { Route as AppModelsRouteImport } from './routes/_app/models'
 import { Route as AppSessionsRouteImport } from './routes/_app/sessions'
 import { Route as ApiLiveRouteImport } from './routes/api/live'
+import { Route as ApiPolicyRouteImport } from './routes/api/policy'
 import { Route as AppAccessGroupsRouteImport } from './routes/_app/access/groups'
 import { Route as AppAccessMembersRouteImport } from './routes/_app/access/members'
 import { Route as AppAccessResourcesRouteImport } from './routes/_app/access/resources'
@@ -111,6 +112,11 @@ const ApiLiveRoute = ApiLiveRouteImport.update({
   path: '/api/live',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPolicyRoute = ApiPolicyRouteImport.update({
+  id: '/api/policy',
+  path: '/api/policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppAccessGroupsRoute = AppAccessGroupsRouteImport.update({
   id: '/access/groups',
   path: '/access/groups',
@@ -188,6 +194,7 @@ export interface FileRoutesByFullPath {
   '/models': typeof AppModelsRoute
   '/sessions': typeof AppSessionsRoute
   '/api/live': typeof ApiLiveRoute
+  '/api/policy': typeof ApiPolicyRoute
   '/access/groups': typeof AppAccessGroupsRoute
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
@@ -215,6 +222,7 @@ export interface FileRoutesByTo {
   '/models': typeof AppModelsRoute
   '/sessions': typeof AppSessionsRoute
   '/api/live': typeof ApiLiveRoute
+  '/api/policy': typeof ApiPolicyRoute
   '/': typeof AppIndexRoute
   '/access/groups': typeof AppAccessGroupsRoute
   '/access/members': typeof AppAccessMembersRoute
@@ -245,6 +253,7 @@ export interface FileRoutesById {
   '/_app/models': typeof AppModelsRoute
   '/_app/sessions': typeof AppSessionsRoute
   '/api/live': typeof ApiLiveRoute
+  '/api/policy': typeof ApiPolicyRoute
   '/_app/': typeof AppIndexRoute
   '/_app/access/groups': typeof AppAccessGroupsRoute
   '/_app/access/members': typeof AppAccessMembersRoute
@@ -276,6 +285,7 @@ export interface FileRouteTypes {
     | '/models'
     | '/sessions'
     | '/api/live'
+    | '/api/policy'
     | '/access/groups'
     | '/access/members'
     | '/access/resources'
@@ -303,6 +313,7 @@ export interface FileRouteTypes {
     | '/models'
     | '/sessions'
     | '/api/live'
+    | '/api/policy'
     | '/'
     | '/access/groups'
     | '/access/members'
@@ -332,6 +343,7 @@ export interface FileRouteTypes {
     | '/_app/models'
     | '/_app/sessions'
     | '/api/live'
+    | '/api/policy'
     | '/_app/'
     | '/_app/access/groups'
     | '/_app/access/members'
@@ -355,6 +367,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
   ApiLiveRoute: typeof ApiLiveRoute
+  ApiPolicyRoute: typeof ApiPolicyRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiOauthCallbackRoute: typeof ApiOauthCallbackRoute
   ApiOauthStartServerIdRoute: typeof ApiOauthStartServerIdRoute
@@ -465,6 +478,13 @@ declare module '@tanstack/react-router' {
       path: '/api/live'
       fullPath: '/api/live'
       preLoaderRoute: typeof ApiLiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/policy': {
+      id: '/api/policy'
+      path: '/api/policy'
+      fullPath: '/api/policy'
+      preLoaderRoute: typeof ApiPolicyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/access/groups': {
@@ -604,6 +624,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,
   ApiLiveRoute: ApiLiveRoute,
+  ApiPolicyRoute: ApiPolicyRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiOauthCallbackRoute: ApiOauthCallbackRoute,
   ApiOauthStartServerIdRoute: ApiOauthStartServerIdRoute,

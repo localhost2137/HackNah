@@ -1,0 +1,140 @@
+# AI Control Layer policy: PERMISSIVE
+#
+# For pilots and trusted teams: as few interruptions as possible. Only clearly destructive
+# commands and private keys are blocked, secrets are redacted but personal data is not, new
+# devices work right away, and budgets only warn. Checks that can't run (judge down) let the
+# request through.
+#
+# Apply:   pnpm policy:apply policies/permissive.yaml [--merge] [--dry-run]
+# Compare: balanced.yaml (the recommended default) and strict.yaml.
+version: 1
+
+workflows:
+  # Any stage. A new device is let through but still logged; a copied token is still blocked.
+  - name: Baseline
+    description: Destructive commands and secrets, on every stage.
+    definition:
+      fallback: allow
+      nodes:
+        - { id: start, type: trigger, conditions: [] }
+        - { id: device, type: check, check: { type: fingerprint } }
+        - id: dangerous
+          type: check
+          check:
+            type: keywords
+            mode: substring
+            patterns: [rm -rf /, DROP DATABASE, mkfs.]
+        - { id: redact, type: check, check: { type: redact, secrets: true, pii: [] } }
+        - { id: allow, type: decision, action: allow }
+        - { id: block, type: decision, action: block }
+      edges:
+        - { id: e1, source: start, sourceHandle: next, target: device }
+        - { id: e2, source: device, sourceHandle: pass, target: dangerous }
+        - { id: e3, source: device, sourceHandle: new, target: dangerous }
+        - { id: e4, source: device, sourceHandle: mismatch, target: block }
+        - { id: e5, source: dangerous, sourceHandle: pass, target: redact }
+        - { id: e6, source: dangerous, sourceHandle: fail, target: block }
+        - { id: e7, source: redact, sourceHandle: pass, target: allow }
+
+  # Tool results only get the judge, with a high bar (0.9): only near-certain injections stop.
+  - name: "Tool results: prompt injection"
+    definition:
+      fallback: allow
+      nodes:
+        - { id: start, type: trigger, conditions: [{ field: kind, values: [tool_result] }] }
+        - id: judge
+          type: check
+          check:
+            type: judge
+            endpoint: http://localhost:11434/v1/chat/completions
+            model: qwen3:8b
+            threshold: 0.9
+            timeoutMs: 5000
+        - { id: allow, type: decision, action: allow }
+        - { id: block, type: decision, action: block, reason: Possible prompt injection in a tool result }
+      edges:
+        - { id: e1, source: start, sourceHandle: next, target: judge }
+        - { id: e2, source: judge, sourceHandle: pass, target: allow }
+        - { id: e3, source: judge, sourceHandle: fail, target: block }
+
+  - name: "Model output: leaks"
+    definition:
+      fallback: allow
+      nodes:
+        - { id: start, type: trigger, conditions: [{ field: kind, values: [model_output] }] }
+        - id: keys
+          type: check
+          check: { type: keywords, mode: regex, patterns: ["-----BEGIN [A-Z ]*PRIVATE KEY-----"] }
+        - { id: redact, type: check, check: { type: redact, secrets: true, pii: [] } }
+        - { id: allow, type: decision, action: allow }
+        - { id: block, type: decision, action: block, reason: The answer contained a private key }
+      edges:
+        - { id: e1, source: start, sourceHandle: next, target: keys }
+        - { id: e2, source: keys, sourceHandle: pass, target: redact }
+        - { id: e3, source: keys, sourceHandle: fail, target: block }
+        - { id: e4, source: redact, sourceHandle: pass, target: allow }
+
+  # Destructive MCP tools: the developer confirms in Claude Code, the lightest approval level.
+  - name: Destructive MCP tools
+    definition:
+      fallback: allow
+      nodes:
+        - id: start
+          type: trigger
+          conditions: [{ field: kind, values: [tool_call] }, { field: tier, values: [destructive] }]
+        - { id: confirm, type: decision, action: require_approval, method: confirm, timeoutSec: 120 }
+      edges:
+        - { id: e1, source: start, sourceHandle: next, target: confirm }
+
+limits:
+  # Budgets warn only: past them requests are flagged in the log, never stopped.
+  - name: Daily spend per user
+    measure: cost
+    scope: model
+    target: "*"
+    limit: 50
+    windowSec: 86400
+    per: user
+    action: warn
+  - name: Monthly company spend
+    measure: cost
+    scope: model
+    target: "*"
+    limit: 5000
+    windowSec: 2592000
+    per: group_total
+    group: All members
+    action: warn
+  - name: Local GPU time per user
+    measure: gpu_seconds
+    scope: model
+    target: "qwen*"
+    limit: 14400
+    windowSec: 86400
+    per: user
+    action: warn
+  # Still a hard cap: a runaway agent loop should not be able to hammer tools.
+  - name: Tool calls per user
+    measure: requests
+    scope: tool
+    target: "*"
+    limit: 600
+    windowSec: 60
+    per: user
+    action: block
+
+models:
+  - pattern: claude-*
+    label: Any Claude model
+    kind: external
+    apiFormat: anthropic
+    inputUsdPerMTok: 3
+    outputUsdPerMTok: 15
+    cacheWriteUsdPerMTok: 3.75
+    cacheReadUsdPerMTok: 0.3
+  - pattern: "qwen*"
+    label: Qwen (local, Ollama)
+    kind: local
+    apiFormat: openai
+    baseUrl: http://localhost:11434/v1
+    gpuUsdPerHour: 1.5

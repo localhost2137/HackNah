@@ -20,7 +20,9 @@
     "db:migrate": "pnpm --filter @acl/web db:migrate",
     "db:migrate:remote": "pnpm --filter @acl/web db:migrate:remote",
     "deploy": "turbo run deploy",
-    "db:setup": "pnpm --filter @acl/web db:setup"
+    "db:setup": "pnpm --filter @acl/web db:setup",
+    "policy:export": "node scripts/policy.mjs export",
+    "policy:apply": "node scripts/policy.mjs apply"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
