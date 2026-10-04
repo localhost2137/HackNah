@@ -236,6 +236,20 @@ export async function runChecks(ctx) {
     },
   )
 
+  await check(
+    'condition chain blocks a matching request; others skip the workflow',
+    'Conditions (AND, Skip)',
+    async () => {
+      const pilot = await send('mock-claude-pilot-1', user('hi'))
+      const other = await send('mock-claude-1', user('hi'))
+      return {
+        ok:
+          pilot.status === 403 && /Pilot models are closed/.test(pilot.raw) && other.status === 200,
+        statuses: [pilot.status, other.status],
+      }
+    },
+  )
+
   await check('model outside the catalog is refused', 'Allowed models', async () => {
     const r = await send('gpt-unknown', user('hi'))
     return { ok: r.status === 403 && /catalog/.test(r.raw), status: r.status }
@@ -301,7 +315,7 @@ export async function runChecks(ctx) {
 
   // Events reach D1 through the queue; give the consumer a moment.
   let rows = []
-  const sessionEvents = `select kind, decision, model, tool_name, cost_usd, gpu_ms, overhead_ms, latency_ms from event where session_id = '${session}'`
+  const sessionEvents = `select kind, decision, model, tool_name, cost_usd, gpu_ms, overhead_ms, latency_ms, workflows from event where session_id = '${session}'`
   for (let i = 0; i < 20; i++) {
     rows = await ctx.query(sessionEvents)
     if (
@@ -321,6 +335,17 @@ export async function runChecks(ctx) {
       rateLimited: has('model_request', 'rate_limited'),
     }
     return { ok: Object.values(kinds).every(Boolean), kinds }
+  })
+  await check('a skipped workflow is listed but does not decide', 'Conditions (Skip)', async () => {
+    const skipped = rows.filter((r) => {
+      const refs = JSON.parse(r.workflows ?? '[]')
+      return (
+        r.kind === 'model_request' &&
+        r.decision === 'allow' &&
+        refs.some((w) => w.id === 'wf_e2e_pilot' && w.decision === 'skip')
+      )
+    })
+    return { ok: skipped.length > 0, count: skipped.length }
   })
   await check('cost and GPU time are recorded per request', 'Budget reporting', async () => {
     const cost = rows.some(

@@ -50,19 +50,17 @@ describe('contextual step recommendations', () => {
     ).toEqual(['block', 'approve_admin'])
     expect(find(g, 'keywords', 'fail', 'allow').reason).toContain('flagged')
   })
-  it('carries risk through a route instead of recommending allow after a failure', () => {
+  it('carries risk through a condition instead of recommending allow after a failure', () => {
     const g = open(graph(), 'keywords', 'fail')
     g.nodes.push({
       id: 'route',
-      type: 'match',
+      type: 'condition',
       position: { x: 0, y: 0 },
-      mode: 'all',
-      conditions: [],
-      label: '',
+      condition: { field: 'tool', values: [] },
     })
     g.edges.push({ id: 'r', source: 'keywords', sourceHandle: 'fail', target: 'route' })
-    expect(find(g, 'route', 'else', 'allow').recommended).toBe(false)
-    expect(recommendSteps(g, 'route', 'match')[0]?.block.id).toBe('block')
+    expect(find(g, 'route', 'no', 'allow').recommended).toBe(false)
+    expect(recommendSteps(g, 'route', 'yes')[0]?.block.id).toBe('block')
   })
   it('offers the device-side approvals where the plugin signals are checked', () => {
     const g = graph()
@@ -84,11 +82,9 @@ describe('contextual step recommendations', () => {
     const g = graph()
     g.nodes.push({
       id: 'merge',
-      type: 'match',
+      type: 'condition',
       position: { x: 0, y: 0 },
-      mode: 'all',
-      conditions: [],
-      label: '',
+      condition: { field: 'tool', values: [] },
     })
     g.edges = g.edges.filter(
       (e) => e.source !== 'keywords' && !(e.source === 'fingerprint' && e.sourceHandle === 'new'),
@@ -97,8 +93,8 @@ describe('contextual step recommendations', () => {
       { id: 'a', source: 'keywords', sourceHandle: 'pass', target: 'merge' },
       { id: 'b', source: 'fingerprint', sourceHandle: 'new', target: 'merge' },
     )
-    expect(find(g, 'merge', 'match', 'keywords').reason).toBe('')
-    expect(find(g, 'merge', 'match', 'fingerprint').reason).toContain('Already checked')
+    expect(find(g, 'merge', 'yes', 'keywords').reason).toBe('')
+    expect(find(g, 'merge', 'yes', 'fingerprint').reason).toContain('Already checked')
   })
   it('keeps terminal choices visible but unavailable when insertion would cut off the path', () => {
     const suggestion = find(graph(), 'fingerprint', 'pass', 'block')

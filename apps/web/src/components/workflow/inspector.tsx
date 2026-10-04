@@ -1,14 +1,7 @@
-import type {
-  BlockId,
-  Condition,
-  GraphIssue,
-  MatchNode,
-  PolicyNode,
-  TriggerNode,
-} from '@acl/shared'
+import type { BlockId, Condition, ConditionNode, GraphIssue, PolicyNode } from '@acl/shared'
 import { blockOf, blocks, eventKind, inputLabels, kindLabels, palette } from '@acl/shared'
 import { Button, Field, Input, Select, Switch } from '@acl/ui'
-import { Plus, Trash2, X } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { toneColor } from './graph-nodes.tsx'
 import { CheckboxGroup, FieldForm } from './step-form.tsx'
 
@@ -20,19 +13,6 @@ export type PickerOptions = {
   /** Limits a Limit block can read. */
   limits?: Option[]
 }
-
-const fields: { value: Condition['field']; label: string }[] = [
-  { value: 'kind', label: 'Stage' },
-  { value: 'source', label: 'Tool source' },
-  { value: 'mcpServer', label: 'MCP server' },
-  { value: 'tool', label: 'Tool name' },
-  { value: 'resource', label: 'Resource' },
-  { value: 'group', label: 'User group' },
-  { value: 'deviceStatus', label: 'Device status' },
-  { value: 'model', label: 'Model' },
-  { value: 'tier', label: 'Tool tier' },
-  { value: 'keyStorage', label: 'Device key storage' },
-]
 
 const kinds: Option[] = eventKind.options.map((value) => ({ value, label: kindLabels[value] }))
 
@@ -125,10 +105,8 @@ function NodeForm({
           Enabled
         </label>
       ) : null}
-      {node.type === 'match' ? (
-        <MatchForm node={node} options={options} onChange={onChange} />
-      ) : node.type === 'trigger' ? (
-        <TriggerForm node={node} options={options} onChange={onChange} />
+      {node.type === 'condition' ? (
+        <ConditionForm node={node} options={options} onChange={onChange} />
       ) : node.type === 'check' ? (
         <FieldForm
           fields={block.fields}
@@ -200,116 +178,24 @@ function BlockInterface({ node }: { node: PolicyNode }) {
   )
 }
 
-function MatchForm({
+/** The values of a condition block; its field is fixed by the block. */
+function ConditionForm({
   node,
   options,
   onChange,
 }: {
-  node: MatchNode
+  node: ConditionNode
   options: PickerOptions
   onChange: (node: PolicyNode) => void
 }) {
-  return (
-    <>
-      <Field label="Label">
-        <Input
-          value={node.label}
-          maxLength={80}
-          placeholder="GitHub write tools"
-          onChange={(e) => onChange({ ...node, label: e.target.value })}
-        />
-      </Field>
-      <ConditionsForm label="Matches when" node={node} options={options} onChange={onChange} />
-    </>
-  )
-}
-
-function TriggerForm({
-  node,
-  options,
-  onChange,
-}: {
-  node: TriggerNode
-  options: PickerOptions
-  onChange: (node: PolicyNode) => void
-}) {
-  return (
-    <>
-      {node.conditions.length === 0 ? (
-        <p className="rounded-md border border-line p-3 text-xs text-muted">
-          No conditions: every prompt and tool call starts this workflow.
-        </p>
-      ) : null}
-      <ConditionsForm label="Starts when" node={node} options={options} onChange={onChange} />
-    </>
-  )
-}
-
-function ConditionsForm<T extends MatchNode | TriggerNode>({
-  label,
-  node,
-  options,
-  onChange,
-}: {
-  label: string
-  node: T
-  options: PickerOptions
-  onChange: (node: T) => void
-}) {
-  const setConditions = (conditions: Condition[]) => onChange({ ...node, conditions })
-  return (
-    <>
-      <Field label={label}>
-        <Select
-          value={node.mode}
-          onChange={(e) => onChange({ ...node, mode: e.target.value as 'all' | 'any' })}
-        >
-          <option value="all">All conditions hold</option>
-          <option value="any">Any condition holds</option>
-        </Select>
-      </Field>
-      <div className="flex flex-col gap-3">
-        {node.conditions.map((c, i) => (
-          <ConditionRow
-            // biome-ignore lint/suspicious/noArrayIndexKey: conditions have no identity of their own
-            key={i}
-            condition={c}
-            options={options}
-            onChange={(next) => setConditions(node.conditions.map((x, j) => (j === i ? next : x)))}
-            onRemove={() => setConditions(node.conditions.filter((_, j) => j !== i))}
-          />
-        ))}
-        <Button
-          size="sm"
-          onClick={() => setConditions([...node.conditions, { field: 'tool', values: [] }])}
-        >
-          <Plus className="size-3.5" /> Add condition
-        </Button>
-      </div>
-    </>
-  )
-}
-
-function ConditionRow({
-  condition,
-  options,
-  onChange,
-  onRemove,
-}: {
-  condition: Condition
-  options: PickerOptions
-  onChange: (c: Condition) => void
-  onRemove: () => void
-}) {
+  const condition = node.condition
+  const set = (values: string[]) =>
+    onChange({ ...node, condition: { ...condition, values } as Condition })
   const picker = (list: Option[], empty: string) =>
     list.length === 0 ? (
       <p className="text-xs text-subtle">{empty}</p>
     ) : (
-      <CheckboxGroup
-        options={list}
-        value={condition.values}
-        onChange={(values) => onChange({ ...condition, values } as Condition)}
-      />
+      <CheckboxGroup options={list} value={condition.values} onChange={set} />
     )
 
   let editor: React.ReactNode
@@ -342,17 +228,20 @@ function ConditionRow({
     case 'model':
       editor = (
         <Input
-          key={condition.field}
+          key={node.id}
           defaultValue={condition.values.join(', ')}
-          placeholder={condition.field === 'tool' ? 'delete_*, create_*, Bash' : 'anthropic/*'}
+          placeholder={
+            condition.field === 'tool'
+              ? 'Bash, delete_*, github__create_issue'
+              : 'claude-opus-*, llama*'
+          }
           onChange={(e) =>
-            onChange({
-              ...condition,
-              values: e.target.value
+            set(
+              e.target.value
                 .split(',')
                 .map((v) => v.trim())
                 .filter(Boolean),
-            })
+            )
           }
         />
       )
@@ -360,29 +249,15 @@ function ConditionRow({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-line p-3">
-      <div className="flex items-center gap-2">
-        <Select
-          className="h-7 flex-1"
-          value={condition.field}
-          onChange={(e) => onChange({ field: e.target.value, values: [] } as Condition)}
-        >
-          {fields.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
-        </Select>
-        <Button size="sm" variant="ghost" onClick={onRemove} aria-label="Remove condition">
-          <X className="size-3.5" />
-        </Button>
-      </div>
+    <Field
+      label="Yes when it is any of"
+      hint={
+        condition.field === 'tool' || condition.field === 'model'
+          ? `Comma-separated, * as wildcard.${condition.field === 'tool' ? ' MCP tools match with or without the server prefix.' : ''}`
+          : undefined
+      }
+    >
       {editor}
-      {condition.field === 'tool' ? (
-        <p className="text-[11px] text-subtle">
-          Comma-separated, * as wildcard. MCP tools match with or without the server prefix.
-        </p>
-      ) : null}
-    </div>
+    </Field>
   )
 }

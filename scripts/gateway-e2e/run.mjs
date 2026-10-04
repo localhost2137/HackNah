@@ -9,7 +9,8 @@
 // its database and .dev.vars are never touched.
 import { execFile, spawn } from 'node:child_process'
 import { createHash, createHmac } from 'node:crypto'
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { basename, join, relative } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -145,8 +146,15 @@ async function main() {
   })
 
   step('starting the gateway')
+  // The dashboard checks the sign-in Origin against PUBLIC_URL, so pin the port up front.
+  const port = await freePort()
+  appendFileSync(join(web, '.dev.vars'), `\nPUBLIC_URL=http://localhost:${port}\n`)
   const viteLog = []
-  const vite = startProcess('pnpm', ['exec', 'vite', 'dev', '--port', '3200'], { cwd: web })
+  const vite = startProcess(
+    'pnpm',
+    ['exec', 'vite', 'dev', '--port', String(port), '--strictPort'],
+    { cwd: web },
+  )
   const [, gateway] = await waitFor(vite, /Local:\s+(http:\/\/localhost:\d+)/, 120_000, viteLog)
   // Ready once the gateway answers an unauthenticated request (vite compiles on first hit).
   for (let i = 0; ; i++) {
@@ -225,3 +233,15 @@ main()
     teardown()
     process.exit(1)
   })
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.unref()
+    server.on('error', reject)
+    server.listen(0, () => {
+      const { port } = server.address()
+      server.close(() => resolve(port))
+    })
+  })
+}

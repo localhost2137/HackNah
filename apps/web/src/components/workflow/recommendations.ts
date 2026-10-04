@@ -55,7 +55,7 @@ function checksOnPaths(
 
 function nodeName(node: PolicyNode | undefined) {
   if (!node) return 'the next step'
-  return (node.type === 'match' && node.label) || blockOf(node).label
+  return blockOf(node).label
 }
 
 /** Did the request leave an enabled check through a warning or failing output on the way here? */

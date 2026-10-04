@@ -139,7 +139,8 @@ export const condition = z.discriminatedUnion('field', [
 export type Condition = z.infer<typeof condition>
 export type ConditionField = Condition['field']
 
-export const decisionAction = z.enum(['allow', 'block', 'require_approval'])
+/** `skip` ends a workflow without a decision, as if it had not started. */
+export const decisionAction = z.enum(['allow', 'block', 'require_approval', 'skip'])
 export type DecisionAction = z.infer<typeof decisionAction>
 
 const position = z.object({ x: z.number(), y: z.number() })
@@ -148,18 +149,16 @@ const nodeBase = { id: z.string().min(1).max(64), position }
 export const triggerNode = z.object({
   ...nodeBase,
   type: z.literal('trigger'),
-  mode: z.enum(['all', 'any']).default('all'),
-  /** Which requests start this workflow. Empty means every request. */
-  conditions: z.array(condition).default([]),
+  /** The stages this workflow runs on. Empty means every stage. */
+  stages: z.array(eventKind).default([]),
 })
 export type TriggerNode = z.infer<typeof triggerNode>
 
-export const matchNode = z.object({
+/** One question about the request, answered Yes or No. Chained, they make AND and OR. */
+export const conditionNode = z.object({
   ...nodeBase,
-  type: z.literal('match'),
-  label: z.string().max(80).default(''),
-  mode: z.enum(['all', 'any']).default('all'),
-  conditions: z.array(condition).default([]),
+  type: z.literal('condition'),
+  condition,
 })
 
 export const checkNode = z.object({
@@ -184,13 +183,13 @@ export const decisionNode = z.object({
 
 export const policyNode = z.discriminatedUnion('type', [
   triggerNode,
-  matchNode,
+  conditionNode,
   checkNode,
   decisionNode,
 ])
 export type PolicyNode = z.infer<typeof policyNode>
 export type PolicyNodeType = PolicyNode['type']
-export type MatchNode = z.infer<typeof matchNode>
+export type ConditionNode = z.infer<typeof conditionNode>
 export type CheckNode = z.infer<typeof checkNode>
 export type DecisionNode = z.infer<typeof decisionNode>
 
@@ -202,17 +201,138 @@ export const policyEdge = z.object({
 })
 export type PolicyEdge = z.infer<typeof policyEdge>
 
-export const policyGraph = z.object({
-  nodes: z.array(policyNode).max(200),
-  // Checks no longer have an Error output; a failing check follows the fallback.
-  edges: z
-    .array(policyEdge)
-    .max(400)
-    .transform((edges) => edges.filter((e) => e.sourceHandle !== 'error')),
-  /** What happens when a request reaches an output with nothing connected, or a check errors. */
-  fallback: z.enum(['allow', 'block']).default('block'),
-})
+export const policyGraph = z.preprocess(
+  upgradeGraph,
+  z.object({
+    nodes: z.array(policyNode).max(200),
+    // Checks no longer have an Error output; a failing check follows the fallback.
+    edges: z
+      .array(policyEdge)
+      .max(400)
+      .transform((edges) => edges.filter((e) => e.sourceHandle !== 'error')),
+    /** What happens when a request reaches an output with nothing connected, or a check errors. */
+    fallback: z.enum(['allow', 'block']).default('block'),
+  }),
+)
 export type PolicyGraph = z.infer<typeof policyGraph>
+
+type RawNode = {
+  id: string
+  type: string
+  position?: { x: number; y: number }
+  [k: string]: unknown
+}
+type RawCondition = { field: string; values?: unknown[] }
+type RawEdge = { id: string; source: string; sourceHandle: string; target: string }
+
+/**
+ * Graphs saved before condition blocks existed had conditions on the start node and multi-condition
+ * Route nodes. Both become chains of condition blocks: AND links Yes to the next condition, OR
+ * links No. A start condition that does not hold now ends in Skip, which, as before, means the
+ * workflow does not apply.
+ */
+export function upgradeGraph(raw: unknown): unknown {
+  const g = raw as { nodes?: RawNode[]; edges?: RawEdge[] } | null
+  if (!g || !Array.isArray(g.nodes) || !Array.isArray(g.edges)) return raw
+  const legacy = g.nodes.some(
+    (n) => n?.type === 'match' || (n?.type === 'trigger' && Array.isArray(n.conditions)),
+  )
+  if (!legacy) return raw
+
+  const ids = new Set(g.nodes.map((n) => n.id))
+  const fresh = (base: string) => {
+    let i = 2
+    while (ids.has(`${base}-${i}`)) i++
+    ids.add(`${base}-${i}`)
+    return `${base}-${i}`
+  }
+  const nodes: RawNode[] = []
+  let edges = [...g.edges]
+  const target = (id: string, handle: string) =>
+    edges.find((e) => e.source === id && e.sourceHandle === handle)?.target
+  let skipId: string | null = null
+  const skip = (at: { x: number; y: number }) => {
+    if (!skipId) {
+      skipId = fresh('skip')
+      nodes.push({
+        id: skipId,
+        type: 'decision',
+        position: { x: at.x + 340, y: at.y + 240 },
+        action: 'skip',
+        method: 'admin',
+        timeoutSec: 300,
+        reason: '',
+      })
+    }
+    return skipId
+  }
+  const link = (source: string, sourceHandle: string, to: string | undefined) => {
+    if (to) edges.push({ id: `${source}-${sourceHandle}`, source, sourceHandle, target: to })
+  }
+  /** Condition blocks for `conditions`, the first one taking `firstId`. */
+  const chain = (
+    firstId: string,
+    conditions: RawCondition[],
+    mode: unknown,
+    at: { x: number; y: number },
+    yes: string | undefined,
+    no: string | undefined,
+  ) => {
+    const list = conditions.length ? conditions : [{ field: 'tool', values: [] }]
+    const chainIds = list.map((_, i) => (i === 0 ? firstId : fresh(firstId)))
+    list.forEach((c, i) => {
+      const id = chainIds[i]!
+      const next = chainIds[i + 1]
+      nodes.push({
+        id,
+        type: 'condition',
+        position: { x: at.x + i * 300, y: at.y },
+        condition: { field: c.field, values: c.values ?? [] },
+      })
+      if (mode === 'any') {
+        link(id, 'yes', yes)
+        link(id, 'no', next ?? no)
+      } else {
+        link(id, 'yes', next ?? yes)
+        link(id, 'no', no)
+      }
+    })
+  }
+
+  for (const n of g.nodes) {
+    const at = n.position ?? { x: 0, y: 0 }
+    if (n.type === 'trigger' && Array.isArray(n.conditions)) {
+      const conditions = (n.conditions as RawCondition[]).filter((c) => c?.field)
+      const stageConds = conditions.filter((c) => c.field === 'kind')
+      const others = conditions.filter((c) => c.field !== 'kind')
+      const next = target(n.id, 'next')
+      let stages: unknown[] = []
+      let rest = others
+      if (n.mode === 'any' && others.length) rest = conditions
+      else if (n.mode === 'any') stages = [...new Set(stageConds.flatMap((c) => c.values ?? []))]
+      else if (stageConds.length)
+        stages = stageConds
+          .map((c) => c.values ?? [])
+          .reduce((a, b) => a.filter((v) => b.includes(v)))
+      const { conditions: _c, mode: _m, ...base } = n
+      nodes.push({ ...base, stages })
+      if (rest.length) {
+        edges = edges.filter((e) => !(e.source === n.id && e.sourceHandle === 'next'))
+        const first = fresh('if')
+        link(n.id, 'next', first)
+        chain(first, rest, n.mode, { x: at.x + 300, y: at.y }, next, skip(at))
+      }
+    } else if (n.type === 'match') {
+      const yes = target(n.id, 'match')
+      const no = target(n.id, 'else')
+      edges = edges.filter((e) => e.source !== n.id)
+      chain(n.id, (n.conditions as RawCondition[]) ?? [], n.mode, at, yes, no)
+    } else {
+      nodes.push(n)
+    }
+  }
+  return { ...g, nodes, edges }
+}
 
 /** The ids of the outputs a node exposes, in display order. */
 export function nodeOutputs(node: PolicyNode): string[] {
@@ -290,14 +410,8 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
     if (!reachable.has(n.id)) {
       issues.push({ level: 'warning', nodeId: n.id, message: 'Not reachable from the start' })
     }
-    if (n.type === 'match' && n.conditions.length === 0) {
-      issues.push({ level: 'error', nodeId: n.id, message: 'Add at least one condition' })
-    }
-    if (
-      (n.type === 'match' || n.type === 'trigger') &&
-      n.conditions.some((c) => c.values.length === 0)
-    ) {
-      issues.push({ level: 'error', nodeId: n.id, message: 'A condition has no values' })
+    if (n.type === 'condition' && n.condition.values.length === 0) {
+      issues.push({ level: 'error', nodeId: n.id, message: 'Pick at least one value' })
     }
     if (n.type === 'check' && n.check.type === 'arguments' && n.check.rules.length === 0) {
       issues.push({ level: 'warning', nodeId: n.id, message: 'No argument rules: always passes' })
@@ -321,7 +435,7 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
 export const defaultWorkflow: PolicyGraph = {
   fallback: 'block',
   nodes: [
-    { id: 'start', type: 'trigger', position: { x: 0, y: 100 }, mode: 'all', conditions: [] },
+    { id: 'start', type: 'trigger', position: { x: 0, y: 100 }, stages: [] },
     {
       id: 'fingerprint',
       type: 'check',
@@ -387,8 +501,7 @@ export const starterWorkflow: PolicyGraph = {
       id: 'start',
       type: 'trigger',
       position: { x: 0, y: 100 },
-      mode: 'all',
-      conditions: [{ field: 'kind', values: ['tool_call'] }],
+      stages: ['tool_call'],
     },
     {
       id: 'allow',

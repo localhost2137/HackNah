@@ -27,7 +27,9 @@ access are needed.
 | The PreToolUse hook gets the cached verdict for the same call; no second event | One decision per tool call |
 | A tool result containing an injection is withheld before the model sees it | Prompt injection, indirect |
 | A local model goes out as OpenAI chat completions under its upstream name, without a key | Model routing, local models |
+| A chain of condition blocks (model input AND a pilot model) blocks a matching request; any other request ends in Skip | Conditions (AND, Skip) |
 | A model outside the catalog is refused | Allowed models |
+| A workflow that ended in Skip is listed on the event but does not decide | Conditions (Skip) |
 | A USD budget (cache reads and writes priced) blocks once spent; `max_tokens` is capped first | Budget, external API |
 | A concurrency limit of 1 refuses the second parallel request, then frees the slot | Resource governance, runaway agents |
 | A GPU-seconds budget on a local model blocks after use | Budget, local compute |

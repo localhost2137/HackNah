@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  type ActiveWorkflow,
+  combineResults,
+  type EvaluationResult,
   evaluateGraph,
   evaluateWorkflows,
   matchKeywords,
@@ -7,10 +10,12 @@ import {
   triggerMayRun,
 } from './engine.ts'
 import {
+  type Condition,
   defaultWorkflow,
   type PolicyGraph,
   type PolicyNode,
   policyGraph,
+  upgradeGraph,
   validateGraph,
 } from './workflow.ts'
 
@@ -22,7 +27,10 @@ const input = {
 }
 
 const at = { x: 0, y: 0 }
-const decision = (id: string, action: 'allow' | 'block' | 'require_approval'): PolicyNode => ({
+const decision = (
+  id: string,
+  action: 'allow' | 'block' | 'require_approval' | 'skip',
+): PolicyNode => ({
   id,
   type: 'decision',
   position: at,
@@ -78,17 +86,18 @@ describe('evaluateGraph', () => {
     const wf: PolicyGraph = {
       fallback: 'block',
       nodes: [
-        { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+        { id: 'start', type: 'trigger', position: at, stages: [] },
+        {
+          id: 'github',
+          type: 'condition',
+          position: at,
+          condition: { field: 'mcpServer', values: ['gh'] },
+        },
         {
           id: 'writes',
-          type: 'match',
+          type: 'condition',
           position: at,
-          label: 'GitHub writes',
-          mode: 'all',
-          conditions: [
-            { field: 'mcpServer', values: ['gh'] },
-            { field: 'tool', values: ['create_*', 'delete_*'] },
-          ],
+          condition: { field: 'tool', values: ['create_*', 'delete_*'] },
         },
         {
           id: 'judge',
@@ -108,9 +117,11 @@ describe('evaluateGraph', () => {
         decision('approve', 'require_approval'),
       ],
       edges: [
-        edge('start', 'next', 'writes'),
-        edge('writes', 'match', 'judge'),
-        edge('writes', 'else', 'allow'),
+        edge('start', 'next', 'github'),
+        edge('github', 'yes', 'writes'),
+        edge('github', 'no', 'allow'),
+        edge('writes', 'yes', 'judge'),
+        edge('writes', 'no', 'allow'),
         edge('judge', 'pass', 'allow'),
         edge('judge', 'fail', 'approve'),
       ],
@@ -159,7 +170,7 @@ describe('evaluateGraph', () => {
     const wf: PolicyGraph = {
       fallback: 'block',
       nodes: [
-        { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+        { id: 'start', type: 'trigger', position: at, stages: [] },
         {
           id: 'redact',
           type: 'check',
@@ -208,10 +219,7 @@ describe('evaluateWorkflows', () => {
     end: PolicyNode,
   ): PolicyGraph => ({
     fallback: 'block',
-    nodes: [
-      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [], ...trigger },
-      end,
-    ],
+    nodes: [{ id: 'start', type: 'trigger', position: at, stages: [], ...trigger }, end],
     edges: [edge('start', 'next', end.id)],
   })
   const workflow = (id: string, definition: PolicyGraph, groupIds: string[] = []) => ({
@@ -230,30 +238,35 @@ describe('evaluateWorkflows', () => {
   }
 
   it('allows a request that triggers no workflow', async () => {
-    const onlyPrompts = graph(
-      { conditions: [{ field: 'kind', values: ['model_request'] }] },
-      decision('b', 'block'),
-    )
+    const onlyPrompts = graph({ stages: ['model_request'] }, decision('b', 'block'))
     const r = await evaluateWorkflows([workflow('prompts', onlyPrompts)], toolCall)
     expect(r.decision).toBe('allow')
     expect(r.workflows).toEqual([])
     expect(r.checks).toEqual([])
   })
 
-  it('triggers on tool globs and MCP servers', () => {
-    const byTool = graph(
-      { conditions: [{ field: 'tool', values: ['delete_*'] }] },
-      decision('a', 'allow'),
-    )
-    const byServer = graph(
-      { conditions: [{ field: 'mcpServer', values: ['srv_slack'] }] },
-      decision('a', 'allow'),
-    )
-    const picked = selectWorkflows(
-      [workflow('tool', byTool), workflow('server', byServer)],
+  it('a workflow whose conditions end in Skip does not apply', async () => {
+    /** Start → condition → allow on Yes, Skip on No. */
+    const applies = (id: string, c: Condition): ActiveWorkflow =>
+      workflow(id, {
+        fallback: 'block',
+        nodes: [
+          { id: 'start', type: 'trigger', position: at, stages: [] },
+          { id: 'if', type: 'condition', position: at, condition: c },
+          decision('b', 'block'),
+          decision('s', 'skip'),
+        ],
+        edges: [edge('start', 'next', 'if'), edge('if', 'yes', 'b'), edge('if', 'no', 's')],
+      })
+    const r = await evaluateWorkflows(
+      [
+        applies('tool', { field: 'tool', values: ['delete_*'] }),
+        applies('server', { field: 'mcpServer', values: ['srv_slack'] }),
+      ],
       toolCall,
     )
-    expect(picked.map((w) => w.id)).toEqual(['tool'])
+    expect(r.decision).toBe('block')
+    expect(r.workflows.map((w) => `${w.id}:${w.decision}`)).toEqual(['tool:block', 'server:skip'])
   })
 
   it('only runs for the selected groups', () => {
@@ -319,20 +332,17 @@ describe('evaluateWorkflows', () => {
   })
 
   it('knows which stages a workflow could start on', () => {
-    const outputs = graph(
-      { conditions: [{ field: 'kind', values: ['model_output'] }] },
-      decision('a', 'allow'),
-    )
+    const outputs = graph({ stages: ['model_output'] }, decision('a', 'allow'))
     expect(triggerMayRun(outputs, ['model_output', 'tool_call'])).toBe(true)
     expect(triggerMayRun(outputs, ['tool_call'])).toBe(false)
     expect(triggerMayRun(graph({}, decision('a', 'allow')), ['tool_call'])).toBe(true)
   })
 
-  it('a workflow without trigger conditions runs on every stage', () => {
+  it('a workflow without stages runs on every stage', () => {
     const any = workflow('any', graph({}, decision('a', 'allow')))
     const outputsOnly = workflow(
       'outputs',
-      graph({ conditions: [{ field: 'kind', values: ['model_output'] }] }, decision('a', 'allow')),
+      graph({ stages: ['model_output'] }, decision('a', 'allow')),
     )
     for (const kind of ['model_request', 'tool_result', 'model_output', 'agent_message'] as const) {
       const picked = selectWorkflows([any, outputsOnly], { ...input, kind })
@@ -347,7 +357,7 @@ describe('stages', () => {
   const chain = (check: PolicyNode, fallback: 'allow' | 'block' = 'block'): PolicyGraph => ({
     fallback,
     nodes: [
-      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+      { id: 'start', type: 'trigger', position: at, stages: [] },
       check,
       decision('allow', 'allow'),
       decision('block', 'block'),
@@ -422,7 +432,7 @@ describe('stages', () => {
     const wf: PolicyGraph = {
       fallback: 'allow',
       nodes: [
-        { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+        { id: 'start', type: 'trigger', position: at, stages: [] },
         decision('hold', 'require_approval'),
       ],
       edges: [edge('start', 'next', 'hold')],
@@ -435,22 +445,20 @@ describe('stages', () => {
     const wf: PolicyGraph = {
       fallback: 'block',
       nodes: [
-        { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+        { id: 'start', type: 'trigger', position: at, stages: [] },
         {
           id: 'mcp',
-          type: 'match',
+          type: 'condition',
           position: at,
-          label: '',
-          mode: 'all',
-          conditions: [{ field: 'source', values: ['mcp'] }],
+          condition: { field: 'source', values: ['mcp'] },
         },
         decision('allow', 'allow'),
         decision('block', 'block'),
       ],
       edges: [
         edge('start', 'next', 'mcp'),
-        edge('mcp', 'match', 'block'),
-        edge('mcp', 'else', 'allow'),
+        edge('mcp', 'yes', 'block'),
+        edge('mcp', 'no', 'allow'),
       ],
     }
     const call = { ...input, kind: 'tool_call' as const }
@@ -516,5 +524,313 @@ describe('matchKeywords', () => {
 
   it('ignores invalid regexes', () => {
     expect(matchKeywords('abc', ['(', 'b+'], 'regex', false)).toBe('b+')
+  })
+})
+
+describe('condition blocks', () => {
+  const cond = (id: string, condition: Condition): PolicyNode => ({
+    id,
+    type: 'condition',
+    position: at,
+    condition,
+  })
+  const start: PolicyNode = { id: 'start', type: 'trigger', position: at, stages: [] }
+  const call = (toolName: string, extra: Record<string, unknown> = {}) => ({
+    ...input,
+    kind: 'tool_call' as const,
+    toolName,
+    ...extra,
+  })
+
+  it('chains Yes into the next condition for AND', async () => {
+    // Opus AND destructive → block; anything else → allow.
+    const wf: PolicyGraph = {
+      fallback: 'block',
+      nodes: [
+        start,
+        cond('opus', { field: 'model', values: ['claude-opus-*'] }),
+        cond('destructive', { field: 'tier', values: ['destructive'] }),
+        decision('allow', 'allow'),
+        decision('block', 'block'),
+      ],
+      edges: [
+        edge('start', 'next', 'opus'),
+        edge('opus', 'yes', 'destructive'),
+        edge('opus', 'no', 'allow'),
+        edge('destructive', 'yes', 'block'),
+        edge('destructive', 'no', 'allow'),
+      ],
+    }
+    const run = (model: string, toolTier: 'read' | 'destructive') =>
+      evaluateGraph(wf, call('gh__delete_repo', { model, toolTier }))
+    expect((await run('claude-opus-4-5', 'destructive')).decision).toBe('block')
+    expect((await run('claude-opus-4-5', 'read')).decision).toBe('allow')
+    expect((await run('claude-haiku-4-5', 'destructive')).decision).toBe('allow')
+    const path = (await run('claude-opus-4-5', 'destructive')).checks
+    expect(path.map((c) => `${c.stepId}:${c.branch ?? c.outcome}`)).toEqual([
+      'opus:yes',
+      'destructive:yes',
+      'block:fail',
+    ])
+    expect(path[0]?.reason).toBe('Model: claude-opus-*')
+  })
+
+  it('chains No into the next condition for OR, both Yes into one block', async () => {
+    // Bash OR Write → argument check (two incoming edges); anything else → allow.
+    const wf: PolicyGraph = {
+      fallback: 'block',
+      nodes: [
+        start,
+        cond('bash', { field: 'tool', values: ['Bash'] }),
+        cond('write', { field: 'tool', values: ['Write'] }),
+        {
+          id: 'kw',
+          type: 'check',
+          position: at,
+          enabled: true,
+          check: {
+            type: 'keywords',
+            patterns: ['rm -rf'],
+            mode: 'substring',
+            caseSensitive: false,
+          },
+        },
+        decision('allow', 'allow'),
+        decision('block', 'block'),
+      ],
+      edges: [
+        edge('start', 'next', 'bash'),
+        edge('bash', 'yes', 'kw'),
+        edge('bash', 'no', 'write'),
+        edge('write', 'yes', 'kw'),
+        edge('write', 'no', 'allow'),
+        edge('kw', 'pass', 'allow'),
+        edge('kw', 'fail', 'block'),
+      ],
+    }
+    expect(validateGraph(wf).filter((i) => i.level === 'error')).toEqual([])
+    const run = (tool: string) => evaluateGraph(wf, { ...call(tool), text: 'rm -rf build' })
+    expect((await run('Bash')).decision).toBe('block')
+    expect((await run('Write')).decision).toBe('block')
+    expect((await run('Read')).decision).toBe('allow')
+    expect((await run('Read')).checks.some((c) => c.stepId === 'kw')).toBe(false)
+  })
+
+  it('flags a condition without values', () => {
+    const wf: PolicyGraph = {
+      fallback: 'block',
+      nodes: [start, cond('empty', { field: 'tool', values: [] }), decision('allow', 'allow')],
+      edges: [edge('start', 'next', 'empty'), edge('empty', 'yes', 'allow')],
+    }
+    expect(validateGraph(wf)).toContainEqual(
+      expect.objectContaining({ level: 'error', nodeId: 'empty' }),
+    )
+  })
+
+  it('ends in Skip without a decision', async () => {
+    const wf: PolicyGraph = {
+      fallback: 'block',
+      nodes: [start, decision('skip', 'skip')],
+      edges: [edge('start', 'next', 'skip')],
+    }
+    const r = await evaluateGraph(wf, input)
+    expect(r.decision).toBe('skip')
+    expect(r.reasons).toEqual([])
+    expect(r.riskScore).toBe(0)
+    expect(r.checks.at(-1)).toMatchObject({ stepId: 'skip', outcome: 'skipped' })
+  })
+})
+
+describe('combineResults with skipped workflows', () => {
+  const result = (
+    decision: EvaluationResult['decision'],
+    extra: Partial<EvaluationResult> = {},
+  ): EvaluationResult => ({
+    decision,
+    checks: [],
+    riskScore: decision === 'block' ? 1 : 0,
+    reasons: decision === 'block' ? ['nope'] : [],
+    approvalTimeoutSec: 300,
+    approvalMethod: null,
+    trustsDevice: false,
+    redact: null,
+    ...extra,
+  })
+  const wf = (id: string, r: EvaluationResult) => ({
+    workflow: { id, name: id, version: 1 },
+    result: r,
+  })
+
+  it('lets the workflows that applied decide', () => {
+    const r = combineResults([wf('a', result('skip')), wf('b', result('allow'))])
+    expect(r.decision).toBe('allow')
+    expect(r.workflows.map((w) => w.decision)).toEqual(['skip', 'allow'])
+  })
+
+  it('allows when every workflow skipped, and still lists them', () => {
+    const r = combineResults([wf('a', result('skip')), wf('b', result('skip'))])
+    expect(r.decision).toBe('allow')
+    expect(r.workflows.map((w) => `${w.id}:${w.decision}`)).toEqual(['a:skip', 'b:skip'])
+  })
+
+  it('a skip never softens a block', () => {
+    const r = combineResults([wf('a', result('skip')), wf('b', result('block'))])
+    expect(r.decision).toBe('block')
+    expect(r.reasons).toEqual(['nope'])
+    expect(r.riskScore).toBe(1)
+  })
+
+  it('ignores redaction and risk from skipped workflows', () => {
+    const redact = { type: 'redact' as const, secrets: true, pii: [] }
+    const r = combineResults([
+      wf('a', result('skip', { redact, riskScore: 0.9 })),
+      wf('b', result('allow')),
+    ])
+    expect(r.redact).toBeNull()
+    expect(r.riskScore).toBe(0)
+  })
+})
+
+describe('upgradeGraph', () => {
+  const legacy = (trigger: Record<string, unknown>, extra: Record<string, unknown>[] = []) => ({
+    fallback: 'block',
+    nodes: [
+      { id: 'start', type: 'trigger', position: at, ...trigger },
+      { id: 'allow', type: 'decision', position: at, action: 'allow' },
+      ...extra,
+    ],
+    edges: [edge('start', 'next', 'allow')],
+  })
+  const outgoing = (g: PolicyGraph, id: string) =>
+    Object.fromEntries(
+      g.edges.filter((e) => e.source === id).map((e) => [e.sourceHandle, e.target]),
+    )
+
+  it('turns stage conditions into stages and the rest into a chain ending in Skip', async () => {
+    const g = policyGraph.parse(
+      legacy({
+        mode: 'all',
+        conditions: [
+          { field: 'kind', values: ['tool_call', 'tool_result'] },
+          { field: 'tool', values: ['Bash'] },
+          { field: 'group', values: ['grp_dev'] },
+        ],
+      }),
+    )
+    const start = g.nodes.find((n) => n.type === 'trigger')!
+    expect(start).toMatchObject({ stages: ['tool_call', 'tool_result'] })
+    expect(start).not.toHaveProperty('conditions')
+    const first = outgoing(g, 'start').next!
+    const tool = g.nodes.find((n) => n.id === first)!
+    expect(tool).toMatchObject({
+      type: 'condition',
+      condition: { field: 'tool', values: ['Bash'] },
+    })
+    const second = outgoing(g, first).yes!
+    expect(g.nodes.find((n) => n.id === second)).toMatchObject({
+      condition: { field: 'group' },
+    })
+    expect(outgoing(g, second).yes).toBe('allow')
+    const skip = outgoing(g, first).no!
+    expect(outgoing(g, second).no).toBe(skip)
+    expect(g.nodes.find((n) => n.id === skip)).toMatchObject({ type: 'decision', action: 'skip' })
+
+    // Same behaviour as before: Bash from the dev group runs, anything else does not apply.
+    const call = { ...input, kind: 'tool_call' as const, toolName: 'Bash', groupIds: ['grp_dev'] }
+    expect((await evaluateGraph(g, call)).decision).toBe('allow')
+    expect((await evaluateGraph(g, { ...call, toolName: 'Edit' })).decision).toBe('skip')
+    expect(validateGraph(g).filter((i) => i.level === 'error')).toEqual([])
+  })
+
+  it('keeps every stage and chains all conditions with OR in any mode', async () => {
+    const g = policyGraph.parse(
+      legacy({
+        mode: 'any',
+        conditions: [
+          { field: 'kind', values: ['model_output'] },
+          { field: 'tool', values: ['Bash'] },
+        ],
+      }),
+    )
+    expect(g.nodes.find((n) => n.type === 'trigger')).toMatchObject({ stages: [] })
+    const first = outgoing(g, 'start').next!
+    expect(outgoing(g, first).yes).toBe('allow')
+    const second = outgoing(g, first).no!
+    expect(outgoing(g, second).yes).toBe('allow')
+    expect((await evaluateGraph(g, { ...input, kind: 'model_output' })).decision).toBe('allow')
+    expect(
+      (await evaluateGraph(g, { ...input, kind: 'tool_call', toolName: 'Bash' })).decision,
+    ).toBe('allow')
+    expect(
+      (await evaluateGraph(g, { ...input, kind: 'tool_call', toolName: 'Read' })).decision,
+    ).toBe('skip')
+  })
+
+  it('keeps only stages when the start node had nothing else', () => {
+    const g = policyGraph.parse(
+      legacy({ mode: 'any', conditions: [{ field: 'kind', values: ['tool_call'] }] }),
+    )
+    expect(g.nodes.find((n) => n.type === 'trigger')).toMatchObject({ stages: ['tool_call'] })
+    expect(outgoing(g, 'start').next).toBe('allow')
+    expect(g.nodes.some((n) => n.type === 'condition')).toBe(false)
+  })
+
+  const routeGraph = (mode: 'all' | 'any') => ({
+    fallback: 'block',
+    nodes: [
+      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+      {
+        id: 'writes',
+        type: 'match',
+        position: at,
+        label: 'GitHub writes',
+        mode,
+        conditions: [
+          { field: 'mcpServer', values: ['gh'] },
+          { field: 'tool', values: ['delete_*'] },
+        ],
+      },
+      { id: 'block', type: 'decision', position: at, action: 'block' },
+      { id: 'allow', type: 'decision', position: at, action: 'allow' },
+    ],
+    edges: [
+      edge('start', 'next', 'writes'),
+      edge('writes', 'match', 'block'),
+      edge('writes', 'else', 'allow'),
+    ],
+  })
+
+  it('turns an all Route into an AND chain that keeps its id', async () => {
+    const g = policyGraph.parse(routeGraph('all'))
+    expect(outgoing(g, 'start').next).toBe('writes')
+    expect(g.nodes.find((n) => n.id === 'writes')).toMatchObject({ type: 'condition' })
+    const second = outgoing(g, 'writes').yes!
+    expect(outgoing(g, 'writes').no).toBe('allow')
+    expect(outgoing(g, second)).toEqual({ yes: 'block', no: 'allow' })
+    const call = { ...input, kind: 'tool_call' as const, mcpServerId: 'gh' }
+    expect((await evaluateGraph(g, { ...call, toolName: 'gh__delete_x' })).decision).toBe('block')
+    expect((await evaluateGraph(g, { ...call, toolName: 'gh__list' })).decision).toBe('allow')
+  })
+
+  it('turns an any Route into an OR chain', async () => {
+    const g = policyGraph.parse(routeGraph('any'))
+    const second = outgoing(g, 'writes').no!
+    expect(outgoing(g, 'writes').yes).toBe('block')
+    expect(outgoing(g, second)).toEqual({ yes: 'block', no: 'allow' })
+    const call = { ...input, kind: 'tool_call' as const }
+    expect((await evaluateGraph(g, { ...call, toolName: 'x__delete_y' })).decision).toBe('block')
+    expect((await evaluateGraph(g, { ...call, toolName: 'x__list' })).decision).toBe('allow')
+  })
+
+  it('passes new graphs through unchanged and is idempotent', () => {
+    expect(upgradeGraph(defaultWorkflow)).toBe(defaultWorkflow)
+    for (const raw of [
+      routeGraph('all'),
+      routeGraph('any'),
+      legacy({ mode: 'all', conditions: [{ field: 'tool', values: ['Bash'] }] }),
+    ]) {
+      const once = policyGraph.parse(raw)
+      expect(policyGraph.parse(once)).toEqual(once)
+    }
   })
 })

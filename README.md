@@ -2,9 +2,10 @@
 
 A control plane for Claude Code: every model request, built-in tool call and MCP tool call goes through
 a gateway that applies the organization's workflows (device fingerprint, dangerous keywords, judge model,
-redaction), rate limits and access rules. Each workflow has start conditions (request kind, tool, MCP
-server, model, ...) and the member groups it runs for; every matching workflow runs and the strictest
-outcome wins, while a request that starts no workflow is allowed. A dashboard shows the traffic, handles
+redaction), limits and access rules. Each workflow runs on chosen stages (model input, tool calls, tool
+results, model output, agent messages) for chosen member groups, and asks about the request with condition
+blocks (tool, model, MCP server, group, ...); every matching workflow runs and the strictest outcome wins,
+while a request that starts no workflow, or whose path ends in Skip, is allowed. A dashboard shows the traffic, handles
 approvals and manages policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
 Durable Objects).
 
@@ -36,7 +37,7 @@ Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Mod
 - **Stages.** Every workflow runs on one or more stages: *Model input* (what the user turn sends to the model),
   *Tool call* (arguments, built-in or MCP), *Tool result* (what a tool returned, checked before the model reads
   it), *Model output* (text and tool calls the model generated) and *Agent message* (a task handed to a subagent
-  and its reply). A start node without conditions runs on all of them. Blocks that say nothing about a stage are
+  and its reply). A start node with no stage ticked runs on all of them. Blocks that say nothing about a stage are
   skipped there (a device fingerprint on a tool result, argument rules on model output). Every matching workflow
   runs and the strictest outcome wins; a check that errors follows the workflow's fallback.
 - **Output guard.** Streamed answers are inspected block by block: text is released behind a 200-character
@@ -59,9 +60,11 @@ Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Mod
 - **Sessions.** Claude Code's session id is pinned to the first user and device that use it (`SessionDO`). The
   session also stores the resource scope picked with `/acl resources` and the redaction vault.
 - **Workflow.** Each workflow is a versioned policy graph (draft, then publish), edited with React Flow.
-  Route nodes match on request kind, MCP server, tool, resource, group, device or model, so different tools can
-  take stricter or looser paths. Check nodes (fingerprint, keywords, judge, redact) branch on their result, and
-  every path ends in allow, approval or block. `evaluateGraph()` in `packages/shared` runs it in the gateway and
+  Condition blocks ask one question each (*Tool is*, *Model is*, *MCP server is*, *User group is*, *Stage is*,
+  ...) and leave through Yes or No; chaining Yes into the next condition makes AND, chaining No makes OR, and
+  a block may have several incoming connections. Check nodes (fingerprint, keywords, judge, redact) branch on
+  their result, and every path ends in allow, approval, block or *Skip* (the workflow does not apply). Graphs
+  saved with the older start-node conditions and Route blocks are converted when they are loaded. `evaluateGraph()` in `packages/shared` runs it in the gateway and
   in the editor's dry run, and each event stores the path it took.
 - **Models.** The Models page is the catalog: a pattern over model ids, where it is served, and what it costs
   (per million input, output, cache-write and cache-read tokens for API models; per GPU-hour for local ones).

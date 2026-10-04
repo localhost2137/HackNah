@@ -74,7 +74,7 @@ const initial: Form = {
   proof: 'none',
 }
 
-const decisionTone = { allow: 'ok', block: 'bad', pending: 'warn' } as const
+const decisionTone = { allow: 'ok', block: 'bad', pending: 'warn', skip: 'neutral' } as const
 
 const osProtections: { value: OsPostureKey; label: string }[] = [
   { value: 'fv', label: 'FileVault' },
@@ -141,10 +141,7 @@ export function DryRun({
   // Only ask for the signals the blocks in this graph read.
   const reads = new Set<BlockInput>(graph.nodes.flatMap((n) => blockOf(n).inputs))
   const routesOn = (field: string) =>
-    graph.nodes.some(
-      (n) =>
-        (n.type === 'match' || n.type === 'trigger') && n.conditions.some((c) => c.field === field),
-    )
+    graph.nodes.some((n) => n.type === 'condition' && n.condition.field === field)
 
   const run = async () => {
     const score = form.judgeScore.trim() ? Number(form.judgeScore) : Number.NaN
@@ -389,7 +386,9 @@ export function DryRun({
               <Badge tone={decisionTone[result.decision]} dot>
                 {result.approvalMethod
                   ? `needs ${approvalLabels[result.approvalMethod]}`
-                  : result.decision}
+                  : result.decision === 'skip'
+                    ? 'skipped: workflow does not apply'
+                    : result.decision}
               </Badge>
             )}
             <Button

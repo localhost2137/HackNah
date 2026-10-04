@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { blockOf, blocks, palette } from './blocks.ts'
 import { type EvaluationInput, evaluateGraph, type RequestSignals } from './engine.ts'
-import type { ApprovalMethod } from './events.ts'
+import type { ApprovalMethod, EventKind } from './events.ts'
 import {
   type CheckConfig,
   type Condition,
@@ -24,7 +24,7 @@ async function leave(check: CheckConfig, input: Partial<EvaluationInput> = {}) {
   const graph: PolicyGraph = {
     fallback: 'block',
     nodes: [
-      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+      { id: 'start', type: 'trigger', position: at, stages: [] },
       { id: 'check', type: 'check', position: at, enabled: true, check },
     ],
     edges: [{ id: 'e', source: 'start', sourceHandle: 'next', target: 'check' }],
@@ -39,7 +39,7 @@ async function approve(method: ApprovalMethod, signals?: RequestSignals) {
   const graph: PolicyGraph = {
     fallback: 'block',
     nodes: [
-      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+      { id: 'start', type: 'trigger', position: at, stages: [] },
       {
         id: 'approval',
         type: 'decision',
@@ -242,28 +242,59 @@ describe('plugin checks', () => {
   })
 })
 
-describe('routing on plugin signals', () => {
-  const route = (conditions: Condition[]): PolicyGraph => ({
+describe('condition blocks on plugin signals', () => {
+  const ask = (condition: Condition): PolicyGraph => ({
     fallback: 'block',
     nodes: [
-      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
-      { id: 'route', type: 'match', position: at, label: '', mode: 'all', conditions },
+      { id: 'start', type: 'trigger', position: at, stages: [] },
+      { id: 'if', type: 'condition', position: at, condition },
     ],
-    edges: [{ id: 'e', source: 'start', sourceHandle: 'next', target: 'route' }],
+    edges: [{ id: 'e', source: 'start', sourceHandle: 'next', target: 'if' }],
   })
-  const branch = async (conditions: Condition[], input: Partial<EvaluationInput>) =>
-    (await evaluateGraph(route(conditions), { ...toolCall, ...input })).checks[0]!.branch
+  const branch = async (condition: Condition, input: Partial<EvaluationInput>) =>
+    (await evaluateGraph(ask(condition), { ...toolCall, ...input })).checks[0]!.branch
 
-  it('routes by tool tier', async () => {
-    const destructive: Condition[] = [{ field: 'tier', values: ['destructive'] }]
-    expect(await branch(destructive, { toolTier: 'destructive' })).toBe('match')
-    expect(await branch(destructive, { toolTier: 'read' })).toBe('else')
-    expect(await branch(destructive, {})).toBe('else')
+  it('asks for the tool tier', async () => {
+    const destructive: Condition = { field: 'tier', values: ['destructive'] }
+    expect(await branch(destructive, { toolTier: 'destructive' })).toBe('yes')
+    expect(await branch(destructive, { toolTier: 'read' })).toBe('no')
+    expect(await branch(destructive, {})).toBe('no')
   })
 
-  it('routes by where the device keeps its key', async () => {
-    const software: Condition[] = [{ field: 'keyStorage', values: ['software'] }]
-    expect(await branch(software, withSignals({ keyStorage: 'software' }))).toBe('match')
-    expect(await branch(software, withSignals({ keyStorage: 'secure_enclave' }))).toBe('else')
+  it('asks where the device keeps its key', async () => {
+    const software: Condition = { field: 'keyStorage', values: ['software'] }
+    expect(await branch(software, withSignals({ keyStorage: 'software' }))).toBe('yes')
+    expect(await branch(software, withSignals({ keyStorage: 'secure_enclave' }))).toBe('no')
+  })
+})
+
+describe('condition and skip blocks', () => {
+  it('has one condition block per field, each answering Yes or No', () => {
+    for (const field of ['tool', 'model', 'mcpServer', 'source', 'group', 'kind'] as const) {
+      const block = blocks[`if_${field}`]
+      expect(block.nodeType).toBe('condition')
+      expect(block.outputs.map((o) => o.id)).toEqual(['yes', 'no'])
+      expect(block.create()).toEqual({ type: 'condition', condition: { field, values: [] } })
+    }
+    expect(
+      blockOf({
+        id: 'x',
+        type: 'condition',
+        position: at,
+        condition: { field: 'tool', values: ['Bash'] },
+      }).id,
+    ).toBe('if_tool')
+  })
+
+  it('offers Skip as an outcome and no Route block', () => {
+    expect(blocks.skip.create()).toMatchObject({ type: 'decision', action: 'skip' })
+    expect(palette.some((b) => (b.id as string) === 'route')).toBe(false)
+  })
+
+  it('summarises the start node by stage', () => {
+    const start = (stages: EventKind[]) =>
+      blocks.trigger.summary({ id: 'start', type: 'trigger', position: at, stages })
+    expect(start([])).toBe('Any stage')
+    expect(start(['tool_call', 'model_output'])).toBe('Tool call, Model output')
   })
 })

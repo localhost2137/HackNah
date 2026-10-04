@@ -16,7 +16,7 @@ workflows:
     definition:
       fallback: block
       nodes:
-        - { id: start, type: trigger, conditions: [] }
+        - { id: start, type: trigger, stages: [] }
         - { id: device, type: check, check: { type: fingerprint } }
         - { id: os, type: check, check: { type: os_posture, require: [fv, sip, fw] } }
         - id: dangerous
@@ -62,9 +62,7 @@ workflows:
     definition:
       fallback: block
       nodes:
-        - id: start
-          type: trigger
-          conditions: [{ field: kind, values: [model_request, tool_result, agent_message] }]
+        - { id: start, type: trigger, stages: [model_request, tool_result, agent_message] }
         - id: phrases
           type: check
           check:
@@ -98,7 +96,7 @@ workflows:
     definition:
       fallback: block
       nodes:
-        - { id: start, type: trigger, conditions: [{ field: kind, values: [model_output] }] }
+        - { id: start, type: trigger, stages: [model_output] }
         - id: keys
           type: check
           check:
@@ -117,12 +115,15 @@ workflows:
         - { id: e4, source: redact, sourceHandle: pass, target: allow }
 
   # Every tool call: after the session read untrusted content, writes need a fresh browser
-  # sign-in; Bash downloads and force pushes are blocked; destructive MCP tools need an admin.
+  # sign-in; Bash downloads and force pushes are blocked; destructive tools need an admin.
+  # "Destructive" is an OR of two condition blocks, No chained into the next: the tool says it is
+  # destructive, OR its name looks like it (delete_*, drop_*, ...). Both Yes outputs lead to the
+  # same admin approval.
   - name: Tool calls
     definition:
       fallback: block
       nodes:
-        - { id: start, type: trigger, conditions: [{ field: kind, values: [tool_call] }] }
+        - { id: start, type: trigger, stages: [tool_call] }
         - id: bash
           type: check
           check:
@@ -133,10 +134,10 @@ workflows:
                 pattern: "^(?![\\s\\S]*(curl|wget)[\\s\\S]*)(?![\\s\\S]*git push[^\\n]*(-f|--force))[\\s\\S]*$"
                 message: Downloads and force pushes are not allowed
         - { id: tainted, type: check, check: { type: untrusted_content, windowMinutes: 30 } }
-        - id: destructive
-          type: match
-          label: Destructive tools
-          conditions: [{ field: tier, values: [destructive] }]
+        - { id: destructive, type: condition, condition: { field: tier, values: [destructive] } }
+        - id: deletes
+          type: condition
+          condition: { field: tool, values: ["delete_*", "drop_*", "*_destroy", "remove_*"] }
         - { id: allow, type: decision, action: allow }
         - { id: browser, type: decision, action: require_approval, method: browser, timeoutSec: 300 }
         - { id: admin, type: decision, action: require_approval, method: admin, timeoutSec: 900 }
@@ -147,14 +148,16 @@ workflows:
         - { id: e3, source: bash, sourceHandle: fail, target: block }
         - { id: e4, source: tainted, sourceHandle: pass, target: destructive }
         - { id: e5, source: tainted, sourceHandle: tainted, target: browser }
-        - { id: e6, source: destructive, sourceHandle: match, target: admin }
-        - { id: e7, source: destructive, sourceHandle: else, target: allow }
+        - { id: e6, source: destructive, sourceHandle: yes, target: admin }
+        - { id: e7, source: destructive, sourceHandle: no, target: deletes }
+        - { id: e8, source: deletes, sourceHandle: yes, target: admin }
+        - { id: e9, source: deletes, sourceHandle: no, target: allow }
 
   - name: Company budget
     definition:
       fallback: block
       nodes:
-        - { id: start, type: trigger, conditions: [{ field: kind, values: [model_request] }] }
+        - { id: start, type: trigger, stages: [model_request] }
         - { id: budget, type: check, check: { type: limit, limitId: Weekly company budget } }
         - { id: allow, type: decision, action: allow }
         - { id: block, type: decision, action: block, reason: Weekly company budget used up }

@@ -12,27 +12,37 @@ import { Handle, type Node, type NodeProps, Position } from '@xyflow/react'
 import {
   Activity,
   Ban,
+  Boxes,
   Braces,
   CircleCheck,
+  Cpu,
   Fingerprint,
   Gauge,
   Gavel,
   Globe,
   Hand,
   Keyboard,
+  KeyRound,
   Laptop,
+  Layers,
   LogIn,
   type LucideIcon,
   MessageCircleQuestion,
+  MonitorSmartphone,
   Pin,
   Play,
+  Plug,
   Plus,
-  Route,
   ScanFace,
   ScanSearch,
+  Server,
   ShieldAlert,
   ShieldOff,
+  SkipForward,
+  TriangleAlert,
+  UsersRound,
   Webhook,
+  Wrench,
 } from 'lucide-react'
 import { type PointerEvent, useEffect, useRef } from 'react'
 import { createGlassOptics, GLASS_OVERSCAN, GLASS_RADIUS } from './glass-optics.ts'
@@ -56,7 +66,16 @@ export const toneColor: Record<Tone, string> = {
 
 export const blockIcons: Record<BlockId, LucideIcon> = {
   trigger: Play,
-  route: Route,
+  if_kind: Layers,
+  if_tool: Wrench,
+  if_source: Plug,
+  if_mcpServer: Server,
+  if_tier: TriangleAlert,
+  if_model: Cpu,
+  if_group: UsersRound,
+  if_resource: Boxes,
+  if_deviceStatus: MonitorSmartphone,
+  if_keyStorage: KeyRound,
   fingerprint: Fingerprint,
   posture: Activity,
   os_posture: Laptop,
@@ -76,13 +95,14 @@ export const blockIcons: Record<BlockId, LucideIcon> = {
   approve_confirm: MessageCircleQuestion,
   approve_touchid: ScanFace,
   approve_browser: LogIn,
+  skip: SkipForward,
 }
 
 function titleTone(node: PolicyNode): string {
   switch (node.type) {
     case 'trigger':
       return 'text-accent-strong'
-    case 'match':
+    case 'condition':
       return 'text-info'
     case 'check':
       return 'text-fg'
@@ -91,7 +111,9 @@ function titleTone(node: PolicyNode): string {
         ? 'text-ok'
         : node.action === 'block'
           ? 'text-bad'
-          : 'text-warn'
+          : node.action === 'skip'
+            ? 'text-muted'
+            : 'text-warn'
   }
 }
 
@@ -157,7 +179,7 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
   }
   const block = blockOf(node)
   const Icon = blockIcons[blockId(node)]
-  const title = (node.type === 'match' && node.label) || block.label
+  const title = block.label
   const subtitle =
     node.type === 'check' && !node.enabled ? 'Disabled: follows pass' : block.summary(node)
   const tone = titleTone(node)
@@ -245,7 +267,7 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
 
 export const nodeTypes = {
   trigger: PolicyNodeView,
-  match: PolicyNodeView,
+  condition: PolicyNodeView,
   check: PolicyNodeView,
   decision: PolicyNodeView,
 }

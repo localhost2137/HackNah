@@ -35,13 +35,7 @@ const keywords = (patterns) => ({
 const outputWorkflow = {
   fallback: 'block',
   nodes: [
-    {
-      id: 'start',
-      type: 'trigger',
-      position: at,
-      mode: 'all',
-      conditions: [{ field: 'kind', values: ['model_output'] }],
-    },
+    { id: 'start', type: 'trigger', position: at, stages: ['model_output'] },
     check('redact', { type: 'redact', secrets: true, pii: ['email'] }),
     check('kw', keywords(['rm -rf /'])),
     decision('allow', 'allow'),
@@ -59,18 +53,44 @@ const outputWorkflow = {
 const resultsWorkflow = {
   fallback: 'block',
   nodes: [
-    {
-      id: 'start',
-      type: 'trigger',
-      position: at,
-      mode: 'all',
-      conditions: [{ field: 'kind', values: ['tool_result'] }],
-    },
+    { id: 'start', type: 'trigger', position: at, stages: ['tool_result'] },
     check('kw', keywords(['ignore previous instructions'])),
     decision('allow', 'allow'),
     decision('block', 'block'),
   ],
   edges: [edge('start', 'next', 'kw'), edge('kw', 'pass', 'allow'), edge('kw', 'fail', 'block')],
+}
+
+/**
+ * Condition blocks chained Yes into Yes (AND: model input AND a pilot model) and Skip. A pilot model is blocked; every other request ends in Skip and this
+ * workflow does not count.
+ */
+const pilotWorkflow = {
+  fallback: 'block',
+  nodes: [
+    { id: 'start', type: 'trigger', position: at, stages: [] },
+    {
+      id: 'is-input',
+      type: 'condition',
+      position: at,
+      condition: { field: 'kind', values: ['model_request'] },
+    },
+    {
+      id: 'is-pilot',
+      type: 'condition',
+      position: at,
+      condition: { field: 'model', values: ['mock-claude-pilot*'] },
+    },
+    { ...decision('block', 'block'), reason: 'Pilot models are closed' },
+    decision('skip', 'skip'),
+  ],
+  edges: [
+    edge('start', 'next', 'is-input'),
+    edge('is-input', 'yes', 'is-pilot'),
+    edge('is-input', 'no', 'skip'),
+    edge('is-pilot', 'yes', 'block'),
+    edge('is-pilot', 'no', 'skip'),
+  ],
 }
 
 const q = (s) => (s === null ? 'NULL' : `'${String(s).replaceAll("'", "''")}'`)
@@ -152,8 +172,27 @@ export function fixturesSql(mockPort) {
     'DELETE FROM rate_limit;',
     ...Object.values(models).map((m) => insert('model', m)),
     ...limits.map((l) => insert('rate_limit', l)),
-    `DELETE FROM workflow_version WHERE workflow_id IN ('wf_e2e_out','wf_e2e_res');`,
-    `DELETE FROM workflow WHERE id IN ('wf_e2e_out','wf_e2e_res');`,
+    `DELETE FROM workflow_version WHERE workflow_id IN ('wf_e2e_out','wf_e2e_res','wf_e2e_pilot');`,
+    `DELETE FROM workflow WHERE id IN ('wf_e2e_out','wf_e2e_res','wf_e2e_pilot');`,
+    insert('workflow', {
+      id: 'wf_e2e_pilot',
+      org_id: ORG,
+      name: 'Pilot models',
+      enabled: 1,
+      position: 3,
+      group_ids: '[]',
+      created_at: now,
+      updated_at: now,
+    }),
+    insert('workflow_version', {
+      id: 'wfv_e2e_pilot',
+      org_id: ORG,
+      workflow_id: 'wf_e2e_pilot',
+      version: 1,
+      definition: JSON.stringify(pilotWorkflow),
+      status: 'published',
+      created_at: now,
+    }),
     insert('workflow', {
       id: 'wf_e2e_out',
       org_id: ORG,

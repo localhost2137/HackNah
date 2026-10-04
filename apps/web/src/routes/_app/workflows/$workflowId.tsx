@@ -191,7 +191,7 @@ function WorkflowPage() {
       </Link>
       <PageHeader
         title={data.workflow.name}
-        description="Set which requests start this workflow on its first step, then follow them from left to right to an allow, a block or an approval."
+        description="Pick the stages this workflow runs on in its first step, ask about the request with condition blocks, then follow it from left to right to an allow, a block, an approval or Skip."
         actions={
           isAdmin ? (
             <>
@@ -859,12 +859,14 @@ function GraphHelp({ issues }: { issues: GraphIssue[] }) {
         automatically. Select a step or connection and press Delete to remove it.
       </p>
       <p>
-        <span className="text-fg">Routes</span> check who and what the request is (server, tool,
-        tier, resource, group, device, model) and leave through{' '}
-        <span className="text-fg">match</span> or <span className="text-fg">else</span>.{' '}
-        <span className="text-fg">Checks</span> inspect the content, the device and the session.
-        Every path should end in an outcome: allow, block, or an approval by an admin, Touch ID, a
-        browser sign-in or a confirmation.
+        The start step picks the stages the workflow runs on.{' '}
+        <span className="text-fg">Conditions</span> ask one thing about the request (tool, model,
+        server, tier, group, resource, device) and leave through{' '}
+        <span className="text-fg">Yes</span> or <span className="text-fg">No</span>: link Yes to the
+        next condition for AND, No for OR. <span className="text-fg">Checks</span> inspect the
+        content, the device and the session. Every path should end in an outcome: allow, block, an
+        approval by an admin, Touch ID, a browser sign-in or a confirmation, or Skip when the
+        workflow does not apply.
       </p>
       {issues.length > 0 ? (
         <ul className="flex flex-col gap-1">

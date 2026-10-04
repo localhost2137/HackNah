@@ -14,14 +14,14 @@
 version: 1
 
 workflows:
-  # Any stage (no trigger conditions): model input, tool calls, tool results, model output and
+  # Any stage (no stages ticked): model input, tool calls, tool results, model output and
   # agent messages. Device checks only run where a device is involved; elsewhere they pass.
   - name: Baseline
     description: Device check, dangerous commands and secrets on every stage.
     definition:
       fallback: block
       nodes:
-        - { id: start, type: trigger, conditions: [] }
+        - { id: start, type: trigger, stages: [] }
         - { id: device, type: check, check: { type: fingerprint } }
         - id: dangerous
           type: check
@@ -58,9 +58,7 @@ workflows:
     definition:
       fallback: allow
       nodes:
-        - id: start
-          type: trigger
-          conditions: [{ field: kind, values: [tool_result, agent_message] }]
+        - { id: start, type: trigger, stages: [tool_result, agent_message] }
         - id: phrases
           type: check
           check:
@@ -95,7 +93,7 @@ workflows:
     definition:
       fallback: block
       nodes:
-        - { id: start, type: trigger, conditions: [{ field: kind, values: [model_output] }] }
+        - { id: start, type: trigger, stages: [model_output] }
         - id: keys
           type: check
           check:
@@ -115,13 +113,15 @@ workflows:
 
   # Claude Code's Bash tool: piping a download into a shell, or force-pushing, needs the
   # developer to confirm in Claude Code. Argument rules are allowlists: every value must match.
+  # A condition block picks Bash out of all tool calls; any other tool ends in Skip, so this
+  # workflow does not apply to it.
   - name: "Built-in Bash"
     definition:
       fallback: block
       nodes:
-        - id: start
-          type: trigger
-          conditions: [{ field: kind, values: [tool_call] }, { field: tool, values: [Bash] }]
+        - { id: start, type: trigger, stages: [tool_call] }
+        - { id: is-bash, type: condition, condition: { field: tool, values: [Bash] } }
+        - { id: skip, type: decision, action: skip }
         - id: rules
           type: check
           check:
@@ -134,29 +134,37 @@ workflows:
         - { id: allow, type: decision, action: allow }
         - { id: confirm, type: decision, action: require_approval, method: confirm, timeoutSec: 120 }
       edges:
-        - { id: e1, source: start, sourceHandle: next, target: rules }
-        - { id: e2, source: rules, sourceHandle: pass, target: allow }
-        - { id: e3, source: rules, sourceHandle: fail, target: confirm }
+        - { id: e1, source: start, sourceHandle: next, target: is-bash }
+        - { id: e2, source: is-bash, sourceHandle: yes, target: rules }
+        - { id: e3, source: is-bash, sourceHandle: no, target: skip }
+        - { id: e4, source: rules, sourceHandle: pass, target: allow }
+        - { id: e5, source: rules, sourceHandle: fail, target: confirm }
 
   # MCP tools that declare themselves destructive (destructiveHint) need Touch ID; devices
-  # without Touch ID are sent to a fresh browser sign-in instead.
+  # without Touch ID are sent to a fresh browser sign-in instead. Two conditions chained Yes into
+  # Yes make an AND: from an MCP server AND destructive. Anything else ends in Skip.
   - name: Destructive MCP tools
     definition:
       fallback: block
       nodes:
-        - id: start
-          type: trigger
-          conditions: [{ field: kind, values: [tool_call] }, { field: tier, values: [destructive] }]
+        - { id: start, type: trigger, stages: [tool_call] }
+        - { id: from-mcp, type: condition, condition: { field: source, values: [mcp] } }
+        - { id: destructive, type: condition, condition: { field: tier, values: [destructive] } }
         - { id: touchid, type: decision, action: require_approval, method: touchid, timeoutSec: 120 }
+        - { id: skip, type: decision, action: skip }
       edges:
-        - { id: e1, source: start, sourceHandle: next, target: touchid }
+        - { id: e1, source: start, sourceHandle: next, target: from-mcp }
+        - { id: e2, source: from-mcp, sourceHandle: yes, target: destructive }
+        - { id: e3, source: from-mcp, sourceHandle: no, target: skip }
+        - { id: e4, source: destructive, sourceHandle: yes, target: touchid }
+        - { id: e5, source: destructive, sourceHandle: no, target: skip }
 
   # Past the weekly company budget a prompt waits for an admin instead of failing outright.
   - name: Company budget
     definition:
       fallback: allow
       nodes:
-        - { id: start, type: trigger, conditions: [{ field: kind, values: [model_request] }] }
+        - { id: start, type: trigger, stages: [model_request] }
         - { id: budget, type: check, check: { type: limit, limitId: Weekly company budget } }
         - { id: allow, type: decision, action: allow }
         - { id: approve, type: decision, action: require_approval, method: admin, reason: Weekly company budget used up }

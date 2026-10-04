@@ -92,8 +92,13 @@ export function CheckList({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium">{stepLabels[c.type] ?? c.type}</span>
-                {c.type === 'match' ? (
-                  <Badge tone={c.branch === 'match' ? 'accent' : 'neutral'}>{c.branch}</Badge>
+                {/* `match` is the Route block of events recorded before condition blocks. */}
+                {c.type === 'condition' || c.type === 'match' ? (
+                  <Badge tone={c.branch === 'yes' || c.branch === 'match' ? 'accent' : 'neutral'}>
+                    {c.branch}
+                  </Badge>
+                ) : c.type === 'decision' && c.outcome === 'skipped' ? (
+                  <Badge tone="neutral">skip</Badge>
                 ) : c.type === 'decision' ? (
                   <Badge tone={c.action === 'block' ? 'bad' : c.action ? 'warn' : 'ok'}>
                     {c.action === 'require_approval' && c.method
@@ -123,7 +128,7 @@ export function CheckList({
   )
 }
 
-const workflowTone = { allow: 'ok', block: 'bad', pending: 'warn' } as const
+const workflowTone = { allow: 'ok', block: 'bad', pending: 'warn', skip: 'neutral' } as const
 
 /** Each workflow that ran, with what it alone decided and how long it took. */
 export function WorkflowRuns({ workflows }: { workflows: WorkflowRef[] }) {
@@ -141,7 +146,11 @@ export function WorkflowRuns({ workflows }: { workflows: WorkflowRef[] }) {
           </Link>
           {w.decision ? (
             <Badge tone={workflowTone[w.decision]}>
-              {w.decision === 'pending' ? 'approval' : w.decision}
+              {w.decision === 'pending'
+                ? 'approval'
+                : w.decision === 'skip'
+                  ? 'skipped'
+                  : w.decision}
             </Badge>
           ) : null}
           {w.durationMs != null ? (

@@ -90,6 +90,69 @@ describe('example policies', () => {
   })
 })
 
+describe('example policies use condition blocks', () => {
+  const all = () => examples.flatMap((n) => parsed(load(n)).workflows)
+  const byName = (name: keyof typeof files, workflow: string) =>
+    parsed(load(name)).workflows.find((w) => w.name === workflow)!
+  const run = (w: PolicyFile['workflows'][number], input: Record<string, unknown>) =>
+    evaluateWorkflows(
+      [{ id: 'wf', name: w.name, version: 1, groupIds: [], definition: w.definition }],
+      { kind: 'tool_call', text: '{}', toolName: 'Bash', deviceStatus: 'trusted', ...input },
+    )
+
+  it('are written in the stage and condition format', () => {
+    // Fresh YAML: no legacy start conditions or Route nodes for the upgrade to convert.
+    for (const name of examples) {
+      expect(load(name)).not.toMatch(/type: match|conditions:/)
+    }
+    const nodes = all().flatMap((w) => w.definition.nodes)
+    expect(nodes.some((n) => n.type === 'condition')).toBe(true)
+    expect(nodes.some((n) => n.type === 'decision' && n.action === 'skip')).toBe(true)
+  })
+
+  it('AND: balanced asks for Touch ID only for destructive tools from MCP servers', async () => {
+    const w = byName('balanced', 'Destructive MCP tools')
+    const destructiveMcp = {
+      toolName: 'gh__delete_repo',
+      mcpServerId: 'gh',
+      toolTier: 'destructive',
+    }
+    expect((await run(w, destructiveMcp)).decision).toBe('pending')
+    const r = await run(w, { ...destructiveMcp, toolTier: 'write' })
+    expect(r.decision).toBe('allow')
+    expect(r.workflows[0]!.decision).toBe('skip')
+  })
+
+  it('OR: strict sends declared or obviously destructive tools to an admin', async () => {
+    const w = byName('strict', 'Tool calls')
+    const signals = { untrustedContentMinutesAgo: null }
+    const declared = await run(w, { toolName: 'x__wipe', toolTier: 'destructive', signals })
+    expect(declared.decision).toBe('pending')
+    const named = await run(w, { toolName: 'db__drop_table', toolTier: 'write', signals })
+    expect(named.decision).toBe('pending')
+    const plain = await run(w, { toolName: 'db__list', toolTier: 'read', signals })
+    expect(plain.decision).toBe('allow')
+  })
+
+  it('still imports a policy file written with start conditions and Route nodes', () => {
+    const legacy = `version: 1
+workflows:
+  - name: Old Bash rule
+    definition:
+      nodes:
+        - { id: start, type: trigger, mode: all, conditions: [{ field: kind, values: [tool_call] }, { field: tool, values: [Bash] }] }
+        - { id: block, type: decision, action: block }
+      edges:
+        - { id: e1, source: start, sourceHandle: next, target: block }
+`
+    const w = parsed(legacy).workflows[0]!
+    expect(w.definition.nodes.find((n) => n.type === 'trigger')).toMatchObject({
+      stages: ['tool_call'],
+    })
+    expect(w.definition.nodes.some((n) => n.type === 'condition')).toBe(true)
+  })
+})
+
 describe('policy file round trip', () => {
   it('exports names instead of ids and leaves out unpublished workflows', () => {
     const file = toPolicyFile(state)

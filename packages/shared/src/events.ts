@@ -48,7 +48,7 @@ export const workflowRef = z.object({
   name: z.string(),
   version: z.number(),
   /** What this workflow alone decided. */
-  decision: z.enum(['allow', 'block', 'pending']).optional(),
+  decision: z.enum(['allow', 'block', 'pending', 'skip']).optional(),
   /** Time this workflow took, judge calls included. */
   durationMs: z.number().optional(),
 })

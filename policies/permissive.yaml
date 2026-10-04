@@ -16,7 +16,7 @@ workflows:
     definition:
       fallback: allow
       nodes:
-        - { id: start, type: trigger, conditions: [] }
+        - { id: start, type: trigger, stages: [] }
         - { id: device, type: check, check: { type: fingerprint } }
         - id: dangerous
           type: check
@@ -41,7 +41,7 @@ workflows:
     definition:
       fallback: allow
       nodes:
-        - { id: start, type: trigger, conditions: [{ field: kind, values: [tool_result] }] }
+        - { id: start, type: trigger, stages: [tool_result] }
         - id: judge
           type: check
           check:
@@ -61,7 +61,7 @@ workflows:
     definition:
       fallback: allow
       nodes:
-        - { id: start, type: trigger, conditions: [{ field: kind, values: [model_output] }] }
+        - { id: start, type: trigger, stages: [model_output] }
         - id: keys
           type: check
           check: { type: keywords, mode: regex, patterns: ["-----BEGIN [A-Z ]*PRIVATE KEY-----"] }
@@ -75,16 +75,19 @@ workflows:
         - { id: e4, source: redact, sourceHandle: pass, target: allow }
 
   # Destructive MCP tools: the developer confirms in Claude Code, the lightest approval level.
+  # Every other tool call ends in Skip: this workflow does not apply to it.
   - name: Destructive MCP tools
     definition:
       fallback: allow
       nodes:
-        - id: start
-          type: trigger
-          conditions: [{ field: kind, values: [tool_call] }, { field: tier, values: [destructive] }]
+        - { id: start, type: trigger, stages: [tool_call] }
+        - { id: destructive, type: condition, condition: { field: tier, values: [destructive] } }
         - { id: confirm, type: decision, action: require_approval, method: confirm, timeoutSec: 120 }
+        - { id: skip, type: decision, action: skip }
       edges:
-        - { id: e1, source: start, sourceHandle: next, target: confirm }
+        - { id: e1, source: start, sourceHandle: next, target: destructive }
+        - { id: e2, source: destructive, sourceHandle: yes, target: confirm }
+        - { id: e3, source: destructive, sourceHandle: no, target: skip }
 
 limits:
   # Budgets warn only: past them requests are flagged in the log, never stopped.

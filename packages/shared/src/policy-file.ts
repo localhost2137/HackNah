@@ -204,13 +204,17 @@ Models page after importing.`
 const sectionComments: Record<string, string> = {
   signatureFeedUrl: ' Where known attack signatures are fetched from (optional).',
   workflows: `
- Workflows. Every enabled workflow whose start node matches a request runs, and the strictest
- outcome wins: block over approval over allow. A start node without conditions runs on every
- stage: model input, tool call, tool result, model output and agent message.
+ Workflows. Every enabled workflow whose start node runs on the request's stage runs, and the
+ strictest outcome wins: block over approval over allow. A workflow whose path ends in skip does
+ not count. A start node without stages runs on every stage: model_request, tool_call,
+ tool_result, model_output and agent_message.
    groups:     group names the workflow runs for; empty means every member.
-   definition: the graph. nodes are trigger (start), match (route), check and decision blocks;
-               edges connect a node's output (sourceHandle) to the next node; fallback decides
-               when an output is not connected or a check fails (allow or block).`,
+   definition: the graph. nodes are trigger (start: stages), condition (one question about the
+               request: field + values; outputs yes / no), check and decision (allow, block,
+               require_approval, skip) blocks. edges connect a node's output (sourceHandle) to
+               the next node: chain yes into the next condition for AND, no for OR; a node may
+               have several incoming edges. fallback decides when an output is not connected or
+               a check fails (allow or block).`,
   limits: `
  Limits, checked at the gateway before workflows run.
    measure:   requests | concurrent | tokens | cost (USD) | gpu_seconds
@@ -230,12 +234,9 @@ const sectionComments: Record<string, string> = {
 
 function workflowComment(w: PolicyWorkflow): string {
   const trigger = w.definition.nodes.find((n) => n.type === 'trigger')
-  const stages =
-    trigger?.type === 'trigger'
-      ? trigger.conditions.find((c) => c.field === 'kind')?.values.map((k) => kindLabels[k])
-      : undefined
+  const stages = trigger?.type === 'trigger' ? trigger.stages.map((k) => kindLabels[k]) : []
   const who = w.groups.length ? w.groups.join(', ') : 'every member'
-  return ` ${stages?.length ? stages.join(', ') : 'Any stage'} · ${who}${w.enabled ? '' : ' · disabled'}`
+  return ` ${stages.length ? stages.join(', ') : 'Any stage'} · ${who}${w.enabled ? '' : ' · disabled'}`
 }
 
 /** The policy as documented YAML: a header, a comment per section and per workflow. */
