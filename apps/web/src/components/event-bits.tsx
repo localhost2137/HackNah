@@ -1,6 +1,7 @@
 import type { CheckResult, Decision, EventKind, WorkflowRef } from '@acl/shared'
 import { approvalLabels, kindLabels, stepLabels } from '@acl/shared'
 import { Badge, cn } from '@acl/ui'
+import { Link } from '@tanstack/react-router'
 import {
   ArrowDownToLine,
   Bot,
@@ -119,6 +120,36 @@ export function CheckList({
         </Fragment>
       ))}
     </ol>
+  )
+}
+
+const workflowTone = { allow: 'ok', block: 'bad', pending: 'warn' } as const
+
+/** Each workflow that ran, with what it alone decided and how long it took. */
+export function WorkflowRuns({ workflows }: { workflows: WorkflowRef[] }) {
+  if (workflows.length === 0) return <span className="text-xs text-muted">None matched</span>
+  return (
+    <ul className="flex flex-col gap-1">
+      {workflows.map((w) => (
+        <li key={w.id} className="flex items-center gap-2 text-xs">
+          <Link
+            to="/events"
+            search={{ workflow: w.id, range: '24h' }}
+            className="truncate hover:text-accent-strong"
+          >
+            {w.name} <span className="text-subtle">v{w.version}</span>
+          </Link>
+          {w.decision ? (
+            <Badge tone={workflowTone[w.decision]}>
+              {w.decision === 'pending' ? 'approval' : w.decision}
+            </Badge>
+          ) : null}
+          {w.durationMs != null ? (
+            <span className="ml-auto font-mono text-[11px] text-subtle">{w.durationMs}ms</span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   )
 }
 

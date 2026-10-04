@@ -13,8 +13,9 @@ import {
 import { z } from 'zod'
 import { DecisionBadge, KindLabel, RiskMeter } from '#/components/event-bits.tsx'
 import { Segmented } from '#/components/filters.tsx'
+import { PerformancePanel, SpendPanel } from '#/components/usage-panels.tsx'
 import { num, pct, timeAgo } from '#/lib/format.ts'
-import { getOverview, type TimeRange, timeRange } from '#/server/fns/traffic.ts'
+import { getOverview, getUsage, type TimeRange, timeRange } from '#/server/fns/traffic.ts'
 
 const overviewQuery = (range: TimeRange) =>
   queryOptions({
@@ -23,10 +24,21 @@ const overviewQuery = (range: TimeRange) =>
     refetchInterval: 30_000,
   })
 
+const usageQuery = (range: TimeRange) =>
+  queryOptions({
+    queryKey: ['overview', range, 'usage'],
+    queryFn: () => getUsage({ data: { range } }),
+    refetchInterval: 30_000,
+  })
+
 export const Route = createFileRoute('/_app/')({
   validateSearch: z.object({ range: timeRange.default('24h') }),
   loaderDeps: ({ search }) => ({ range: search.range }),
-  loader: ({ context, deps }) => context.queryClient.ensureQueryData(overviewQuery(deps.range)),
+  loader: ({ context, deps }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData(overviewQuery(deps.range)),
+      context.queryClient.ensureQueryData(usageQuery(deps.range)),
+    ]),
   component: Overview,
 })
 
@@ -34,6 +46,7 @@ function Overview() {
   const { range } = Route.useSearch()
   const navigate = Route.useNavigate()
   const { data } = useQuery(overviewQuery(range))
+  const { data: usage } = useQuery(usageQuery(range))
   if (!data) return null
 
   const fmtTick = (iso: string) =>
@@ -136,6 +149,13 @@ function Overview() {
           )}
         </div>
       </Card>
+
+      {usage ? (
+        <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+          <SpendPanel spend={usage.spend} />
+          <PerformancePanel performance={usage.performance} range={range} />
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
