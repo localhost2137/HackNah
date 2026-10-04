@@ -13,11 +13,11 @@ import {
   LogOut,
   Plug,
   Settings,
-  ShieldCheck,
   Users,
   UsersRound,
 } from 'lucide-react'
 import type * as React from 'react'
+import { BrandLogo } from '#/components/brand-logo.tsx'
 import { authClient } from '#/lib/auth-client.ts'
 import { LiveProvider, useLive } from '#/lib/live.tsx'
 import { getViewer } from '#/server/fns/viewer.ts'
@@ -95,12 +95,13 @@ function Sidebar() {
 
   return (
     <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-[#0a1421]">
-      <div className="flex items-center gap-2.5 px-5 pt-5 pb-6">
-        <span className="flex size-6 items-center justify-center rounded-md bg-accent-soft text-accent-strong">
-          <ShieldCheck className="size-4" />
-        </span>
-        <span className="text-sm font-semibold tracking-tight">AI Control Layer</span>
-      </div>
+      <Link
+        to="/"
+        aria-label="Hack?Nah! — Overview"
+        className="mx-4 mt-4 mb-5 block rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#cefa52]"
+      >
+        <BrandLogo className="w-full" />
+      </Link>
       <nav className="flex-1 overflow-y-auto px-3">
         {nav.map((section, i) => (
           <div key={section.title ?? i} className="mb-5">

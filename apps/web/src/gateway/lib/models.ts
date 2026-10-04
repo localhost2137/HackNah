@@ -119,3 +119,7 @@ export async function fetchMessages(
     })
   return Response.json(fromOpenAIResponse(await upstream.json(), route.model))
 }
+
+export function invalidateModelCache(orgId: string) {
+  catalogCache.delete(orgId)
+}

@@ -160,7 +160,7 @@ const plain = attacksOnly.filter((o) => o.obfuscation === 'none')
 const channels = [...new Set(attacksOnly.map((o) => o.channel))]
 const kinds = [...new Set(attacksOnly.map((o) => o.attack))]
 
-console.log(`\nAI Control Layer control suite`)
+console.log(`\nHack?Nah! control suite`)
 console.log(
   `  preset ${preset} · ${signatures.length} signatures${feed ? ` (feed ${feed})` : ''} · ${cases.length} cases\n`,
 )

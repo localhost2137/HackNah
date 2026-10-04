@@ -57,7 +57,7 @@ const files = [
   {
     slug: 'acl-control-cases',
     file: join(root, 'dataset/cases.jsonl'),
-    name: 'AI Control Layer cases',
+    name: 'Hack?Nah! cases',
   },
 ]
 const imported = join(root, 'dataset/imported')

@@ -82,7 +82,7 @@ export class McpClient {
       params: {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: 'ai-control-layer', version: '0.1.0' },
+        clientInfo: { name: 'hack-nah', version: '0.1.0' },
       },
     })
     const message = await this.readResponse(res)

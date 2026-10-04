@@ -2,6 +2,7 @@
 // client and the mock upstream saw. Positive cases (allowed traffic passes untouched) sit next to
 // negative ones (blocked, withheld, redacted, rate limited).
 import { randomUUID } from 'node:crypto'
+import { checkInternalMcp } from './internal-mcp.mjs'
 
 /**
  * @param {{ gateway: string, mock: string, token: string, fingerprint: string,
@@ -112,7 +113,7 @@ export async function runChecks(ctx) {
         const [before] = r.text.split('[Response withheld')
         return {
           ok:
-            r.text.includes('[Response withheld by AI Control Layer') &&
+            r.text.includes('[Response withheld by Hack?Nah!') &&
             !before.includes('rm -rf /') &&
             r.stop === 'end_turn',
           tail: r.text.slice(-200),
@@ -125,10 +126,7 @@ export async function runChecks(ctx) {
       async () => {
         const r = await send(model, user('CURL please'))
         return {
-          ok:
-            !hasToolUse(r) &&
-            r.text.includes('blocked by AI Control Layer') &&
-            r.stop === 'end_turn',
+          ok: !hasToolUse(r) && r.text.includes('blocked by Hack?Nah!') && r.stop === 'end_turn',
           text: r.text,
           stop: r.stop,
         }
@@ -210,7 +208,7 @@ export async function runChecks(ctx) {
       const last = sent?.body.messages.at(-1).content ?? []
       return {
         ok:
-          String(last[0]?.content).startsWith('[Tool result withheld by AI Control Layer') &&
+          String(last[0]?.content).startsWith('[Tool result withheld by Hack?Nah!') &&
           last[1]?.text === 'summarize',
         last,
       }
@@ -368,5 +366,6 @@ export async function runChecks(ctx) {
     },
   )
 
+  await checkInternalMcp(ctx, check, headers)
   return { results, events: rows }
 }

@@ -1,4 +1,4 @@
-# AI Control Layer policy: STRICT
+# Hack?Nah! policy: STRICT
 #
 # For regulated data and production access. Everything fails closed: a check that can't run
 # blocks, unconnected outputs block, new devices wait for an admin, all personal data is

@@ -9,9 +9,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'AI Control Layer' },
+      { title: 'Hack?Nah!' },
     ],
     links: [
+      { rel: 'icon', type: 'image/svg+xml', href: '/brand/favicon.svg' },
       { rel: 'stylesheet', href: flowCss },
       { rel: 'stylesheet', href: appCss },
     ],

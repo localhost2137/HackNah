@@ -56,3 +56,9 @@ export function loadLimits(db: Db, orgId: string): Promise<LimitRule[]> {
     }))
   })
 }
+
+/** Platform mutations should be visible immediately in this isolate. Other isolates expire in 10s. */
+export function invalidatePolicyCaches(orgId: string) {
+  workflowCache.delete(orgId)
+  limitCache.delete(orgId)
+}
