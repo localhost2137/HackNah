@@ -1,4 +1,4 @@
-# AI Control Layer policy: PERMISSIVE
+# Hack?Nah! policy: PERMISSIVE
 #
 # For pilots and trusted teams: as few interruptions as possible. Only clearly destructive
 # commands and private keys are blocked, secrets are redacted but personal data is not, new

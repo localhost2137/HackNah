@@ -71,7 +71,7 @@ export const pluginApi = new Hono<AppEnv>()
     const db = c.get('db')
     const { tool_name: toolName, tool_input: toolInput } = body.data
     const deny = (reasons: string[]) =>
-      c.json(hookDecision('deny', `AI Control Layer: ${reasons.join('; ') || 'blocked'}`))
+      c.json(hookDecision('deny', `Hack?Nah!: ${reasons.join('; ') || 'blocked'}`))
 
     // The output guard usually checked this exact call already, while the model wrote it.
     const cached = await recallVerdict(c.env, principal.orgId, session.id, toolName, toolInput)

@@ -56,3 +56,8 @@ the audit log: the performance telemetry the evaluation asks for.
 To add a check, give it a new model id (and a catalog or limit entry in `fixtures.mjs` if it
 needs one), add a keyword to the mock if it needs a new answer, and call `check(name, control, fn)`
 in `checks.mjs`. `fn` returns `true` or `{ ok, ...details }`.
+
+The suite also exercises the built-in Hack?Nah! MCP: admin-only discovery without an integration,
+fingerprint binding, input validation, workflow draft/publish, policy preview, saved analysis and
+invalidation, audit attribution, and immediate role/device revocation. These mutations run only in
+the disposable copy.

@@ -1,6 +1,6 @@
 import { Card } from '@acl/ui'
-import { ShieldCheck } from 'lucide-react'
 import type * as React from 'react'
+import { BrandLogo } from './brand-logo.tsx'
 
 export function AuthShell({
   title,
@@ -14,11 +14,8 @@ export function AuthShell({
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,rgb(120_148_248/0.12),transparent_60%)] px-4">
       <div className="w-full max-w-sm">
-        <div className="mb-6 flex items-center gap-2 text-fg">
-          <span className="flex size-7 items-center justify-center rounded-md bg-accent text-white">
-            <ShieldCheck className="size-4" />
-          </span>
-          <span className="text-sm font-semibold tracking-tight">AI Control Layer</span>
+        <div className="mb-7 flex justify-center">
+          <BrandLogo className="w-64" />
         </div>
         <Card className="p-6">
           <h1 className="text-base font-semibold">{title}</h1>

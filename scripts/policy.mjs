@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Export or apply the AI Control Layer policy file (workflows, limits, model catalog) against a
+// Export or apply the Hack?Nah! policy file (workflows, limits, model catalog) against a
 // running instance, through its /api/policy endpoint.
 //
 //   pnpm policy:export [file]                         write the current policy (stdout without a file)

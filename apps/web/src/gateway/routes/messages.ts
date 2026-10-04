@@ -141,7 +141,7 @@ export const messages = new Hono<AppEnv>()
       event.checks = [
         { stepId: 'catalog', type: 'catalog', outcome: 'fail', reason: route.error, durationMs: 0 },
       ]
-      return refuse(403, 'permission_error', `Blocked by AI Control Layer: ${route.error}.`)
+      return refuse(403, 'permission_error', `Blocked by Hack?Nah!: ${route.error}.`)
     }
 
     const who = { orgId: principal.orgId, userId: principal.userId, groupIds }
@@ -150,7 +150,7 @@ export const messages = new Hono<AppEnv>()
     event.checks = limits.checks
     if (limits.blocked) {
       event.decision = 'rate_limited'
-      return refuse(429, 'rate_limit_error', `AI Control Layer: ${limits.blocked.reason}.`)
+      return refuse(429, 'rate_limit_error', `Hack?Nah!: ${limits.blocked.reason}.`)
     }
 
     const result = await runPipeline(
@@ -449,7 +449,7 @@ async function checkToolResults(
         const why = result.reasons.join('; ') || 'policy'
         out = replaceToolResult(out, r.toolUseId, (b) => ({
           ...b,
-          content: `[Tool result withheld by AI Control Layer: ${why}]`,
+          content: `[Tool result withheld by Hack?Nah!: ${why}]`,
           is_error: true,
         }))
       } else if (result.redact) {

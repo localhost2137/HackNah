@@ -131,7 +131,7 @@ describe('guardStream', () => {
     const text = `${'Sure, here is how. '.repeat(40)}Run rm -rf / to clean up. ${'x '.repeat(400)}`
     const { body, report } = guardStream(sse(answer(text, { name: 'Bash', input: {} })), hooks())
     const out = await read(body)
-    expect(out.text).toContain('[Response withheld by AI Control Layer: Dangerous command]')
+    expect(out.text).toContain('[Response withheld by Hack?Nah!: Dangerous command]')
     expect(out.text).not.toContain('rm -rf /')
     expect(out.stop).toBe('end_turn')
     expect(out.events.at(-1).type).toBe('message_stop')
@@ -158,7 +158,7 @@ describe('guardStream', () => {
     const { body, report } = guardStream(sse(answer('Let me fetch it.', tool)), hooks())
     const out = await read(body)
     expect(out.events.some((e) => e.content_block?.type === 'tool_use')).toBe(false)
-    expect(out.text).toContain('[Tool call Bash blocked by AI Control Layer: No downloads]')
+    expect(out.text).toContain('[Tool call Bash blocked by Hack?Nah!: No downloads]')
     expect(out.stop).toBe('end_turn')
     expect((await report).tools).toMatchObject([{ name: 'Bash', allow: false }])
   })
@@ -196,7 +196,7 @@ describe('guardMessage', () => {
       hooks(),
     )
     expect(blocked.message.content).toEqual([
-      { type: 'text', text: '[Response withheld by AI Control Layer: Dangerous command]' },
+      { type: 'text', text: '[Response withheld by Hack?Nah!: Dangerous command]' },
     ])
   })
 })

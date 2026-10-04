@@ -199,5 +199,5 @@ export async function guardedJudge(
 export function denialMessage(result: PipelineResult): string {
   const why = result.reasons.join('; ') || 'policy'
   if (result.decision === 'declined') return `Request declined by an administrator (${why}).`
-  return `Request blocked by AI Control Layer policy: ${why}.`
+  return `Request blocked by Hack?Nah! policy: ${why}.`
 }

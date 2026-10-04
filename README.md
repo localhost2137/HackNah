@@ -1,4 +1,4 @@
-# AI Control Layer
+# Hack?Nah!
 
 A control plane for Claude Code: every model request, built-in tool call and MCP tool call goes through
 a gateway that applies the organization's workflows (device fingerprint, dangerous keywords, judge model,
@@ -8,6 +8,34 @@ blocks (tool, model, MCP server, group, ...); every matching workflow runs and t
 while a request that starts no workflow, or whose path ends in Skip, is allowed. A dashboard shows the traffic, handles
 approvals and manages policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
 Durable Objects).
+
+## Built-in platform MCP
+
+Hack?Nah! includes its own management tools in the existing `/mcp` endpoint. No MCP server record,
+connection, credential entry or Integrations card is needed. Agents already using the gateway discover
+the `hacknah_*` tools through `tools/list`. Authentication uses the existing gateway bearer token and
+`x-acl-device` fingerprint header; an active admin membership and a matching, trusted device are required
+on every call. Ordinary members do not discover these tools and cannot invoke them by name.
+
+| Tools | Actions |
+| --- | --- |
+| `hacknah_platform_context` | Inspect group, resource and integration IDs without stored credentials |
+| `hacknah_list_workflows`, `hacknah_get_workflow`, `hacknah_workflow_schema` | Inspect workflows and the graph format |
+| `hacknah_create_workflow`, `hacknah_update_workflow`, `hacknah_save_workflow_draft`, `hacknah_publish_workflow` | Create, edit and publish using the same services as the dashboard |
+| `hacknah_export_policy`, `hacknah_preview_policy`, `hacknah_apply_policy` | Read, preview and apply workflows, limits and the model catalog; merge is the default |
+| `hacknah_list_events`, `hacknah_get_event` | Inspect paginated traffic and checks; raw payload access is explicit |
+| `hacknah_list_datasets`, `hacknah_run_analysis`, `hacknah_list_analysis_runs`, `hacknah_get_analysis_run` | Replay synthetic traffic and retrieve persisted, revision-scoped results |
+
+Draft saves are separate from publishing. Publishing, enabling/disabling and applying policies affect
+production rules. Tools pass through gateway limits and workflow checks using the management action name, tier and
+structured arguments; policy text is configuration, not a model request. Role and device access are
+checked again after any pending approval. Calls have an actor-attributed attempt and outcome in the
+Settings audit log and an event in Logs. Arguments and returned payloads are not duplicated into MCP
+audit records. Connected-server tools keep their `<server>__<tool>` names; built-ins cannot collide.
+
+The product name is **Hack?Nah!** (`hack-nah` in package/MCP identifiers). Existing `acl` deployment
+resource names, API paths, headers, package scopes and the separate `hy-guard` client identifiers remain
+compatible, so the rename does not create new infrastructure or disconnect installed clients.
 
 ## Attack analysis
 
@@ -59,7 +87,7 @@ Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Mod
   runs when a block is complete, and a failing answer ends with a notice instead of an error. Tool calls are held
   until their arguments are complete; a refused call becomes a notice and the stop reason is corrected. The first
   stage that checks a tool call stores the verdict in the session, so the hook and the MCP endpoint reuse it.
-- **Tool results.** A refused result is withheld from the model (`[Tool result withheld by AI Control Layer: …]`)
+- **Tool results.** A refused result is withheld from the model (`[Tool result withheld by Hack?Nah!: …]`)
   and the turn goes on. MCP results are checked at the MCP endpoint; built-in results when the next model request
   carries them.
 - **Limits.** Requests, requests at once, tokens, USD and GPU-seconds, for models, MCP servers, tools, resources or

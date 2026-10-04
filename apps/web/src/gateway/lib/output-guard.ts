@@ -50,10 +50,9 @@ export const HOLD_CHARS = 200
 export const CHECK_EVERY = 512
 const KEEPALIVE_MS = 15_000
 
-export const withheldNotice = (reason: string) =>
-  `\n\n[Response withheld by AI Control Layer: ${reason}]`
+export const withheldNotice = (reason: string) => `\n\n[Response withheld by Hack?Nah!: ${reason}]`
 export const blockedToolNotice = (name: string, reason: string) =>
-  `[Tool call ${name} blocked by AI Control Layer: ${reason}]`
+  `[Tool call ${name} blocked by Hack?Nah!: ${reason}]`
 
 type SseEvent = { event: string; data: Record<string, unknown> }
 
@@ -348,7 +347,7 @@ export function guardStream<D>(
               type: 'error',
               error: {
                 type: 'api_error',
-                message: `AI Control Layer could not inspect the response: ${err instanceof Error ? err.message : String(err)}`,
+                message: `Hack?Nah! could not inspect the response: ${err instanceof Error ? err.message : String(err)}`,
               },
             },
           })

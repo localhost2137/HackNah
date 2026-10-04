@@ -37,7 +37,7 @@ export function upstreamRequest(
     else headers.set('authorization', `Bearer ${target.apiKey}`)
   }
   headers.set('http-referer', env.PUBLIC_URL)
-  headers.set('x-title', 'AI Control Layer')
+  headers.set('x-title', 'Hack?Nah!')
   return new Request(destination, {
     method: incoming.method,
     headers,

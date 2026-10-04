@@ -30,7 +30,7 @@ export async function upstreamToken(
   if (!row) {
     throw new MissingCredentialError(
       owner
-        ? `Connect your ${server.name} account in the AI Control Layer dashboard (Integrations).`
+        ? `Connect your ${server.name} account in the Hack?Nah! dashboard (Integrations).`
         : `${server.name} has no credential configured.`,
     )
   }

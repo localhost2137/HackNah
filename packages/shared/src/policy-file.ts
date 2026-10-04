@@ -194,7 +194,7 @@ function lineOf(doc: Document, lc: LineCounter, path: (string | number)[]): numb
   return null
 }
 
-const header = `AI Control Layer policy file.
+const header = `Hack?Nah! policy file.
 
 Apply with \`pnpm policy:apply <file>\` or Settings > Policy file > Import. Applying publishes a
 new version of every workflow whose graph changed; in replace mode, workflows, limits and models

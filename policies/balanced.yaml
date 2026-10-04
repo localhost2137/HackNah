@@ -1,4 +1,4 @@
-# AI Control Layer policy: BALANCED
+# Hack?Nah! policy: BALANCED
 #
 # The default recommendation. Known-bad content is blocked outright, unclear cases go to a person
 # (the developer confirms or uses Touch ID, an admin approves the riskiest ones), common personal

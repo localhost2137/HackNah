@@ -165,7 +165,7 @@ describe('policy file round trip', () => {
   it('writes documented YAML that reads back to the same policy', () => {
     const file = toPolicyFile(state)
     const yaml = policyToYaml(file)
-    expect(yaml).toContain('# AI Control Layer policy file.')
+    expect(yaml).toContain('# Hack?Nah! policy file.')
     expect(yaml).toContain('# Limits, checked at the gateway')
     expect(yaml).toMatch(/position: \{ x: \d+, y: \d+ \}/)
     expect(diffPolicy(file, parsed(yaml), 'replace').every((c) => c.action === 'unchanged')).toBe(
