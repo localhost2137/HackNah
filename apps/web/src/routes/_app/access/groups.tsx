@@ -22,8 +22,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
-import { toolSummary } from '#/components/mcp-tool-picker.tsx'
 import { SubjectPicker } from '#/components/subject-picker.tsx'
+import { toolSummary } from '#/lib/resource-tools.ts'
 import {
   deleteGroup,
   listGroups,

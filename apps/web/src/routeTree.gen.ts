@@ -39,6 +39,7 @@ import { Route as AppWorkflowsIndexRouteImport } from './routes/_app/workflows/i
 import { Route as AppWorkflowsWorkflowIdRouteImport } from './routes/_app/workflows/$workflowId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiOauthCallbackRouteImport } from './routes/api/oauth/callback'
+import { Route as AppAccessResourcesResourceIdRouteImport } from './routes/_app/access/resources_.$resourceId'
 import { Route as AppWorkflowsWorkflowIdImpactRouteImport } from './routes/_app/workflows/$workflowId_.impact'
 import { Route as ApiOauthStartServerIdRouteImport } from './routes/api/oauth/start.$serverId'
 
@@ -192,6 +193,12 @@ const ApiOauthCallbackRoute = ApiOauthCallbackRouteImport.update({
   path: '/api/oauth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppAccessResourcesResourceIdRoute =
+  AppAccessResourcesResourceIdRouteImport.update({
+    id: '/access/resources_/$resourceId',
+    path: '/access/resources/$resourceId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppWorkflowsWorkflowIdImpactRoute =
   AppWorkflowsWorkflowIdImpactRouteImport.update({
     id: '/workflows/$workflowId_/impact',
@@ -234,6 +241,7 @@ export interface FileRoutesByFullPath {
   '/attack-analysis/': typeof AppAttackAnalysisIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/workflows/': typeof AppWorkflowsIndexRoute
+  '/access/resources/$resourceId': typeof AppAccessResourcesResourceIdRoute
   '/workflows/$workflowId/impact': typeof AppWorkflowsWorkflowIdImpactRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
@@ -266,6 +274,7 @@ export interface FileRoutesByTo {
   '/attack-analysis': typeof AppAttackAnalysisIndexRoute
   '/settings': typeof AppSettingsIndexRoute
   '/workflows': typeof AppWorkflowsIndexRoute
+  '/access/resources/$resourceId': typeof AppAccessResourcesResourceIdRoute
   '/workflows/$workflowId/impact': typeof AppWorkflowsWorkflowIdImpactRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
@@ -301,6 +310,7 @@ export interface FileRoutesById {
   '/_app/attack-analysis/': typeof AppAttackAnalysisIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/workflows/': typeof AppWorkflowsIndexRoute
+  '/_app/access/resources_/$resourceId': typeof AppAccessResourcesResourceIdRoute
   '/_app/workflows/$workflowId_/impact': typeof AppWorkflowsWorkflowIdImpactRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
@@ -336,6 +346,7 @@ export interface FileRouteTypes {
     | '/attack-analysis/'
     | '/settings/'
     | '/workflows/'
+    | '/access/resources/$resourceId'
     | '/workflows/$workflowId/impact'
     | '/api/oauth/start/$serverId'
   fileRoutesByTo: FileRoutesByTo
@@ -368,6 +379,7 @@ export interface FileRouteTypes {
     | '/attack-analysis'
     | '/settings'
     | '/workflows'
+    | '/access/resources/$resourceId'
     | '/workflows/$workflowId/impact'
     | '/api/oauth/start/$serverId'
   id:
@@ -402,6 +414,7 @@ export interface FileRouteTypes {
     | '/_app/attack-analysis/'
     | '/_app/settings/'
     | '/_app/workflows/'
+    | '/_app/access/resources_/$resourceId'
     | '/_app/workflows/$workflowId_/impact'
     | '/api/oauth/start/$serverId'
   fileRoutesById: FileRoutesById
@@ -632,6 +645,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/access/resources_/$resourceId': {
+      id: '/_app/access/resources_/$resourceId'
+      path: '/access/resources/$resourceId'
+      fullPath: '/access/resources/$resourceId'
+      preLoaderRoute: typeof AppAccessResourcesResourceIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/workflows/$workflowId_/impact': {
       id: '/_app/workflows/$workflowId_/impact'
       path: '/workflows/$workflowId/impact'
@@ -681,6 +701,7 @@ interface AppRouteChildren {
   AppWorkflowsWorkflowIdRoute: typeof AppWorkflowsWorkflowIdRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
   AppWorkflowsIndexRoute: typeof AppWorkflowsIndexRoute
+  AppAccessResourcesResourceIdRoute: typeof AppAccessResourcesResourceIdRoute
   AppWorkflowsWorkflowIdImpactRoute: typeof AppWorkflowsWorkflowIdImpactRoute
 }
 
@@ -703,6 +724,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppWorkflowsWorkflowIdRoute: AppWorkflowsWorkflowIdRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
   AppWorkflowsIndexRoute: AppWorkflowsIndexRoute,
+  AppAccessResourcesResourceIdRoute: AppAccessResourcesResourceIdRoute,
   AppWorkflowsWorkflowIdImpactRoute: AppWorkflowsWorkflowIdImpactRoute,
 }
 

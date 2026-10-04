@@ -107,28 +107,6 @@ export const saveResource = createServerFn({ method: 'POST' })
     return { id }
   })
 
-/** Sets which tools of one MCP server a resource holds. No patterns takes the server out. */
-export const setResourceServerTools = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
-  .validator(z.object({ resourceId: z.string(), serverId: z.string(), tools: toolPatterns }))
-  .handler(async ({ data, context: { db, orgId, user: me } }) => {
-    const row = await db.query.resource.findFirst({
-      where: and(eq(resource.id, data.resourceId), eq(resource.orgId, orgId)),
-    })
-    if (!row) throw new Error('Resource not found')
-    const { [data.serverId]: before = [], ...rest } = row.tools
-    const tools = await checkedTools(db, orgId, { ...rest, [data.serverId]: data.tools })
-    await db.update(resource).set({ tools }).where(eq(resource.id, row.id))
-    await audit(db, {
-      orgId,
-      actorId: me.id,
-      action: 'resource.server_tools',
-      target: row.id,
-      data: { serverId: data.serverId, before, after: data.tools },
-    })
-    return { ok: true }
-  })
-
 export const deleteResource = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .validator(z.object({ id: z.string() }))

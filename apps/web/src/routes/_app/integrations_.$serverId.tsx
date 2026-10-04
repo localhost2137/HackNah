@@ -1,4 +1,4 @@
-import { globMatch, type ToolTier, withMcpTool } from '@acl/shared'
+import { globMatch, type ToolTier } from '@acl/shared'
 import {
   Badge,
   Button,
@@ -22,7 +22,6 @@ import { useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
 import { DecisionBadge } from '#/components/event-bits.tsx'
 import { num, timeAgo } from '#/lib/format.ts'
-import { setResourceServerTools } from '#/server/fns/access.ts'
 import { getMcpServerDetail, refreshMcpTools } from '#/server/fns/integrations.ts'
 
 const detailQuery = (serverId: string) =>
@@ -36,9 +35,6 @@ export const Route = createFileRoute('/_app/integrations_/$serverId')({
     queryClient.ensureQueryData(detailQuery(params.serverId)),
   component: ServerPage,
 })
-
-type Detail = Awaited<ReturnType<typeof getMcpServerDetail>>
-type Resource = Detail['resources'][number]
 
 const tierTone: Record<ToolTier, 'neutral' | 'warn' | 'bad'> = {
   read: 'neutral',
@@ -54,14 +50,6 @@ function ServerPage() {
   const [filter, setFilter] = useState('')
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['mcp-servers'] })
-  const setTools = useMutation({
-    mutationFn: (args: { resourceId: string; tools: string[] }) =>
-      setResourceServerTools({ data: { ...args, serverId } }),
-    onSuccess: async () => {
-      await invalidate()
-      await qc.invalidateQueries({ queryKey: ['resources'] })
-    },
-  })
   const refresh = useMutation({
     mutationFn: () => refreshMcpTools({ data: { serverId } }),
     onSuccess: invalidate,
@@ -69,14 +57,12 @@ function ServerPage() {
 
   if (!data) return null
   const { server, tools, groups, resources } = data
-  const toolNames = tools.map((t) => t.name)
   const shown = tools.filter((t) => t.name.toLowerCase().includes(filter.toLowerCase()))
   const totalCalls = tools.reduce((n, t) => n + t.usage.calls, 0)
   const blocked = tools.reduce((n, t) => n + t.usage.blocked, 0)
   const resourcesUsing = resources.filter((r) => r.patterns.length || r.everyServer.length).length
-
-  const toggle = (r: Resource, tool: string, allowed: boolean) =>
-    setTools.mutate({ resourceId: r.id, tools: withMcpTool(r.patterns, tool, allowed, toolNames) })
+  const coveringResources = (tool: string) =>
+    resources.filter((r) => [...r.patterns, ...r.everyServer].some((p) => globMatch(p, tool)))
   const grantLabel = (grants: { type: string; id: string }[]) =>
     grants.length === 0
       ? 'Not granted to anyone'
@@ -134,8 +120,8 @@ function ServerPage() {
 
       <Card className="mb-4">
         <CardHeader
-          title="Tools and who can call them"
-          description="Each column is a resource. Tick a box to put that tool in the resource; whoever the resource is granted to can then call it. Create resources and grant them on the Resources page."
+          title="Tools"
+          description="What this server offers, and the resources each tool is in. A tool in no resource can only be called by admins. Change that on the Resources page."
           actions={
             <Input
               value={filter}
@@ -157,41 +143,7 @@ function ServerPage() {
                 <tr>
                   <TH>Tool</TH>
                   <TH className="text-right">Calls</TH>
-                  {resources.map((g) => {
-                    const all = g.patterns.includes('*') || g.everyServer.length > 0
-                    const count = toolNames.filter((t) =>
-                      [...g.patterns, ...g.everyServer].some((p) => globMatch(p, t)),
-                    ).length
-                    return (
-                      <TH key={g.id} className="text-center">
-                        <label
-                          className="flex cursor-pointer flex-col items-center gap-1"
-                          title={
-                            g.everyServer.length
-                              ? `Covers every MCP server; change it on the Resources page. ${grantLabel(g.grants)}`
-                              : `Every tool, including ones the server adds later. ${grantLabel(g.grants)}`
-                          }
-                        >
-                          <span className="whitespace-nowrap">{g.name}</span>
-                          <span className="flex items-center gap-1 text-[10px] font-normal text-subtle normal-case">
-                            <input
-                              type="checkbox"
-                              checked={all}
-                              disabled={g.everyServer.length > 0 || setTools.isPending}
-                              onChange={(e) =>
-                                setTools.mutate({
-                                  resourceId: g.id,
-                                  tools: e.target.checked ? ['*'] : [],
-                                })
-                              }
-                              className="accent-[var(--color-accent)]"
-                            />
-                            all · {count}/{toolNames.length}
-                          </span>
-                        </label>
-                      </TH>
-                    )
-                  })}
+                  <TH>In resources</TH>
                 </tr>
               </THead>
               <TBody>
@@ -220,23 +172,23 @@ function ServerPage() {
                         <span className="text-subtle">—</span>
                       )}
                     </TD>
-                    {resources.map((g) => {
-                      const inherited = g.everyServer.some((p) => globMatch(p, t.name))
-                      const allowed = inherited || g.patterns.some((p) => globMatch(p, t.name))
-                      return (
-                        <TD key={g.id} className="text-center">
-                          <input
-                            type="checkbox"
-                            aria-label={`${g.name} includes ${t.name}`}
-                            checked={allowed}
-                            disabled={inherited || setTools.isPending}
-                            title={inherited ? 'This resource covers every MCP server' : undefined}
-                            onChange={(e) => toggle(g, t.name, e.target.checked)}
-                            className="accent-[var(--color-accent)]"
-                          />
-                        </TD>
-                      )
-                    })}
+                    <TD>
+                      <div className="flex max-w-96 flex-wrap gap-1">
+                        {coveringResources(t.name).map((r) => (
+                          <Link
+                            key={r.id}
+                            to="/access/resources/$resourceId"
+                            params={{ resourceId: r.id }}
+                            title={grantLabel(r.grants)}
+                          >
+                            <Badge tone="info">{r.name}</Badge>
+                          </Link>
+                        ))}
+                        {coveringResources(t.name).length === 0 ? (
+                          <span className="text-xs text-subtle">Admins only</span>
+                        ) : null}
+                      </div>
+                    </TD>
                   </TR>
                 ))}
               </TBody>
@@ -244,7 +196,7 @@ function ServerPage() {
           </div>
         )}
         <div className="px-4 pb-3">
-          <FormError message={setTools.error?.message ?? refresh.error?.message ?? null} />
+          <FormError message={refresh.error?.message ?? null} />
         </div>
       </Card>
 
