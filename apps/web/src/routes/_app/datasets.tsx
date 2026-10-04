@@ -15,9 +15,10 @@ import {
 } from '@acl/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Play, Upload } from 'lucide-react'
+import { Play, Plus, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
+import { HuggingFaceImport } from '#/components/hf-import.tsx'
 import { datasets as syntheticDatasets } from '#/lib/attack-analysis/datasets.ts'
 import { labelledInfo } from '#/lib/attack-analysis/labelled.ts'
 import { useAnalysisRuns } from '#/lib/attack-analysis/runs.ts'
@@ -82,6 +83,7 @@ function DatasetsPage() {
   const [open, setOpen] = useState<DatasetSummary | null>(null)
   const [search, setSearch] = useState('')
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['datasets'] })
@@ -157,12 +159,11 @@ function DatasetsPage() {
                 e.target.value = ''
               }}
             />
-            <Button
-              variant="primary"
-              disabled={upload.isPending}
-              onClick={() => fileInput.current?.click()}
-            >
-              <Upload /> {upload.isPending ? 'Uploading…' : 'Upload dataset'}
+            <Button disabled={upload.isPending} onClick={() => fileInput.current?.click()}>
+              <Upload /> {upload.isPending ? 'Uploading…' : 'Upload file'}
+            </Button>
+            <Button variant="primary" onClick={() => setImporting(true)}>
+              <Plus /> Add from Hugging Face
             </Button>
           </>
         }
@@ -272,6 +273,11 @@ function DatasetsPage() {
       </Card>
 
       {open ? <DatasetSheet key={open.slug} dataset={open} onClose={() => setOpen(null)} /> : null}
+      <HuggingFaceImport
+        open={importing}
+        onClose={() => setImporting(false)}
+        onImported={refresh}
+      />
     </>
   )
 }

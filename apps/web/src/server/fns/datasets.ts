@@ -26,6 +26,13 @@ import {
 export type { DatasetRow, DatasetSummary }
 
 import { env } from '../env.ts'
+import {
+  cellText,
+  fetchRows,
+  inspectDataset,
+  isAttackValue,
+  parseDatasetId,
+} from '../huggingface.ts'
 import { adminMiddleware } from '../middleware.ts'
 
 export const listDatasets = createServerFn({ method: 'GET' })
@@ -111,6 +118,54 @@ export const saveModel = createServerFn({ method: 'POST' })
     return summary
   })
 
+type NewRow = { text: string; attack: boolean }
+
+/** Stores labelled rows as a dataset, replacing one with the same slug. */
+async function storeDataset(args: {
+  slug: string
+  name: string
+  url: string
+  license: string
+  custom: boolean
+  attackLabel: string
+  rows: NewRow[]
+}): Promise<DatasetSummary> {
+  const lines = args.rows.map((row, i) =>
+    JSON.stringify({
+      id: `${args.slug}.${i}`,
+      attack: row.attack ? args.attackLabel : 'benign',
+      channel: 'user_input',
+      input: { kind: 'model_request', toolName: null, text: row.text },
+      expected: row.attack ? 'block' : 'allow',
+      source: { name: args.name, dataset: args.name, reference: args.url, license: args.license },
+    }),
+  )
+  const attacks = args.rows.filter((r) => r.attack).length
+  const summary: DatasetSummary = {
+    slug: args.slug,
+    name: args.name,
+    url: args.url,
+    license: args.license,
+    rows: args.rows.length,
+    attacks,
+    benign: args.rows.length - attacks,
+    byAttack: attacks ? { [args.attackLabel]: attacks } : {},
+    byChannel: { user_input: args.rows.length },
+    custom: args.custom,
+  }
+  await env.PAYLOADS.put(datasetKey(args.slug), `${lines.join('\n')}\n`)
+  const others = (await readDatasetIndex(env)).filter((d) => d.slug !== args.slug)
+  await env.PAYLOADS.put(DATASET_INDEX_KEY, JSON.stringify([...others, summary]))
+  return summary
+}
+
+const slugify = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80)
+
 const datasetUpload = z.object({
   name: z.string().min(1).max(120),
   rows: z
@@ -124,45 +179,91 @@ export const uploadDataset = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .validator(datasetUpload)
   .handler(async ({ data, context: { db, orgId, user: me } }) => {
-    const slug = `custom-${data.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 60)}-${randomId('').slice(-6).toLowerCase()}`
-    const lines = data.rows.map((row, i) =>
-      JSON.stringify({
-        id: `${slug}.${i}`,
-        attack: row.attack ? 'custom' : 'benign',
-        channel: 'user_input',
-        input: { kind: 'model_request', toolName: null, text: row.text },
-        expected: row.attack ? 'block' : 'allow',
-        source: { name: data.name, dataset: data.name },
-      }),
-    )
-    const attacks = data.rows.filter((r) => r.attack).length
-    const summary: DatasetSummary = {
-      slug,
+    const summary = await storeDataset({
+      slug: `custom-${slugify(data.name).slice(0, 60)}-${randomId('').slice(-6).toLowerCase()}`,
       name: data.name,
       url: '',
       license: 'uploaded',
-      rows: data.rows.length,
-      attacks,
-      benign: data.rows.length - attacks,
-      byAttack: attacks ? { custom: attacks } : {},
-      byChannel: { user_input: data.rows.length },
       custom: true,
-    }
-    await env.PAYLOADS.put(datasetKey(slug), `${lines.join('\n')}\n`)
-    await env.PAYLOADS.put(
-      DATASET_INDEX_KEY,
-      JSON.stringify([...(await readDatasetIndex(env)), summary]),
-    )
+      attackLabel: 'custom',
+      rows: data.rows,
+    })
     await audit(db, {
       orgId,
       actorId: me.id,
       action: 'dataset.upload',
-      target: slug,
-      data: { rows: summary.rows, attacks },
+      target: summary.slug,
+      data: { rows: summary.rows, attacks: summary.attacks },
+    })
+    return summary
+  })
+
+/** Looks a public Hugging Face dataset up: its splits, columns, a few rows and a mapping guess. */
+export const inspectHuggingFace = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(z.object({ dataset: z.string().max(300) }))
+  .handler(({ data }) => {
+    const id = parseDatasetId(data.dataset)
+    if (!id) throw new Error('Enter a dataset as owner/name, or paste its Hugging Face link.')
+    return inspectDataset(id)
+  })
+
+/** Imports rows of one split as a labelled dataset. Importing the same split again replaces it. */
+export const importHuggingFace = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(
+    z.object({
+      dataset: z.string().max(300),
+      config: z.string().max(120),
+      split: z.string().max(120),
+      textColumn: z.string().min(1).max(120),
+      labelColumn: z.string().max(120).nullable(),
+      /** Label values that mean "attack". Ignored without a label column. */
+      attackValues: z.array(z.string().max(120)).max(50),
+      /** Without a label column: whether every row is an attack or every row is normal. */
+      allAttacks: z.boolean(),
+      attackLabel: z.enum(['prompt_injection', 'jailbreak', 'indirect_injection', 'custom']),
+      limit: z.number().int().min(50).max(2000),
+      license: z.string().max(200),
+    }),
+  )
+  .handler(async ({ data, context: { db, orgId, user: me } }) => {
+    const id = parseDatasetId(data.dataset)
+    if (!id) throw new Error('Unknown dataset')
+    const { columns, rows } = await fetchRows(id, data.config, data.split, data.limit)
+    const text = columns.find((c) => c.name === data.textColumn)
+    const label = columns.find((c) => c.name === data.labelColumn)
+    if (!text) throw new Error(`The dataset has no column called ${data.textColumn}`)
+    if (data.labelColumn && !label)
+      throw new Error(`The dataset has no column called ${data.labelColumn}`)
+    const labelled = rows.flatMap((row): NewRow[] => {
+      const value = cellText(row[text.name], text).trim()
+      if (!value) return []
+      return [
+        {
+          text: value.slice(0, 20_000),
+          attack: label
+            ? isAttackValue(cellText(row[label.name], label), data.attackValues)
+            : data.allAttacks,
+        },
+      ]
+    })
+    if (labelled.length === 0) throw new Error('No rows with text were found in that split.')
+    const summary = await storeDataset({
+      slug: `hf-${slugify(`${id}-${data.split}`)}`,
+      name: `${id} · ${data.split}`,
+      url: `https://huggingface.co/datasets/${id}`,
+      license: data.license || 'see dataset card',
+      custom: false,
+      attackLabel: data.attackLabel,
+      rows: labelled,
+    })
+    await audit(db, {
+      orgId,
+      actorId: me.id,
+      action: 'dataset.import',
+      target: summary.slug,
+      data: { source: id, split: data.split, rows: summary.rows, attacks: summary.attacks },
     })
     return summary
   })
