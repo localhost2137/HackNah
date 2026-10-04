@@ -3,6 +3,7 @@ import {
   Badge,
   Button,
   Card,
+  CardHeader,
   Dialog,
   EmptyState,
   Field,
@@ -131,7 +132,8 @@ function GuardrailsPage() {
     <>
       <PageHeader
         title="Guardrails"
-        description="Every enabled guardrail that matches a request runs. The strictest outcome wins."
+        description="Define how agent requests are checked, approved, and blocked."
+        details="Every enabled guardrail that runs on the request's stage, and whose groups include the user, runs. The strictest outcome wins: block, then approval, then allow; a guardrail that ends in Skip does not count."
         actions={
           isAdmin ? (
             <Button variant="primary" onClick={() => setCreating({ name: '', copyOf: '' })}>
@@ -150,6 +152,7 @@ function GuardrailsPage() {
         </div>
       ) : null}
       <Card>
+        <CardHeader title="All guardrails" actions={<Badge>{list.length} total</Badge>} />
         {list.length === 0 ? (
           <EmptyState
             title="No guardrails"
@@ -204,7 +207,7 @@ function GuardrailsPage() {
                       {w.name}
                     </Link>
                     {w.description ? (
-                      <div className="text-xs text-muted">{w.description}</div>
+                      <div className="mt-1 text-xs text-muted">{w.description}</div>
                     ) : null}
                   </TD>
                   <TD className="max-w-72 text-xs text-muted">{triggerText(w.definition)}</TD>

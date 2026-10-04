@@ -73,7 +73,7 @@ function Overview() {
           />
         }
       />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="overview-stats grid grid-cols-2 overflow-hidden rounded-lg border border-line bg-panel/30 lg:grid-cols-4">
         <Stat label="Requests" value={num(data.total)} />
         <Stat
           label="Blocked"
@@ -85,8 +85,23 @@ function Overview() {
         <Stat label="Tokens" value={num(data.tokens)} />
       </div>
 
-      <Card className="mt-4">
-        <CardHeader title="Traffic" description="Allowed vs. blocked requests" />
+      <Card className="mt-5">
+        <CardHeader
+          title="Traffic"
+          description="Request activity over time"
+          actions={
+            <div className="flex items-center gap-4 text-[11px] text-muted">
+              <span className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-accent" />
+                Allowed
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-bad" />
+                Blocked
+              </span>
+            </div>
+          }
+        />
         <div className="h-64 px-2 py-3">
           {data.series.length === 0 ? (
             <EmptyState title="No traffic in this range" />
@@ -95,25 +110,25 @@ function Overview() {
               <AreaChart data={data.series} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
                 <defs>
                   <linearGradient id="allowed" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#7894f8" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#7894f8" stopOpacity={0} />
+                    <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.16} />
+                    <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="blocked" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#ef7088" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#ef7088" stopOpacity={0} />
+                    <stop offset="0%" stopColor="var(--color-bad)" stopOpacity={0.16} />
+                    <stop offset="100%" stopColor="var(--color-bad)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="#202d40" vertical={false} />
+                <CartesianGrid stroke="var(--color-line)" vertical={false} />
                 <XAxis
                   dataKey="bucket"
                   tickFormatter={fmtTick}
-                  stroke="#667286"
+                  stroke="var(--color-subtle)"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
-                  stroke="#667286"
+                  stroke="var(--color-subtle)"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
@@ -122,8 +137,8 @@ function Overview() {
                 />
                 <Tooltip
                   contentStyle={{
-                    background: '#0e1827',
-                    border: '1px solid #2a3950',
+                    background: 'var(--color-panel)',
+                    border: '1px solid var(--color-line-strong)',
                     borderRadius: 8,
                     fontSize: 12,
                     boxShadow: '0 8px 24px rgb(0 0 0 / 0.25)',
@@ -133,14 +148,14 @@ function Overview() {
                 <Area
                   type="monotone"
                   dataKey="allowed"
-                  stroke="#7894f8"
+                  stroke="var(--color-accent)"
                   fill="url(#allowed)"
                   strokeWidth={1.5}
                 />
                 <Area
                   type="monotone"
                   dataKey="blocked"
-                  stroke="#ef7088"
+                  stroke="var(--color-bad)"
                   fill="url(#blocked)"
                   strokeWidth={1.5}
                 />

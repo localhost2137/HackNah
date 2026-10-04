@@ -147,7 +147,8 @@ function ModelsPage() {
     <>
       <PageHeader
         title="Models"
-        description="Where each model is served and what it costs. Models outside the catalog are refused."
+        description="Manage the models your team can use, where they run, and what they cost."
+        details="Where each model is served and what it costs. Requests are routed to the first entry whose pattern matches the model; with entries here, models outside the catalog are refused. Groups choose from these models, and Limits price usage with them."
         actions={
           isAdmin ? (
             <div className="flex gap-2">

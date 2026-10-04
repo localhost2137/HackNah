@@ -40,7 +40,7 @@
 }
 
 .guardrail-canvas .react-flow__handle:hover {
-  box-shadow: 0 0 0 5px rgb(120 148 248 / 0.25);
+  box-shadow: 0 0 0 5px rgb(113 112 232 / 0.25);
 }
 
 .guardrail-canvas .react-flow__edge.selected .react-flow__edge-path {
@@ -136,4 +136,96 @@
   top: 0;
   transform-origin: 0 0;
   pointer-events: none;
+}
+
+/* A quiet application frame, with the navigation sitting behind the work surface. */
+.workspace-main {
+  min-height: calc(100vh - 8px);
+  margin: 8px 8px 0 0;
+  border: 1px solid var(--color-line);
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+  background: var(--color-bg);
+  box-shadow: -4px 0 20px rgb(0 0 0 / 8%);
+}
+.workspace-toolbar {
+  border-radius: 9px 9px 0 0;
+  background: rgb(24 25 27 / 45%);
+}
+.overview-stats .stat-card {
+  border: 0;
+  border-right: 1px solid var(--color-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.overview-stats .stat-card:last-child {
+  border-right: 0;
+}
+.auth-shell input,
+.auth-shell button {
+  min-height: 38px;
+}
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  z-index: 100;
+  transform: translate(-50%, -150%);
+  border-radius: 6px;
+  background: var(--color-accent);
+  padding: 8px 16px;
+  color: white;
+}
+.skip-link:focus {
+  transform: translate(-50%, 0);
+}
+@media (max-width: 1023px) {
+  .overview-stats .stat-card:nth-child(2) {
+    border-right: 0;
+  }
+  .overview-stats .stat-card:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--color-line);
+  }
+}
+@media (max-width: 767px) {
+  .workspace-main {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+  .workspace-toolbar {
+    border-radius: 0;
+  }
+  .workspace-sidebar {
+    box-shadow: 12px 0 40px rgb(0 0 0 / 25%);
+  }
+  .workspace-sidebar.-translate-x-full {
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: Respect reduced motion over component utilities. */
+    scroll-behavior: auto !important;
+    /* biome-ignore lint/complexity/noImportantStyles: Respect reduced motion over component utilities. */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: Respect reduced motion over component utilities. */
+    animation-duration: 0.01ms !important;
+  }
+}
+
+.overview-stats {
+  background: linear-gradient(180deg, var(--color-panel), rgb(24 25 27 / 55%));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 4%),
+    0 4px 16px rgb(0 0 0 / 10%);
+}
+.auth-card {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 6%),
+    0 0 0 5px rgb(255 255 255 / 2%),
+    0 20px 64px rgb(0 0 0 / 30%);
 }

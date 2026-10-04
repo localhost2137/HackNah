@@ -55,18 +55,24 @@ function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" />
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        <div className="flex flex-col gap-4">
-          <Card>
-            <CardHeader title="Gateway" />
-            <div className="p-4 text-xs">
-              <Mono>{info?.gatewayUrl}</Mono>
-            </div>
-          </Card>
-          <SsoCard />
-          {isAdmin ? <PolicyFileCard /> : null}
+      <PageHeader
+        title="Settings"
+        description="Manage your gateway, sign-in, and policy configuration."
+      />
+      <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div>
+          <h2 className="text-[13px] font-semibold">Gateway endpoint</h2>
+          <p className="mt-1 text-xs text-muted">Connect your agents to this instance.</p>
         </div>
+        <Mono className="max-w-full break-all rounded-lg border border-line bg-bg/60 px-3 py-2">
+          {info?.gatewayUrl}
+        </Mono>
+      </Card>
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <SsoCard />
+        {isAdmin ? <PolicyFileCard /> : null}
+      </div>
+      <div className="mt-6">
         <AuditLog />
       </div>
     </>
@@ -108,26 +114,28 @@ function SsoCard() {
         title="Single sign-on (OIDC)"
         actions={provider ? <Badge tone="ok">Enabled</Badge> : <Badge>Off</Badge>}
       />
-      <div className="flex flex-col gap-4 p-4 text-xs">
+      <div className="flex flex-col gap-5 p-5 text-[13px]">
         <p className="text-muted">
           Members on this domain use SSO. Admins can also sign in with a password.
         </p>
         <Field label="Redirect URI" hint="Register this in your identity provider's app.">
-          <Mono>{data.callbackUrl}</Mono>
+          <Mono className="block break-all rounded-lg border border-line bg-bg/60 px-3 py-2.5">
+            {data.callbackUrl}
+          </Mono>
         </Field>
         {provider && !editing ? (
           <>
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
               <dt className="text-muted">Issuer</dt>
-              <dd>
+              <dd className="min-w-0 break-all">
                 <Mono>{provider.issuer}</Mono>
               </dd>
               <dt className="text-muted">Domain</dt>
-              <dd>
+              <dd className="min-w-0 break-all">
                 <Mono>{provider.domain}</Mono>
               </dd>
               <dt className="text-muted">Client ID</dt>
-              <dd>
+              <dd className="min-w-0 break-all">
                 <Mono>{provider.clientId}</Mono>
               </dd>
             </dl>
@@ -196,7 +204,10 @@ function AuditLog() {
   const items = audit.data?.pages.flatMap((p) => p.items) ?? []
   return (
     <Card>
-      <CardHeader title="Audit log" />
+      <CardHeader
+        title="Audit log"
+        description="A history of changes to policy, access, and integrations."
+      />
       {items.length === 0 && !audit.isLoading ? (
         <EmptyState
           title="Nothing yet"

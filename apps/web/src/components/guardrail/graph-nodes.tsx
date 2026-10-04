@@ -69,11 +69,11 @@ export type FlowNodeData = {
 export type FlowNode = Node<FlowNodeData>
 
 export const toneColor: Record<Tone, string> = {
-  ok: '#4fd1a1',
-  bad: '#ef7088',
-  warn: '#f1c553',
-  neutral: '#929daf',
-  accent: '#9aafff',
+  ok: 'var(--color-ok)',
+  bad: 'var(--color-bad)',
+  warn: 'var(--color-warn)',
+  neutral: 'var(--color-muted)',
+  accent: 'var(--color-accent-strong)',
 }
 
 /** An edge as the canvas draws it. `onPath` is null when no path is shown. */

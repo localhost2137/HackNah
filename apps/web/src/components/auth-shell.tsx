@@ -12,15 +12,17 @@ export function AuthShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,rgb(120_148_248/0.12),transparent_60%)] px-4">
+    <div className="auth-shell flex min-h-screen items-center justify-center bg-bg px-5 py-12">
       <div className="w-full max-w-sm">
-        <div className="mb-7 flex justify-center">
-          <BrandLogo className="w-64" />
+        <div className="mb-10 flex justify-center">
+          <BrandLogo className="w-40 grayscale brightness-150" />
         </div>
-        <Card className="p-6">
-          <h1 className="text-base font-semibold">{title}</h1>
-          {subtitle ? <p className="mt-1 text-xs text-muted">{subtitle}</p> : null}
-          <div className="mt-5">{children}</div>
+        <Card className="auth-card border-line-strong bg-panel p-8">
+          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+          {subtitle ? (
+            <p className="mt-2 text-[13px] leading-relaxed text-muted">{subtitle}</p>
+          ) : null}
+          <div className="mt-7">{children}</div>
         </Card>
       </div>
     </div>

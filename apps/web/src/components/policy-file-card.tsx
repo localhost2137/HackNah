@@ -58,15 +58,15 @@ export function PolicyFileCard() {
           </Button>
         }
       />
-      <div className="flex flex-col gap-3 p-4 text-xs">
-        <p className="text-muted">
-          Guardrails, limits and the model catalog as one documented YAML file. Applying publishes a
-          new version of every guardrail that changed; the gateway picks it up within seconds. Also
-          available as <code>pnpm policy:export</code> and <code>pnpm policy:apply</code>.
+      <div className="flex flex-col gap-4 p-5 text-[13px]">
+        <p className="text-muted leading-relaxed">
+          Export or import guardrails, limits, and models in a YAML file. Preview changes before
+          applying them. Applying publishes changed guardrails immediately.
         </p>
         <Textarea
-          rows={6}
-          className="font-mono text-[11px]"
+          rows={8}
+          aria-label="Policy YAML"
+          className="font-mono text-xs"
           placeholder="Paste a policy file, or choose one below"
           value={yaml}
           onChange={(e) => {
@@ -93,15 +93,17 @@ export function PolicyFileCard() {
             />
           </label>
           <Select
-            className="ml-auto w-56"
+            aria-label="Policy import mode"
+            aria-describedby="policy-import-mode-hint"
+            className="ml-auto w-full sm:w-64"
             value={mode}
             onChange={(e) => {
               setMode(e.target.value as 'replace' | 'merge')
               setPreview(null)
             }}
           >
-            <option value="replace">Replace: disable what the file leaves out</option>
-            <option value="merge">Merge: only add and update</option>
+            <option value="replace">Replace existing policy</option>
+            <option value="merge">Merge with existing policy</option>
           </Select>
           <Button
             size="sm"
@@ -119,6 +121,11 @@ export function PolicyFileCard() {
             Apply
           </Button>
         </div>
+        <p id="policy-import-mode-hint" className="text-xs text-muted">
+          {mode === 'replace'
+            ? 'Replace disables configuration omitted from the file.'
+            : 'Merge only adds and updates items; omitted configuration is kept.'}
+        </p>
         <FormError message={run.error?.message ?? null} />
         {errors ? (
           <ul className="flex flex-col gap-1 rounded-md bg-bad-soft px-3 py-2 font-mono text-[11px] text-bad">

@@ -727,13 +727,13 @@ function Editor({
             maxZoom={1.8}
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={24} size={1} color="#2a3950" />
+            <Background gap={24} size={1} color="var(--color-line-strong)" />
             <Controls showInteractive={false} />
             {graph.nodes.length > 10 ? (
               <MiniMap
                 pannable
                 zoomable
-                nodeColor="#667286"
+                nodeColor="var(--color-subtle)"
                 maskColor="rgba(8,17,31,0.65)"
                 style={{ width: 140, height: 85 }}
               />
