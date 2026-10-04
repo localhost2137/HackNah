@@ -47,7 +47,9 @@ export const learnedCheck = z.object({
   type: z.literal('learned'),
   /** Score in [0, 1] at or above which the check fails. */
   threshold: z.number().min(0.05).max(0.99).default(0.5),
-  /** Model ids to use. Empty means every enabled model. */
+  /** Slugs of the datasets the block's model is trained on, picked in the editor. */
+  datasets: z.array(z.string()).default([]),
+  /** The trained model for that selection. Empty until it is trained: the check is skipped. */
   models: z.array(z.string()).default([]),
 })
 
@@ -305,6 +307,13 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
       n.conditions.some((c) => c.values.length === 0)
     ) {
       issues.push({ level: 'error', nodeId: n.id, message: 'A condition has no values' })
+    }
+    if (n.type === 'check' && n.check.type === 'learned' && n.check.models.length === 0) {
+      issues.push({
+        level: 'warning',
+        nodeId: n.id,
+        message: 'No trained model: pick datasets and train, or this step always passes',
+      })
     }
     if (n.type === 'check' && n.check.type === 'arguments' && n.check.rules.length === 0) {
       issues.push({ level: 'warning', nodeId: n.id, message: 'No argument rules: always passes' })

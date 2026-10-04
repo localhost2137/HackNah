@@ -23,34 +23,27 @@ export async function readModelIndex(env: Env): Promise<LearnedModelSummary[]> {
   return parsed.success ? parsed.data : []
 }
 
-const cache = new TtlCache<ScoringModel[]>(30_000)
-const decoded = new Map<string, ScoringModel>()
+const cache = new TtlCache<ScoringModel | null>(30_000)
 
-/** Every enabled model, decoded once and re-read every 30 seconds. */
-export function loadModels(env: Env): Promise<ScoringModel[]> {
-  return cache.get('models', async () => {
-    const enabled = (await readModelIndex(env)).filter((m) => m.enabled)
-    const models: ScoringModel[] = []
-    for (const summary of enabled) {
-      const version = `${summary.id}:${summary.trainedAt}`
-      let model = decoded.get(version)
-      if (!model) {
-        const object = await env.PAYLOADS.get(modelKey(summary.id))
+/** The models with these ids, decoded once each and re-read every 30 seconds. */
+export async function loadModels(env: Env, ids: string[]): Promise<ScoringModel[]> {
+  const models = await Promise.all(
+    [...new Set(ids)].map((id) =>
+      cache.get(id, async () => {
+        const object = await env.PAYLOADS.get(modelKey(id))
         const parsed = object ? learnedModel.safeParse(await object.json()) : null
-        if (!parsed?.success) continue
+        if (!parsed?.success) return null
         try {
-          model = decodeModel(parsed.data)
+          return decodeModel(parsed.data)
         } catch {
-          continue
+          return null
         }
-        decoded.set(version, model)
-      }
-      models.push(model)
-    }
-    return models
-  })
+      }),
+    ),
+  )
+  return models.filter((m): m is ScoringModel => m !== null)
 }
 
-export function forgetModels() {
-  cache.delete('models')
+export function forgetModel(id: string) {
+  cache.delete(id)
 }

@@ -85,7 +85,16 @@ export async function runPipeline(
     {
       judge: (check, i) => callJudge(check, i, { apiKey: judgeApiKey(env, check.endpoint) }),
       signatures: uses('signatures') ? (await loadSignatures(env)).signatures : undefined,
-      models: uses('learned') ? await loadModels(env) : undefined,
+      models: uses('learned')
+        ? await loadModels(
+            env,
+            workflows.flatMap((w) =>
+              w.definition.nodes.flatMap((n) =>
+                n.type === 'check' && n.enabled && n.check.type === 'learned' ? n.check.models : [],
+              ),
+            ),
+          )
+        : undefined,
     },
   )
   const base = {

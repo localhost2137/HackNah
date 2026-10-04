@@ -29,9 +29,8 @@ export type LearnedMetrics = z.infer<typeof learnedMetrics>
 export const learnedModelSummary = z.object({
   id: z.string().min(1).max(80),
   name: z.string().min(1).max(120),
-  /** Slug of the dataset the model was trained on. */
-  dataset: z.string().max(120),
-  enabled: z.boolean().default(true),
+  /** Slugs of the datasets the model was trained on. */
+  datasets: z.array(z.string().max(120)).max(50),
   trainedAt: z.string(),
   attacks: z.number().int(),
   benign: z.number().int(),
@@ -51,6 +50,25 @@ export type LearnedModel = z.infer<typeof learnedModel>
 export type ScoringModel = { id: string; name: string; bias: number; weights: Float32Array }
 
 export type LabelledText = { text: string; attack: boolean }
+
+/**
+ * The id of the model for a selection of datasets. The same datasets at the same sizes always
+ * give the same id, so a selection that was trained before reuses its model instead of training
+ * again; adding rows to a dataset gives a new id.
+ */
+export function selectionModelId(datasets: { slug: string; rows: number }[]): string {
+  const key = datasets
+    .map((d) => `${d.slug}:${d.rows}`)
+    .sort()
+    .join('|')
+  let a = 0x811c9dc5
+  let b = 0x01000193
+  for (let i = 0; i < key.length; i++) {
+    a = Math.imul(a ^ key.charCodeAt(i), 0x01000193) >>> 0
+    b = Math.imul(b + key.charCodeAt(i), 0x85ebca6b) >>> 0
+  }
+  return `mdl_${a.toString(36)}${b.toString(36)}`
+}
 
 function hash(text: string, seed: number): number {
   // FNV-1a over UTF-16 code units.

@@ -10,6 +10,7 @@ import { blockOf, blocks, inputLabels, palette } from '@acl/shared'
 import { Button, Field, Input, Select, Switch } from '@acl/ui'
 import { Plus, Trash2, X } from 'lucide-react'
 import { toneColor } from './graph-nodes.tsx'
+import { LearnedForm } from './learned-form.tsx'
 import { CheckboxGroup, FieldForm } from './step-form.tsx'
 
 export type Option = { value: string; label: string }
@@ -88,7 +89,7 @@ export function Inspector({
           ))}
         </ul>
       ) : null}
-      <fieldset disabled={readOnly} className="flex flex-col gap-4 p-4">
+      <fieldset disabled={readOnly} className="flex min-w-0 flex-col gap-4 p-4">
         <NodeForm node={node} options={options} onChange={onChange} />
       </fieldset>
     </div>
@@ -122,13 +123,23 @@ function NodeForm({
       ) : node.type === 'trigger' ? (
         <TriggerForm node={node} options={options} onChange={onChange} />
       ) : node.type === 'check' ? (
-        <FieldForm
-          fields={block.fields}
-          value={node.check}
-          onChange={(patch) =>
-            onChange({ ...node, check: { ...node.check, ...patch } } as PolicyNode)
-          }
-        />
+        <>
+          {node.check.type === 'learned' ? (
+            <LearnedForm
+              check={node.check}
+              onChange={(patch) =>
+                onChange({ ...node, check: { ...node.check, ...patch } } as PolicyNode)
+              }
+            />
+          ) : null}
+          <FieldForm
+            fields={block.fields}
+            value={node.check}
+            onChange={(patch) =>
+              onChange({ ...node, check: { ...node.check, ...patch } } as PolicyNode)
+            }
+          />
+        </>
       ) : (
         <>
           {node.type === 'decision' ? (

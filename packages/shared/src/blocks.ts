@@ -444,7 +444,7 @@ const specs: BlockSpec[] = [
     group: 'Content',
     label: 'Learned rules',
     description:
-      'Scores the request with the models trained on the Datasets page. A model flags requests that look like the attacks in its dataset; it is fast, and it only knows what it was trained on.',
+      'Flags requests that look like the attacks in the datasets you pick. Select datasets and train: a small model learns them in seconds and scores each request in well under a millisecond. It only knows what it was trained on.',
     inputs: ['content'],
     outputs: [
       pass('Passed', ['judge', 'redact', 'allow']),
@@ -466,9 +466,11 @@ const specs: BlockSpec[] = [
         step: 0.05,
       },
     ],
-    defaults: { type: 'learned', threshold: 0.5, models: [] },
+    defaults: { type: 'learned', threshold: 0.5, datasets: [], models: [] },
     summary: (c) =>
-      `${c.models.length ? `${c.models.length} models` : 'all trained models'} · score ≥ ${c.threshold}`,
+      c.models.length === 0
+        ? 'Not trained yet'
+        : `${c.datasets.length} ${c.datasets.length === 1 ? 'dataset' : 'datasets'} · score ≥ ${c.threshold}`,
   }),
   checkBlock('judge', {
     group: 'Content',

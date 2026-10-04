@@ -10,7 +10,7 @@ import { z } from 'zod'
 import {
   DATASET_INDEX_KEY,
   datasetKey,
-  forgetModels,
+  forgetModel,
   MODEL_INDEX_KEY,
   modelKey,
   readModelIndex,
@@ -85,15 +85,17 @@ export const getDatasetRows = createServerFn({ method: 'GET' })
   .handler(({ data }) => readRows(data.slug))
 
 /**
- * Benign requests from every other dataset, evenly sampled. A dataset of attacks alone cannot
+ * Benign requests from the datasets that are not selected, evenly sampled. Attacks alone cannot
  * train a model; these are the "normal traffic" it is told apart from.
  */
 export const getBenignPool = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
-  .validator(z.object({ exclude: z.string().max(120), limit: z.number().int().max(8000) }))
+  .validator(
+    z.object({ exclude: z.array(z.string().max(120)).max(50), limit: z.number().int().max(8000) }),
+  )
   .handler(async ({ data }) => {
     const sources = (await readDatasetIndex()).filter(
-      (d) => d.slug !== data.exclude && d.benign > 0,
+      (d) => !data.exclude.includes(d.slug) && d.benign > 0,
     )
     const total = sources.reduce((sum, d) => sum + d.benign, 0)
     const texts: string[] = []
@@ -108,8 +110,10 @@ export const getBenignPool = createServerFn({ method: 'GET' })
   })
 
 const modelUpload = z.object({
+  /** From `selectionModelId()`: training the same selection again replaces its model. */
+  id: z.string().regex(/^mdl_[a-z0-9]{4,40}$/),
   name: z.string().min(1).max(120),
-  dataset: z.string().max(120),
+  datasets: z.array(z.string().max(120)).min(1).max(50),
   bias: z.number(),
   weights: z.string().max(1_200_000),
   attacks: z.number().int(),
@@ -117,20 +121,14 @@ const modelUpload = z.object({
   metrics: learnedMetrics,
 })
 
-async function writeModelIndex(models: LearnedModelSummary[]) {
-  await env.PAYLOADS.put(MODEL_INDEX_KEY, JSON.stringify(models))
-  forgetModels()
-}
-
 export const saveModel = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .validator(modelUpload)
   .handler(async ({ data, context: { db, orgId, user: me } }) => {
     const summary: LearnedModelSummary = {
-      id: randomId('mdl'),
+      id: data.id,
       name: data.name,
-      dataset: data.dataset,
-      enabled: true,
+      datasets: data.datasets,
       trainedAt: new Date().toISOString(),
       attacks: data.attacks,
       benign: data.benign,
@@ -143,42 +141,17 @@ export const saveModel = createServerFn({ method: 'POST' })
       weights: data.weights,
     }
     await env.PAYLOADS.put(modelKey(summary.id), JSON.stringify(model))
-    await writeModelIndex([summary, ...(await readModelIndex(env))])
+    const others = (await readModelIndex(env)).filter((m) => m.id !== summary.id)
+    await env.PAYLOADS.put(MODEL_INDEX_KEY, JSON.stringify([summary, ...others].slice(0, 200)))
+    forgetModel(summary.id)
     await audit(db, {
       orgId,
       actorId: me.id,
       action: 'model.train',
       target: summary.id,
-      data: { name: summary.name, dataset: summary.dataset, metrics: summary.metrics },
+      data: { datasets: summary.datasets, metrics: summary.metrics },
     })
     return summary
-  })
-
-export const setModelEnabled = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
-  .validator(z.object({ id: z.string(), enabled: z.boolean() }))
-  .handler(async ({ data, context: { db, orgId, user: me } }) => {
-    const models = await readModelIndex(env)
-    await writeModelIndex(
-      models.map((m) => (m.id === data.id ? { ...m, enabled: data.enabled } : m)),
-    )
-    await audit(db, {
-      orgId,
-      actorId: me.id,
-      action: data.enabled ? 'model.enable' : 'model.disable',
-      target: data.id,
-    })
-    return { ok: true }
-  })
-
-export const deleteModel = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
-  .validator(z.object({ id: z.string() }))
-  .handler(async ({ data, context: { db, orgId, user: me } }) => {
-    await writeModelIndex((await readModelIndex(env)).filter((m) => m.id !== data.id))
-    await env.PAYLOADS.delete(modelKey(data.id))
-    await audit(db, { orgId, actorId: me.id, action: 'model.delete', target: data.id })
-    return { ok: true }
   })
 
 const datasetUpload = z.object({

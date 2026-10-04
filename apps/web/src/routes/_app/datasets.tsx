@@ -1,22 +1,10 @@
 import {
-  encodeWeights,
-  type LabelledText,
-  type LearnedModelSummary,
-  type TrainProgress,
-  type TrainResult,
-  trainModel,
-} from '@acl/shared'
-import {
   Badge,
   Button,
   Card,
-  CardHeader,
   EmptyState,
-  Field,
-  Input,
   PageHeader,
   Sheet,
-  Switch,
   Table,
   TBody,
   TD,
@@ -24,37 +12,20 @@ import {
   THead,
   TR,
 } from '@acl/ui'
-import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { BrainCircuit, Trash2, Upload } from 'lucide-react'
+import { Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
-import { num, timeAgo } from '#/lib/format.ts'
-import {
-  type DatasetSummary,
-  deleteModel,
-  getBenignPool,
-  getDatasetRows,
-  listDatasets,
-  saveModel,
-  setModelEnabled,
-  uploadDataset,
-} from '#/server/fns/datasets.ts'
-
-const datasetsQuery = queryOptions({ queryKey: ['datasets'], queryFn: () => listDatasets() })
-const rowsQuery = (slug: string) =>
-  queryOptions({
-    queryKey: ['dataset-rows', slug],
-    queryFn: () => getDatasetRows({ data: { slug } }),
-    staleTime: Number.POSITIVE_INFINITY,
-  })
+import { datasetRowsQuery, datasetsQuery } from '#/lib/datasets.ts'
+import { num } from '#/lib/format.ts'
+import { type DatasetSummary, uploadDataset } from '#/server/fns/datasets.ts'
 
 export const Route = createFileRoute('/_app/datasets')({
   loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(datasetsQuery),
   component: DatasetsPage,
 })
 
-const percent = (share: number) => `${(share * 100).toFixed(share < 0.1 ? 1 : 0)}%`
 const label = (key: string) => key.replace(/_/g, ' ')
 
 /** Rows of an uploaded file: JSON lines or a JSON array of `{text, label}`. */
@@ -84,15 +55,6 @@ function DatasetsPage() {
   const fileInput = useRef<HTMLInputElement>(null)
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['datasets'] })
-  const toggle = useMutation({
-    mutationFn: (m: LearnedModelSummary) =>
-      setModelEnabled({ data: { id: m.id, enabled: !m.enabled } }),
-    onSuccess: refresh,
-  })
-  const remove = useMutation({
-    mutationFn: (id: string) => deleteModel({ data: { id } }),
-    onSuccess: refresh,
-  })
   const upload = useMutation({
     mutationFn: async (file: File) => {
       const rows = parseUpload(await file.text())
@@ -108,13 +70,12 @@ function DatasetsPage() {
 
   const datasets = data?.datasets ?? []
   const models = data?.models ?? []
-  const datasetName = (slug: string) => datasets.find((d) => d.slug === slug)?.name ?? slug
 
   return (
     <>
       <PageHeader
         title="Datasets"
-        description="Labelled attack and benign requests. Train a model on a dataset, then use it in a workflow with the Learned rules block."
+        description="Labelled attack and benign requests. To act on them, add a Learned rules step to a workflow, pick datasets there and train."
         actions={
           <>
             <input
@@ -144,69 +105,6 @@ function DatasetsPage() {
         </div>
       ) : null}
 
-      <Card className="mb-5">
-        <CardHeader
-          title="Trained models"
-          description="Enabled models are scored by every Learned rules block within about 30 seconds."
-        />
-        {models.length === 0 ? (
-          <EmptyState
-            title="No models yet"
-            description="Open a dataset below and train one. Training runs in this browser and takes a few seconds."
-          />
-        ) : (
-          <Table>
-            <THead>
-              <tr>
-                <TH>Model</TH>
-                <TH>Trained on</TH>
-                <TH>Held-out attacks caught</TH>
-                <TH>Held-out benign flagged</TH>
-                <TH>Trained</TH>
-                <TH>Enabled</TH>
-                <TH />
-              </tr>
-            </THead>
-            <TBody>
-              {models.map((m) => (
-                <TR key={m.id}>
-                  <TD className="text-xs font-medium">{m.name}</TD>
-                  <TD className="text-xs text-muted">{datasetName(m.dataset)}</TD>
-                  <TD className="font-mono text-xs">
-                    {percent(m.metrics.recall)}{' '}
-                    <span className="text-subtle">of {num(m.metrics.heldOutAttacks)}</span>
-                  </TD>
-                  <TD className="font-mono text-xs">
-                    <span className={m.metrics.falsePositiveRate > 0.02 ? 'text-warn' : ''}>
-                      {percent(m.metrics.falsePositiveRate)}
-                    </span>{' '}
-                    <span className="text-subtle">of {num(m.metrics.heldOutBenign)}</span>
-                  </TD>
-                  <TD className="text-xs text-muted">{timeAgo(m.trainedAt)}</TD>
-                  <TD>
-                    <Switch
-                      checked={m.enabled}
-                      onCheckedChange={() => toggle.mutate(m)}
-                      label="Enabled"
-                    />
-                  </TD>
-                  <TD className="text-right">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Delete ${m.name}`}
-                      onClick={() => remove.mutate(m.id)}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        )}
-      </Card>
-
       <Card>
         {datasets.length === 0 ? (
           <EmptyState
@@ -230,7 +128,7 @@ function DatasetsPage() {
                 <TH>Attacks</TH>
                 <TH>Benign</TH>
                 <TH>Licence</TH>
-                <TH>Models</TH>
+                <TH>Used by models</TH>
               </tr>
             </THead>
             <TBody>
@@ -249,7 +147,7 @@ function DatasetsPage() {
                   <TD className="font-mono text-xs">{num(d.benign)}</TD>
                   <TD className="text-xs text-muted">{d.license || '—'}</TD>
                   <TD className="font-mono text-xs">
-                    {models.filter((m) => m.dataset === d.slug).length || '—'}
+                    {models.filter((m) => m.datasets.includes(d.slug)).length || '—'}
                   </TD>
                 </TR>
               ))}
@@ -263,76 +161,8 @@ function DatasetsPage() {
   )
 }
 
-const stageLabel: Record<TrainProgress['stage'], string> = {
-  features: 'Preparing features',
-  training: 'Training',
-  testing: 'Testing on held-out rows',
-}
-
-type Run =
-  | { phase: 'idle' }
-  | { phase: 'loading' }
-  | { phase: 'training'; progress: TrainProgress }
-  | { phase: 'done'; result: TrainResult; seconds: number }
-  | { phase: 'error'; message: string }
-
 function DatasetSheet({ dataset, onClose }: { dataset: DatasetSummary; onClose: () => void }) {
-  const qc = useQueryClient()
-  const rows = useQuery(rowsQuery(dataset.slug))
-  const [run, setRun] = useState<Run>({ phase: 'idle' })
-  const [name, setName] = useState(dataset.name)
-
-  const train = async () => {
-    try {
-      setRun({ phase: 'loading' })
-      const all = await qc.ensureQueryData(rowsQuery(dataset.slug))
-      const attacks = all.filter((r) => r.attack !== 'benign')
-      const own = all.filter((r) => r.attack === 'benign')
-      // Attacks alone cannot train a model: benign requests from the other datasets stand in
-      // for normal traffic.
-      const pool = await getBenignPool({
-        data: {
-          exclude: dataset.slug,
-          limit: Math.min(6000, Math.max(1500, attacks.length * 2)),
-        },
-      })
-      const examples: LabelledText[] = [
-        ...attacks.map((r) => ({ text: r.text, attack: true })),
-        ...own.map((r) => ({ text: r.text, attack: false })),
-        ...pool.map((text) => ({ text, attack: false })),
-      ]
-      const started = performance.now()
-      const result = await trainModel(examples, (progress) =>
-        setRun({ phase: 'training', progress }),
-      )
-      setRun({ phase: 'done', result, seconds: (performance.now() - started) / 1000 })
-    } catch (err) {
-      setRun({ phase: 'error', message: err instanceof Error ? err.message : String(err) })
-    }
-  }
-
-  const save = useMutation({
-    mutationFn: (result: TrainResult) =>
-      saveModel({
-        data: {
-          name: name.trim() || dataset.name,
-          dataset: dataset.slug,
-          bias: result.bias,
-          weights: encodeWeights(result.weights),
-          attacks: result.attacks,
-          benign: result.benign,
-          metrics: result.metrics,
-        },
-      }),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['datasets'] })
-      onClose()
-    },
-  })
-
-  const busy = run.phase === 'loading' || run.phase === 'training'
-  const done = run.phase === 'training' ? run.progress.done : run.phase === 'done' ? 1 : 0
-
+  const rows = useQuery(datasetRowsQuery(dataset.slug))
   return (
     <Sheet
       open
@@ -364,108 +194,18 @@ function DatasetSheet({ dataset, onClose }: { dataset: DatasetSummary; onClose: 
           <Breakdown title="Attack types" counts={dataset.byAttack} />
           <Breakdown title="Arrives through" counts={dataset.byChannel} />
         </div>
-
-        <Card>
-          <CardHeader
-            title="Train a model"
-            description="A logistic regression over character and word n-grams. It flags requests that look like the attacks in this dataset."
-            actions={
-              <Button variant="primary" disabled={busy || dataset.attacks === 0} onClick={train}>
-                <BrainCircuit /> {run.phase === 'done' ? 'Train again' : 'Train'}
-              </Button>
-            }
-          />
-          <div className="flex flex-col gap-4 px-4 py-4">
-            {dataset.attacks === 0 ? (
-              <p className="text-xs text-muted">
-                This dataset has no attack rows, so there is nothing to learn from it. Its rows are
-                used as benign examples when other datasets are trained.
-              </p>
-            ) : run.phase === 'idle' ? (
-              <p className="text-xs text-muted">
-                Uses the {num(dataset.attacks)} attacks here, the benign rows here, and benign
-                requests sampled from the other datasets. A fifth of the rows is held back for
-                testing.
-              </p>
-            ) : null}
-
-            {busy || run.phase === 'done' ? (
-              <div>
-                <div className="mb-1.5 flex justify-between text-xs">
-                  <span className="font-medium">
-                    {run.phase === 'loading'
-                      ? 'Loading rows'
-                      : run.phase === 'training'
-                        ? stageLabel[run.progress.stage]
-                        : `Trained in ${run.seconds.toFixed(1)} s`}
-                  </span>
-                  <span className="font-mono text-muted">
-                    {run.phase === 'training' ? run.progress.detail : ''}
-                  </span>
-                </div>
-                <div
-                  className="h-2 overflow-hidden rounded-full bg-line"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.round(done * 100)}
-                >
-                  <div
-                    className="h-full rounded-full bg-accent transition-[width] duration-150"
-                    style={{ width: `${Math.round(done * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {run.phase === 'error' ? <FormError message={run.message} /> : null}
-
-            {run.phase === 'done' ? (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <Metric
-                    label="Held-out attacks caught"
-                    value={percent(run.result.metrics.recall)}
-                    detail={`of ${num(run.result.metrics.heldOutAttacks)} it never saw`}
-                    tone={run.result.metrics.recall >= 0.8 ? 'ok' : 'warn'}
-                  />
-                  <Metric
-                    label="Held-out benign requests flagged"
-                    value={percent(run.result.metrics.falsePositiveRate)}
-                    detail={`of ${num(run.result.metrics.heldOutBenign)} it never saw`}
-                    tone={run.result.metrics.falsePositiveRate <= 0.02 ? 'ok' : 'warn'}
-                  />
-                </div>
-                <p className="text-xs text-muted">
-                  The held-out rows come from the same datasets as the training rows, so these
-                  numbers describe requests similar to this dataset. On traffic unlike it, expect
-                  the model to catch less and to flag more.
-                </p>
-                <Field label="Model name">
-                  <Input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
-                </Field>
-                <FormError message={save.error?.message ?? null} />
-                <div className="flex justify-end">
-                  <Button
-                    variant="primary"
-                    disabled={save.isPending}
-                    onClick={() => save.mutate(run.result)}
-                  >
-                    Save and enable
-                  </Button>
-                </div>
-              </>
-            ) : null}
-          </div>
-        </Card>
-
+        <p className="text-xs text-muted">
+          {dataset.attacks > 0
+            ? 'To block requests like these, add a Learned rules step to a workflow and tick this dataset there.'
+            : 'This dataset has no attack rows. Its rows serve as benign examples when models are trained on other datasets.'}
+        </p>
         <div>
           <div className="mb-2 text-xs font-medium">Sample rows</div>
           {rows.isPending ? (
             <p className="text-xs text-muted">Loading…</p>
           ) : (
             <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
-              {(rows.data ?? []).slice(0, 8).map((row, i) => (
+              {(rows.data ?? []).slice(0, 12).map((row, i) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: rows have no identity of their own
                 <li key={i} className="flex items-start gap-3 px-3 py-2">
                   <Badge tone={row.attack === 'benign' ? 'ok' : 'bad'}>{label(row.attack)}</Badge>
@@ -502,30 +242,6 @@ function Breakdown({ title, counts }: { title: string; counts: Record<string, nu
           {label(kind)} · {num(n)}
         </Badge>
       ))}
-    </div>
-  )
-}
-
-function Metric({
-  label: title,
-  value,
-  detail,
-  tone,
-}: {
-  label: string
-  value: string
-  detail: string
-  tone: 'ok' | 'warn'
-}) {
-  return (
-    <div className="rounded-md border border-line px-3 py-2.5">
-      <div className="text-[11px] text-muted">{title}</div>
-      <div
-        className={`mt-1 font-mono text-xl font-semibold ${tone === 'ok' ? 'text-ok' : 'text-warn'}`}
-      >
-        {value}
-      </div>
-      <div className="mt-0.5 text-[11px] text-subtle">{detail}</div>
     </div>
   )
 }

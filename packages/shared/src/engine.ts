@@ -402,11 +402,9 @@ const runners: { [T in CheckType]: Runner<T> } = {
     }
   },
   learned: (check, input, deps) => {
-    const models = (deps.models ?? []).filter(
-      (m) => check.models.length === 0 || check.models.includes(m.id),
-    )
+    const models = (deps.models ?? []).filter((m) => check.models.includes(m.id))
     if (models.length === 0)
-      return { outcome: 'skipped', branch: 'pass', reason: 'No trained models' }
+      return { outcome: 'skipped', branch: 'pass', reason: 'No trained model' }
     let top = { score: 0, name: '' }
     for (const text of textVariants(input.text)) {
       for (const model of models) {
