@@ -7,11 +7,12 @@
 #
 # Usage:
 #   scripts/dev-claude.sh            real browser for sign-in and approvals
-#   scripts/dev-claude.sh --auto     headless: fake browser (start the mock with npm run mock:auto)
+#   scripts/dev-claude.sh --auto     headless: fake browser (only with the mock: npm run mock:auto)
 #   scripts/dev-claude.sh --fresh    forget the test device key/tokens first ("new laptop")
 #   Extra arguments go to claude, e.g. scripts/dev-claude.sh -p "list my company tools"
 #
-# The mock needs either UPSTREAM_ANTHROPIC_API_KEY (real model) or MOCK_LLM_FAKE=1 (canned reply).
+# The platform is the gateway in apps/web (http://localhost:3000, `pnpm dev`) unless HY_PLATFORM_URL
+# says otherwise. Without a model provider key the gateway answers with its scripted demo model.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

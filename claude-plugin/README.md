@@ -11,7 +11,9 @@ One Claude Code plugin that routes company MCP tools, and optionally all model t
 - **Model traffic too.** `ANTHROPIC_BASE_URL` points at a local proxy started by the plugin, which DPoP-signs every model request; the platform's LLM gateway holds the provider key. This part needs two settings the plugin can't set itself (company managed settings, or `scripts/dev-claude.sh` for testing).
 - **No extra software.** Installing the plugin is the whole setup. The bridge is plain Node with zero dependencies, plus a small Swift signer that is compiled on first run on macOS.
 
-The backend doesn't exist yet. `mock-backend/` implements the full contract with zero dependencies, so the plugin can be built and demoed now. **[docs/BACKEND_CONTRACT.md](docs/BACKEND_CONTRACT.md)** is the spec the real backend has to implement, and [`contract/types.ts`](contract/types.ts) has the payload types.
+The gateway in `apps/web` is the backend: `scripts/dev-claude.sh` connects to it at `http://localhost:3000` by default (start it with `pnpm dev` in the repository root). With no model provider key it answers with a scripted demo model, so the whole flow works without paying for a model. **[docs/BACKEND_CONTRACT.md](docs/BACKEND_CONTRACT.md)** is the protocol between the two, and [`contract/types.ts`](contract/types.ts) has the payload types.
+
+`mock-backend/` is a stand-in platform with zero dependencies. Nothing you run day to day uses it; the plugin's own test suite (`npm test`) does, for cases the gateway has no fixtures for (Touch ID levels, CrowdStrike posture, man-in-the-middle).
 
 **For the backend** (`apps/` in golden-sach; not integrated with the plugin yet):
 - [`docs/BACKEND_GUIDE.md`](docs/BACKEND_GUIDE.md): what to build, in which order, security invariants, gotchas, how to verify against the real plugin;
@@ -478,6 +480,7 @@ docs/TEST_VECTORS.md          expected outputs for the backend's unit tests
 Requirements: Node ≥ 20. On macOS, Xcode Command Line Tools for the Secure Enclave signer (`xcode-select --install`).
 
 ```sh
+npm run test:backend     # the bridge against the real gateway (see scripts/e2e-backend.mjs for the variables)
 npm test                 # e2e with a software key, temp dirs, auto-approving mock
 npm run test:se          # same with the real Secure Enclave key (macOS)
 npm run mock             # mock platform on http://127.0.0.1:8787 (dashboard at /), restarts on edit
@@ -495,10 +498,10 @@ npm run setup-profile    # optional: plain `claude` with hy-guard in ~/.claude-h
 **Recommended: `scripts/dev-claude.sh`.** It's a separate Claude Code profile in which the plugin's sign-in is the only login:
 
 ```sh
-npm run mock                       # terminal 1 (real model: UPSTREAM_ANTHROPIC_API_KEY=sk-ant-… npm run mock)
-scripts/dev-claude.sh              # terminal 2: browser opens → "Log in as dev@company.com" → Claude Code starts
+pnpm dev                           # terminal 1, in the repository root: the gateway on http://localhost:3000
+scripts/dev-claude.sh              # terminal 2: browser opens → sign in to the dashboard → approve the device → Claude Code starts
 scripts/dev-claude.sh --fresh      # forget the device key first ("new laptop")
-scripts/dev-claude.sh --auto       # no browser at all (pair with npm run mock:auto)
+HY_PLATFORM_URL=http://127.0.0.1:8787 scripts/dev-claude.sh   # against the mock instead (npm run mock)
 ```
 
 What it does:

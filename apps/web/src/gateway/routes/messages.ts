@@ -329,8 +329,9 @@ export const messages = new Hono<AppEnv>()
           requested.model,
         )
         if ('error' in route) return c.json(anthropicError('permission_error', route.error), 403)
-        // OpenAI-compatible servers have no token counting endpoint; about 4 characters a token.
-        if (route.format === 'openai') {
+        // OpenAI-compatible servers and the demo model have no token counting endpoint; about
+        // 4 characters a token.
+        if (route.format !== 'anthropic') {
           if (!c.req.path.endsWith('/count_tokens'))
             return c.json(
               anthropicError('invalid_request_error', 'Not supported for this model'),
@@ -350,6 +351,28 @@ function defaultTarget(env: Env): UpstreamTarget {
 }
 
 async function passthrough(c: AppContext, target: UpstreamTarget) {
+  // No provider key: there is no upstream to ask, and the demo model answers the chat.
+  if (!target.apiKey && target.baseUrl === c.env.UPSTREAM_BASE_URL) {
+    if (c.req.method === 'GET' && c.req.path.endsWith('/models'))
+      return c.json({
+        data: [
+          {
+            type: 'model',
+            id: 'demo',
+            display_name: 'Demo model (scripted)',
+            created_at: '2025-01-01T00:00:00Z',
+          },
+        ],
+        has_more: false,
+        first_id: 'demo',
+        last_id: 'demo',
+      })
+    if (c.req.path.endsWith('/count_tokens')) return c.json({ input_tokens: 1 })
+    return c.json(
+      anthropicError('invalid_request_error', 'Not available without a model provider'),
+      404,
+    )
+  }
   // The upstream knows nothing of the `/llm` prefix the plugin's gateway URL carries.
   const path = new URL(c.req.url).pathname.replace(/^\/llm(?=\/)/, '')
   const upstream = ownCredentialFailure(

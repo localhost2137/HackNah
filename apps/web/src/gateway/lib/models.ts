@@ -12,6 +12,7 @@ import {
 } from '@acl/shared'
 import { asc, eq } from 'drizzle-orm'
 import { TtlCache } from './cache.ts'
+import { demoResponse } from './demo-model.ts'
 import { upstreamRequest } from './upstream.ts'
 
 export type CatalogModel = ModelEntry & { apiKeyEnc: string | null }
@@ -50,7 +51,8 @@ export type UpstreamRoute = {
   apiKey: string | null
   /** Model id to send upstream. */
   model: string
-  format: 'anthropic' | 'openai'
+  /** `demo`: no provider key anywhere, so the scripted demo model answers. */
+  format: 'anthropic' | 'openai' | 'demo'
   entry: CatalogModel | null
 }
 
@@ -65,7 +67,12 @@ export async function routeModel(
 ): Promise<UpstreamRoute | { error: string }> {
   const fallback = { baseUrl: env.UPSTREAM_BASE_URL, apiKey: env.OPENROUTER_API_KEY }
   if (catalog.length === 0)
-    return { ...fallback, model: requested, format: 'anthropic', entry: null }
+    return {
+      ...fallback,
+      model: requested,
+      format: fallback.apiKey ? 'anthropic' : 'demo',
+      entry: null,
+    }
   const entry = findModel(catalog, requested) as CatalogModel | null
   if (!entry) return { error: `Model ${requested} is not in the organization's model catalog` }
   const apiKey = entry.apiKeyEnc
@@ -80,7 +87,9 @@ export async function routeModel(
     baseUrl: entry.baseUrl || defaultBase,
     apiKey,
     model: entry.upstreamModel || requested,
-    format: entry.apiFormat,
+    // An entry served by the default upstream needs the gateway's key; one with its own
+    // address (a local model, say) may need none.
+    format: !apiKey && !entry.baseUrl ? 'demo' : entry.apiFormat,
     entry,
   }
 }
@@ -96,6 +105,7 @@ export async function fetchMessages(
   incoming: Request,
   body: MessagesRequest,
 ): Promise<Response> {
+  if (route.format === 'demo') return demoResponse(body, route.model)
   if (route.format === 'anthropic')
     return fetch(upstreamRequest(env, route, incoming, '/v1/messages', JSON.stringify(body)))
   const request = upstreamRequest(
