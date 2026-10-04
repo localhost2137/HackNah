@@ -17,6 +17,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
+import { Route as AppAttackAnalysisRouteImport } from './routes/_app/attack-analysis'
 import { Route as AppDevicesRouteImport } from './routes/_app/devices'
 import { Route as AppEventsRouteImport } from './routes/_app/events'
 import { Route as AppIntegrationsRouteImport } from './routes/_app/integrations'
@@ -28,6 +29,8 @@ import { Route as ApiPolicyRouteImport } from './routes/api/policy'
 import { Route as AppAccessGroupsRouteImport } from './routes/_app/access/groups'
 import { Route as AppAccessMembersRouteImport } from './routes/_app/access/members'
 import { Route as AppAccessResourcesRouteImport } from './routes/_app/access/resources'
+import { Route as AppAttackAnalysisIndexRouteImport } from './routes/_app/attack-analysis/index'
+import { Route as AppAttackAnalysisDatasetIdRouteImport } from './routes/_app/attack-analysis/$datasetId'
 import { Route as AppIntegrationsServerIdRouteImport } from './routes/_app/integrations_.$serverId'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsConnectRouteImport } from './routes/_app/settings/connect'
@@ -75,6 +78,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppApprovalsRoute = AppApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAttackAnalysisRoute = AppAttackAnalysisRouteImport.update({
+  id: '/attack-analysis',
+  path: '/attack-analysis',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDevicesRoute = AppDevicesRouteImport.update({
@@ -132,6 +140,17 @@ const AppAccessResourcesRoute = AppAccessResourcesRouteImport.update({
   path: '/access/resources',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAttackAnalysisIndexRoute = AppAttackAnalysisIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppAttackAnalysisRoute,
+} as any)
+const AppAttackAnalysisDatasetIdRoute =
+  AppAttackAnalysisDatasetIdRouteImport.update({
+    id: '/$datasetId',
+    path: '/$datasetId',
+    getParentRoute: () => AppAttackAnalysisRoute,
+  } as any)
 const AppIntegrationsServerIdRoute = AppIntegrationsServerIdRouteImport.update({
   id: '/integrations_/$serverId',
   path: '/integrations/$serverId',
@@ -187,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/approvals': typeof AppApprovalsRoute
+  '/attack-analysis': typeof AppAttackAnalysisRouteWithChildren
   '/devices': typeof AppDevicesRoute
   '/events': typeof AppEventsRoute
   '/integrations': typeof AppIntegrationsRoute
@@ -198,11 +218,13 @@ export interface FileRoutesByFullPath {
   '/access/groups': typeof AppAccessGroupsRoute
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
+  '/attack-analysis/$datasetId': typeof AppAttackAnalysisDatasetIdRoute
   '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
   '/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
+  '/attack-analysis/': typeof AppAttackAnalysisIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/workflows/': typeof AppWorkflowsIndexRoute
   '/workflows/$workflowId/impact': typeof AppWorkflowsWorkflowIdImpactRoute
@@ -227,11 +249,13 @@ export interface FileRoutesByTo {
   '/access/groups': typeof AppAccessGroupsRoute
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
+  '/attack-analysis/$datasetId': typeof AppAttackAnalysisDatasetIdRoute
   '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
   '/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
+  '/attack-analysis': typeof AppAttackAnalysisIndexRoute
   '/settings': typeof AppSettingsIndexRoute
   '/workflows': typeof AppWorkflowsIndexRoute
   '/workflows/$workflowId/impact': typeof AppWorkflowsWorkflowIdImpactRoute
@@ -246,6 +270,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/_app/approvals': typeof AppApprovalsRoute
+  '/_app/attack-analysis': typeof AppAttackAnalysisRouteWithChildren
   '/_app/devices': typeof AppDevicesRoute
   '/_app/events': typeof AppEventsRoute
   '/_app/integrations': typeof AppIntegrationsRoute
@@ -258,11 +283,13 @@ export interface FileRoutesById {
   '/_app/access/groups': typeof AppAccessGroupsRoute
   '/_app/access/members': typeof AppAccessMembersRoute
   '/_app/access/resources': typeof AppAccessResourcesRoute
+  '/_app/attack-analysis/$datasetId': typeof AppAttackAnalysisDatasetIdRoute
   '/_app/integrations_/$serverId': typeof AppIntegrationsServerIdRoute
   '/_app/settings/connect': typeof AppSettingsConnectRoute
   '/_app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
+  '/_app/attack-analysis/': typeof AppAttackAnalysisIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/workflows/': typeof AppWorkflowsIndexRoute
   '/_app/workflows/$workflowId_/impact': typeof AppWorkflowsWorkflowIdImpactRoute
@@ -278,6 +305,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/approvals'
+    | '/attack-analysis'
     | '/devices'
     | '/events'
     | '/integrations'
@@ -289,11 +317,13 @@ export interface FileRouteTypes {
     | '/access/groups'
     | '/access/members'
     | '/access/resources'
+    | '/attack-analysis/$datasetId'
     | '/integrations/$serverId'
     | '/settings/connect'
     | '/workflows/$workflowId'
     | '/api/auth/$'
     | '/api/oauth/callback'
+    | '/attack-analysis/'
     | '/settings/'
     | '/workflows/'
     | '/workflows/$workflowId/impact'
@@ -318,11 +348,13 @@ export interface FileRouteTypes {
     | '/access/groups'
     | '/access/members'
     | '/access/resources'
+    | '/attack-analysis/$datasetId'
     | '/integrations/$serverId'
     | '/settings/connect'
     | '/workflows/$workflowId'
     | '/api/auth/$'
     | '/api/oauth/callback'
+    | '/attack-analysis'
     | '/settings'
     | '/workflows'
     | '/workflows/$workflowId/impact'
@@ -336,6 +368,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/_app/approvals'
+    | '/_app/attack-analysis'
     | '/_app/devices'
     | '/_app/events'
     | '/_app/integrations'
@@ -348,11 +381,13 @@ export interface FileRouteTypes {
     | '/_app/access/groups'
     | '/_app/access/members'
     | '/_app/access/resources'
+    | '/_app/attack-analysis/$datasetId'
     | '/_app/integrations_/$serverId'
     | '/_app/settings/connect'
     | '/_app/workflows/$workflowId'
     | '/api/auth/$'
     | '/api/oauth/callback'
+    | '/_app/attack-analysis/'
     | '/_app/settings/'
     | '/_app/workflows/'
     | '/_app/workflows/$workflowId_/impact'
@@ -429,6 +464,13 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/approvals'
       preLoaderRoute: typeof AppApprovalsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/attack-analysis': {
+      id: '/_app/attack-analysis'
+      path: '/attack-analysis'
+      fullPath: '/attack-analysis'
+      preLoaderRoute: typeof AppAttackAnalysisRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/devices': {
@@ -508,6 +550,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessResourcesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/attack-analysis/': {
+      id: '/_app/attack-analysis/'
+      path: '/'
+      fullPath: '/attack-analysis/'
+      preLoaderRoute: typeof AppAttackAnalysisIndexRouteImport
+      parentRoute: typeof AppAttackAnalysisRoute
+    }
+    '/_app/attack-analysis/$datasetId': {
+      id: '/_app/attack-analysis/$datasetId'
+      path: '/$datasetId'
+      fullPath: '/attack-analysis/$datasetId'
+      preLoaderRoute: typeof AppAttackAnalysisDatasetIdRouteImport
+      parentRoute: typeof AppAttackAnalysisRoute
+    }
     '/_app/integrations_/$serverId': {
       id: '/_app/integrations_/$serverId'
       path: '/integrations/$serverId'
@@ -574,8 +630,22 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppAttackAnalysisRouteChildren {
+  AppAttackAnalysisDatasetIdRoute: typeof AppAttackAnalysisDatasetIdRoute
+  AppAttackAnalysisIndexRoute: typeof AppAttackAnalysisIndexRoute
+}
+
+const AppAttackAnalysisRouteChildren: AppAttackAnalysisRouteChildren = {
+  AppAttackAnalysisDatasetIdRoute: AppAttackAnalysisDatasetIdRoute,
+  AppAttackAnalysisIndexRoute: AppAttackAnalysisIndexRoute,
+}
+
+const AppAttackAnalysisRouteWithChildren =
+  AppAttackAnalysisRoute._addFileChildren(AppAttackAnalysisRouteChildren)
+
 interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
+  AppAttackAnalysisRoute: typeof AppAttackAnalysisRouteWithChildren
   AppDevicesRoute: typeof AppDevicesRoute
   AppEventsRoute: typeof AppEventsRoute
   AppIntegrationsRoute: typeof AppIntegrationsRoute
@@ -596,6 +666,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppApprovalsRoute: AppApprovalsRoute,
+  AppAttackAnalysisRoute: AppAttackAnalysisRouteWithChildren,
   AppDevicesRoute: AppDevicesRoute,
   AppEventsRoute: AppEventsRoute,
   AppIntegrationsRoute: AppIntegrationsRoute,

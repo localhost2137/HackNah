@@ -9,6 +9,20 @@ while a request that starts no workflow, or whose path ends in Skip, is allowed.
 approvals and manages policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
 Durable Objects).
 
+## Attack analysis
+
+Open **Attack analysis**, choose a synthetic traffic dataset, and run it against the current published
+workflows. Results and policy snapshots are saved server-side (D1 index, R2 payloads), with the latest
+ten valid runs available per dataset across browser sessions. Synthetic identities use the selected
+group context; no production requests are sent. Missing judge or limit evaluation is inconclusive.
+
+Migration `0010_analysis_runs.sql` adds a per-organization rule revision. Workflow edits and publishing,
+access rules, limits, model catalog changes and relevant integration changes invalidate all saved runs
+for that organization. Reverting a rule does not restore old results. Runs reject concurrent rule
+changes; reads only return the current revision and synthetic catalog version. Invalidated payloads
+remain stored but are not offered as current results. Bump `catalogVersion` when changing the synthetic
+traffic or replay semantics. Apply migrations before starting or deploying the updated app.
+
 ## Layout
 
 | Path | What it is |

@@ -550,3 +550,27 @@ export const auditLog = sqliteTable(
   },
   (t) => [index('audit_org_created_idx').on(t.orgId, t.createdAt)],
 )
+
+/** Monotonic revision maintained by policy-table triggers; reverting a rule cannot revive runs. */
+export const analysisRevision = sqliteTable('analysis_revision', {
+  orgId: text().primaryKey(),
+  revision: integer().notNull().default(0),
+})
+
+/** Large evaluation payloads live in R2; D1 holds the searchable, revision-scoped index. */
+export const analysisRun = sqliteTable(
+  'analysis_run',
+  {
+    id: text().primaryKey(),
+    orgId: text().notNull(),
+    datasetId: text().notNull(),
+    revision: integer().notNull(),
+    catalogVersion: text().notNull(),
+    createdBy: text().notNull(),
+    createdAt: createdAt(),
+    total: integer().notNull(),
+    correct: integer().notNull(),
+    payloadKey: text().notNull(),
+  },
+  (t) => [index('analysis_run_scope_idx').on(t.orgId, t.revision, t.catalogVersion, t.createdAt)],
+)
