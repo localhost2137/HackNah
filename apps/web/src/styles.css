@@ -250,6 +250,15 @@
   font-weight: 500;
   color: var(--color-fg);
 }
+.demo-tour code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--color-panel-2);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--color-fg);
+  user-select: all;
+}
 .demo-tour kbd {
   padding: 0 5px;
   border: 1px solid var(--color-line-strong);

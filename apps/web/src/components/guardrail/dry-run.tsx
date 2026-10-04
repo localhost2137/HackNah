@@ -175,7 +175,7 @@ export function DryRun({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex flex-col gap-4 p-4" data-tour="dry-run">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Stage">
           <Select value={form.kind} onChange={(e) => set('kind', e.target.value as Form['kind'])}>
@@ -381,9 +381,11 @@ export function DryRun({
         {result ? (
           <>
             {result === 'not_triggered' ? (
-              <Badge tone="neutral">not started</Badge>
+              <Badge tone="neutral" data-tour="dry-run-result">
+                not started
+              </Badge>
             ) : (
-              <Badge tone={decisionTone[result.decision]} dot>
+              <Badge tone={decisionTone[result.decision]} dot data-tour="dry-run-result">
                 {result.approvalMethod
                   ? `needs ${approvalLabels[result.approvalMethod]}`
                   : result.decision === 'skip'

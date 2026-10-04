@@ -652,6 +652,7 @@ function Editor({
           <aside
             role="dialog"
             aria-label="Choose next step"
+            data-tour="guardrail-step-picker"
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 setPaletteOpen(false)
@@ -752,7 +753,10 @@ function Editor({
         </div>
 
         {panelOpen && !paletteOpen ? (
-          <aside className="absolute inset-y-0 right-0 z-10 flex w-[340px] max-w-full flex-col overflow-hidden border-l border-line-strong bg-panel shadow-2xl">
+          <aside
+            data-tour="guardrail-panel"
+            className="absolute inset-y-0 right-0 z-10 flex w-[340px] max-w-full flex-col overflow-hidden border-l border-line-strong bg-panel shadow-2xl"
+          >
             <div className="flex items-center border-b border-line text-xs">
               <span className="flex-1 px-4 py-3 font-medium">{tabTitles[tab]}</span>
               <button

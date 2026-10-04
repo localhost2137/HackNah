@@ -5,6 +5,7 @@ import { Compass } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 
 type TourStep = {
+  id?: string
   /** Page the step lives on; a function resolves it at runtime and `undefined` skips the step. */
   route: string | (() => string | undefined)
   /** `[data-tour="…"]` target; without one the popover is centered on the page. */
@@ -12,6 +13,30 @@ type TourStep = {
   title: string
   description: string
   side?: 'top' | 'right' | 'bottom' | 'left'
+  /**
+   * Makes the step interactive: the judge does it on the highlighted element, and the tour moves
+   * on once `done` holds, or back a step once `undone` does. Called when the step is shown.
+   */
+  watch?: () => { done: () => boolean; undone?: () => boolean }
+  /** Where Skip leads on an interactive step. */
+  skipTo?: string
+  /** Where Back leads, when not the previous step. */
+  backTo?: string
+}
+
+const DEMO_GUARDRAIL = 'wf_tool_calls'
+
+const selector = (target: string) => `[data-tour="${target}"]`
+const present = (target: string) => () => document.querySelector(selector(target)) !== null
+
+/** Holds once the target shows up after having been absent, so going Back does not skip ahead. */
+function appears(target: string) {
+  const shown = present(target)
+  let absent = !shown()
+  return () => {
+    if (!shown()) absent = true
+    return absent && shown()
+  }
 }
 
 function buildSteps(guardrailHref: () => string | undefined): TourStep[] {
@@ -99,31 +124,79 @@ function buildSteps(guardrailHref: () => string | undefined): TourStep[] {
       side: 'left',
       title: 'Visual policy editor',
       description:
-        'A guardrail is a flowchart. A request enters at <b>Start</b>, passes through checks (prompt-injection detectors, data-leak scanners, allow-lists, ML classifiers…) and ends in a decision.',
+        'A guardrail is a flowchart. A request enters at <b>Start</b>, passes through checks (prompt-injection detectors, data-leak scanners, allow-lists, ML classifiers…) and ends in a decision.<br><br>Now try it yourself. Nothing you change here is saved.',
     },
     {
+      id: 'add-step',
       route: guardrailHref,
       target: 'guardrail-add-step',
       side: 'bottom',
-      title: 'Add a step',
-      description:
-        'Adds a check, branch or decision. Suggested steps are listed first, based on what the guardrail already does.',
+      title: 'Try it: add a step',
+      description: 'Click <b>Add step</b> to insert a new check right after <b>Start</b>.',
+      watch: () => ({ done: appears('guardrail-step-picker') }),
+      skipTo: 'impact',
     },
     {
       route: guardrailHref,
-      target: 'guardrail-test',
-      side: 'bottom',
-      title: 'Dry run',
+      target: 'guardrail-step-picker',
+      side: 'right',
+      title: 'Pick a check',
       description:
-        'Paste a sample prompt or tool call and see which path it takes through the flowchart, before anything is published.',
+        'Suggested steps come first, based on what this guardrail already does. Pick one, for example <b>Keyword match</b>. <b>Other elements</b> lists everything else.',
+      watch: () => ({
+        done: present('guardrail-panel'),
+        undone: () => !present('guardrail-step-picker')() && !present('guardrail-panel')(),
+      }),
+      skipTo: 'impact',
     },
     {
+      route: guardrailHref,
+      target: 'guardrail-panel',
+      side: 'left',
+      title: 'Configure it',
+      description:
+        'The new step is wired into the flow and selected. Its settings are here: patterns, thresholds, and where each outcome leads. Anything left to fix is marked in red.',
+      backTo: 'add-step',
+    },
+    {
+      id: 'test',
+      route: guardrailHref,
+      target: 'guardrail-test',
+      side: 'bottom',
+      title: 'Try it: test a request',
+      description:
+        'Click <b>Test request</b> to dry-run a request through this flowchart, without sending anything.',
+      watch: () => ({ done: appears('dry-run') }),
+      skipTo: 'impact',
+    },
+    {
+      route: guardrailHref,
+      target: 'guardrail-panel',
+      side: 'left',
+      title: 'Run a dangerous command',
+      description:
+        'The form is prefilled with a harmless Bash tool call. Replace the arguments with <code>{"command":"git push --force"}</code> and click <b>Run</b>.',
+      watch: () => ({ done: present('dry-run-result') }),
+      skipTo: 'impact',
+      backTo: 'test',
+    },
+    {
+      route: guardrailHref,
+      target: 'guardrail-panel',
+      side: 'left',
+      title: 'See why',
+      description:
+        'The badge is the decision. Below it, every check on the path says whether it passed and why, and the path the request took is highlighted in the flowchart. Try other arguments and run again.',
+      backTo: 'test',
+    },
+    {
+      id: 'impact',
       route: guardrailHref,
       target: 'guardrail-impact',
       side: 'bottom',
       title: 'Impact on past traffic',
       description:
-        'Replays recent real traffic against the draft and shows which past requests would now be blocked or allowed. Publishing creates a new version you can roll back.',
+        'Before publishing, <b>Impact</b> replays recent real traffic against the draft and shows which past requests would now be blocked or allowed. Publishing creates a new version you can roll back.<br><br>Your edits only live in this tab and are discarded when you leave the page. On this shared demo, please don’t click <b>Save draft</b> or <b>Publish</b>.',
     },
     {
       route: '/datasets',
@@ -181,8 +254,6 @@ function buildSteps(guardrailHref: () => string | undefined): TourStep[] {
   ]
 }
 
-const selector = (target: string) => `[data-tour="${target}"]`
-
 export function DemoTourButton() {
   const router = useRouter()
   const tour = useRef<Driver | null>(null)
@@ -194,15 +265,22 @@ export function DemoTourButton() {
 
     const resolve = (step: TourStep) =>
       typeof step.route === 'function' ? step.route() : step.route
+    const indexOf = (id: string | undefined) => steps.findIndex((s) => id && s.id === id)
+
+    let stopWatching = () => {}
 
     const go = async (index: number, direction: 1 | -1) => {
+      stopWatching()
       const instance = tour.current
       if (!instance) return
       const step = steps[index]
       if (!step) return instance.destroy()
       if (index > 0 && steps[index - 1]?.target === 'guardrail-list') {
         guardrailHref ??=
-          document.querySelector(selector('guardrail-link'))?.getAttribute('href') ?? undefined
+          (
+            document.querySelector(`a[href="/guardrails/${DEMO_GUARDRAIL}"]`) ??
+            document.querySelector(selector('guardrail-link'))
+          )?.getAttribute('href') ?? undefined
       }
       const route = resolve(step)
       if (!route) return go(index + direction, direction)
@@ -210,9 +288,29 @@ export function DemoTourButton() {
       instance.moveTo(index)
     }
 
+    const watch = (index: number) => {
+      stopWatching()
+      const check = steps[index]?.watch?.()
+      if (!check) return
+      const test = () => {
+        if (check.done()) go(index + 1, 1)
+        else if (check.undone?.()) go(index - 1, -1)
+      }
+      const observer = new MutationObserver(test)
+      observer.observe(document.body, { childList: true, subtree: true })
+      stopWatching = () => observer.disconnect()
+      test()
+    }
+
     const driveSteps: DriveStep[] = steps.map((step) => ({
       element: step.target ? selector(step.target) : undefined,
-      popover: { title: step.title, description: step.description, side: step.side },
+      disableActiveInteraction: !step.watch,
+      popover: {
+        title: step.title,
+        description: step.description,
+        side: step.side,
+        nextBtnText: step.watch ? 'Skip' : undefined,
+      },
     }))
 
     tour.current = driver({
@@ -228,15 +326,25 @@ export function DemoTourButton() {
       waitForElement: 4000,
       disableActiveInteraction: true,
       overlayClickBehavior: () => {},
+      onHighlighted: (_el, _step, { index, driver: instance }) => {
+        if (index === undefined) return
+        // Arrow keys and Escape would otherwise move the tour while the judge types in a form.
+        instance.setConfig({ ...instance.getConfig(), allowKeyboardControl: !steps[index]?.watch })
+        watch(index)
+      },
       onNextClick: (_el, _step, { index }) => {
         if (index === undefined) return
         if (index === steps.length - 1) return tour.current?.destroy()
-        go(index + 1, 1)
+        const skip = steps[index]?.watch ? indexOf(steps[index]?.skipTo) : -1
+        go(skip >= 0 ? skip : index + 1, 1)
       },
       onPrevClick: (_el, _step, { index }) => {
-        if (index) go(index - 1, -1)
+        if (!index) return
+        const back = indexOf(steps[index]?.backTo)
+        go(back >= 0 ? back : index - 1, -1)
       },
       onDestroyed: () => {
+        stopWatching()
         tour.current = null
       },
     })
