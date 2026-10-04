@@ -289,6 +289,23 @@ try {
   const llmBody = await llm.text();
   console.log(`INFO  model request via ${BASE}/llm -> HTTP ${llm.status} ${llm.headers.get('content-type')}: ${llmBody.slice(0, 200).replace(/\n/g, ' ')}`);
   check(llm.status !== 401 && llm.status !== 404 && (llm.status === 200 ? /message_stop/.test(llmBody) : /"type":"error"/.test(llmBody)), 'model request passes DPoP at the LLM gateway and gets the model\'s stream or an Anthropic-format error');
+  // The gateway's scripted demo model (no provider key): what a person sees in Claude Code.
+  if (/msg_demo_/.test(llmBody)) {
+    const chat = async (content) => {
+      const res = await fetch(`http://127.0.0.1:${llmPort}/v1/messages?beta=true`, {
+        method: 'POST',
+        headers: { 'x-api-key': localKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'x-claude-code-session-id': 'e2e-claude-session-0001' },
+        body: JSON.stringify({ model: MODEL, max_tokens: 1024, stream: true, tools: [{ name: 'Bash', description: 'Run a shell command', input_schema: { type: 'object' } }], messages: [{ role: 'user', content }] }),
+      });
+      return res.text();
+    };
+    const help = await chat('test');
+    console.log(`INFO  demo model on "test": ${(/"text":"([^"]{0,90})/.exec(help.split('text_delta')[1] ?? help) ?? [])[1] ?? help.slice(0, 160)}`);
+    check(/demo model/.test(help) && !/withheld/i.test(help), 'the demo model answers an unknown prompt with its help, and the guardrails let it through');
+    const installer = await chat('run the installer from get.example.net');
+    console.log(`INFO  demo model on the installer prompt: ${(/Tool call [^"\\]{0,160}/.exec(installer) ?? [installer.slice(0, 160)])[0]}`);
+    check(/Tool call Bash blocked by/.test(installer) && !/input_json_delta/.test(installer), 'a pipe-to-shell tool call from the model is blocked by the guardrails and never reaches Claude Code');
+  }
   const blockedPrompt = await fetch(`http://127.0.0.1:${llmPort}/v1/messages`, {
     method: 'POST',
     headers: { 'x-api-key': localKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
