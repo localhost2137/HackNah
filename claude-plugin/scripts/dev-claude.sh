@@ -25,7 +25,7 @@ if [[ "$(cd "$CLAUDE_CONFIG_DIR" 2>/dev/null && pwd)" == "$HOME/.claude" ]]; the
   exit 1
 fi
 export HY_DATA_DIR="${HY_DATA_DIR:-/tmp/hy-data}"
-export HY_PLATFORM_URL="${HY_PLATFORM_URL:-http://127.0.0.1:8787}"
+export HY_PLATFORM_URL="${HY_PLATFORM_URL:-http://localhost:3000}"
 export HY_LLM_PORT="${HY_LLM_PORT:-47821}"
 # EDR posture: the real CrowdStrike file if this Mac has a Falcon sensor, else the
 # mock one written by `npm run zta -- <score>`.
@@ -47,7 +47,7 @@ for a in "$@"; do
 done
 
 if ! curl -fsS "$HY_PLATFORM_URL/.well-known/hy-platform" >/dev/null 2>&1; then
-  echo "platform not reachable at $HY_PLATFORM_URL; start it with: npm run mock (or npm run mock:auto)" >&2
+  echo "gateway not reachable at $HY_PLATFORM_URL; start it with: pnpm dev (in the repository root)" >&2
   exit 1
 fi
 

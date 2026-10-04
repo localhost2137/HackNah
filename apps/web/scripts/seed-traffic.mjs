@@ -332,6 +332,9 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
         created_at: now,
       })
     }
+    // The two accounts people sign in with get no seeded device: the first laptop they connect
+    // with the plugin is then trusted straight away instead of waiting for approval.
+    if (!person.name) continue
     insert('device', {
       id: `${person.id}-device`,
       org_id: 'seed-org',
@@ -351,6 +354,7 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
 
   // Seeded events are replaced on every run, so the month always ends today.
   sql.push(`DELETE FROM event WHERE id LIKE 'seed-event-%';`)
+  sql.push(`DELETE FROM device WHERE id IN ('seed-admin-device', 'seed-member-device');`)
   const random = rng(20261004)
   const pick = (list) => list[Math.floor(random() * list.length)]
   const between = (min, max) => Math.round(min + random() * (max - min))
@@ -382,7 +386,7 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
       id: `seed-event-${count++}`,
       org_id: 'seed-org',
       user_id: session.person.id,
-      device_id: `${session.person.id}-device`,
+      ...(session.person.name ? { device_id: `${session.person.id}-device` } : {}),
       session_id: session.id,
       kind,
       ...(kind === 'tool_call' || kind === 'tool_result' ? { tool_name: extra.toolName } : {}),

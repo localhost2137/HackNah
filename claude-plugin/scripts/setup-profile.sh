@@ -31,7 +31,7 @@ if [[ "$(cd "$CLAUDE_CONFIG_DIR" 2>/dev/null && pwd)" == "$HOME/.claude" ]]; the
   exit 1
 fi
 export HY_DATA_DIR="${HY_DATA_DIR:-/tmp/hy-data}"
-export HY_PLATFORM_URL="${HY_PLATFORM_URL:-http://127.0.0.1:8787}"
+export HY_PLATFORM_URL="${HY_PLATFORM_URL:-http://localhost:3000}"
 export HY_LLM_PORT="${HY_LLM_PORT:-47821}"
 # EDR posture: the real CrowdStrike file if this Mac has a Falcon sensor, else the mock one.
 if [[ -z "${HY_ZTA_FILE:-}" && ! -f "/Library/Application Support/Crowdstrike/ZeroTrustAssessment/data.zta" ]]; then

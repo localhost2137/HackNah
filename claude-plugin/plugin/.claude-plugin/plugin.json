@@ -12,7 +12,7 @@
       "type": "string",
       "title": "Platform URL",
       "description": "Base URL of the security platform. Endpoints are discovered from <url>/.well-known/hy-platform.",
-      "default": "http://127.0.0.1:8787"
+      "default": "http://localhost:3000"
     },
     "key_provider": {
       "type": "string",

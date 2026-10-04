@@ -23,7 +23,7 @@ export const config = {
    * An explicit HY_PLATFORM_URL in the environment (launcher, tests) wins over the
    * plugin's userConfig value, which .mcp.json passes as HY_PLATFORM_URL_CONFIG.
    */
-  platformUrl: env('HY_PLATFORM_URL', env('HY_PLATFORM_URL_CONFIG', 'http://127.0.0.1:8787')).replace(/\/+$/, ''),
+  platformUrl: env('HY_PLATFORM_URL', env('HY_PLATFORM_URL_CONFIG', 'http://localhost:3000')).replace(/\/+$/, ''),
   /** auto | secure-enclave | software (same precedence as platformUrl) */
   keyProvider: env('HY_KEY_PROVIDER', env('HY_KEY_PROVIDER_CONFIG', 'auto')),
   /** Use the Touch ID key for destructive tools when it exists. */
