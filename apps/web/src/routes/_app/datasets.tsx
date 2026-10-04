@@ -162,7 +162,11 @@ function DatasetsPage() {
             <Button disabled={upload.isPending} onClick={() => fileInput.current?.click()}>
               <Upload /> {upload.isPending ? 'Uploading…' : 'Upload file'}
             </Button>
-            <Button variant="primary" onClick={() => setImporting(true)}>
+            <Button
+              variant="primary"
+              onClick={() => setImporting(true)}
+              data-tour="datasets-import"
+            >
               <Plus /> Add from Hugging Face
             </Button>
           </>
@@ -174,7 +178,7 @@ function DatasetsPage() {
         </div>
       ) : null}
 
-      <Card>
+      <Card data-tour="datasets-table">
         <div className="border-b border-line p-3">
           <Input
             aria-label="Search datasets"

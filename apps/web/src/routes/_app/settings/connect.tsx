@@ -39,7 +39,7 @@ function ConnectPage() {
         title="Claude Code plugin"
         description="Connects Claude Code on a laptop to this gateway."
       />
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2" data-tour="connect-options">
         <Card>
           <CardHeader
             title="With the script"

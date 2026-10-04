@@ -178,14 +178,14 @@ function IntegrationsPage() {
       ) : null}
 
       {servers.length === 0 ? (
-        <Card>
+        <Card data-tour="integrations-list">
           <EmptyState
             title="No MCP servers"
             description="Add GitHub, Jira or any MCP server that speaks Streamable HTTP."
           />
         </Card>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid gap-3 lg:grid-cols-2" data-tour="integrations-list">
           {servers.map((s) => {
             const shared = s.credentialMode === 'org'
             const cred = shared ? s.orgCredential : s.myCredential

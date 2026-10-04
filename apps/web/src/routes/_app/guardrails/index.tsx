@@ -151,7 +151,7 @@ function GuardrailsPage() {
           </span>
         </div>
       ) : null}
-      <Card>
+      <Card data-tour="guardrail-list">
         <CardHeader title="All guardrails" actions={<Badge>{list.length} total</Badge>} />
         {list.length === 0 ? (
           <EmptyState
@@ -202,6 +202,7 @@ function GuardrailsPage() {
                     <Link
                       to="/guardrails/$guardrailId"
                       params={{ guardrailId: w.id }}
+                      data-tour={i === 0 ? 'guardrail-link' : undefined}
                       className="text-sm font-medium hover:text-accent-strong"
                     >
                       {w.name}

@@ -249,7 +249,7 @@ function EventsPage() {
         title="Logs"
         description="Every prompt and tool call that went through the gateway, with the checks that ran on it."
         actions={
-          <div className="flex gap-2">
+          <div className="flex gap-2" data-tour="events-actions">
             {(['csv', 'jsonl'] as const).map((format) => (
               <Button
                 key={format}
@@ -271,6 +271,7 @@ function EventsPage() {
         }
       />
       <details
+        data-tour="events-approvals"
         className="mb-4 rounded-lg border border-line bg-panel"
         onToggle={(e) => setApprovalsOpen(e.currentTarget.open)}
       >
@@ -285,7 +286,7 @@ function EventsPage() {
         ) : null}
       </details>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2" data-tour="events-filters">
         <Segmented<TimeRange>
           value={search.range}
           onChange={(range) => setSearch({ range })}
@@ -358,7 +359,7 @@ function EventsPage() {
         ) : null}
       </div>
 
-      <Card>
+      <Card data-tour="events-table">
         {rows.length === 0 && !query.isLoading ? (
           <EmptyState
             title="No events yet"

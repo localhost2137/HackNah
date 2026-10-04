@@ -73,7 +73,10 @@ function Overview() {
           />
         }
       />
-      <div className="overview-stats grid grid-cols-2 overflow-hidden rounded-lg border border-line bg-panel/30 lg:grid-cols-4">
+      <div
+        data-tour="overview-stats"
+        className="overview-stats grid grid-cols-2 overflow-hidden rounded-lg border border-line bg-panel/30 lg:grid-cols-4"
+      >
         <Stat label="Requests" value={num(data.total)} />
         <Stat
           label="Blocked"
@@ -85,7 +88,7 @@ function Overview() {
         <Stat label="Tokens" value={num(data.tokens)} />
       </div>
 
-      <Card className="mt-5">
+      <Card className="mt-5" data-tour="overview-traffic">
         <CardHeader
           title="Traffic"
           description="Request activity over time"
@@ -173,7 +176,7 @@ function Overview() {
       ) : null}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2" data-tour="overview-flagged">
           <CardHeader
             title="Flagged requests"
             description="Recently blocked, declined or manually approved"

@@ -202,7 +202,11 @@ function GuardrailPage() {
                   Discard draft
                 </Button>
               ) : null}
-              <Button onClick={openImpact} disabled={!parsed?.success || save.isPending}>
+              <Button
+                onClick={openImpact}
+                disabled={!parsed?.success || save.isPending}
+                data-tour="guardrail-impact"
+              >
                 <History className="size-4" /> Impact
               </Button>
               <Button
@@ -600,6 +604,7 @@ function Editor({
           {isAdmin ? (
             <Button
               variant={paletteOpen ? 'primary' : 'ghost'}
+              data-tour="guardrail-add-step"
               onClick={() => {
                 setPickerPosition({ left: 16, top: 16 })
                 const source = selected && nodeOutputs(selected).length ? selected : trigger
@@ -629,6 +634,7 @@ function Editor({
             <Button
               key={t}
               variant={panelOpen && tab === t ? 'primary' : 'ghost'}
+              data-tour={t === 'test' ? 'guardrail-test' : undefined}
               onClick={() => {
                 setTab(t)
                 setPaletteOpen(false)
@@ -703,7 +709,11 @@ function Editor({
             </div>
           </aside>
         ) : null}
-        <div ref={canvasRef} className="guardrail-canvas min-w-0 flex-1">
+        <div
+          ref={canvasRef}
+          className="guardrail-canvas min-w-0 flex-1"
+          data-tour="guardrail-canvas"
+        >
           <ReactFlow<FlowNode>
             colorMode="dark"
             nodes={nodes}

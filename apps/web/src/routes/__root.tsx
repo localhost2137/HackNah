@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, HeadContent, Scripts } from '@tanstack/react-router'
 import flowCss from '@xyflow/react/dist/style.css?url'
+import tourCss from 'driver.js/dist/driver.css?url'
 import type * as React from 'react'
 import appCss from '../styles.css?url'
 
@@ -14,6 +15,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     links: [
       { rel: 'icon', type: 'image/svg+xml', href: '/brand/favicon.svg' },
       { rel: 'stylesheet', href: flowCss },
+      { rel: 'stylesheet', href: tourCss },
       { rel: 'stylesheet', href: appCss },
     ],
   }),

@@ -170,7 +170,7 @@ function LimitsPage() {
           ) : null
         }
       />
-      <Card>
+      <Card data-tour="limits-table">
         {(limits.data ?? []).length === 0 ? (
           <EmptyState
             title="No limits"

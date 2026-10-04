@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { type ComponentType, useState } from 'react'
 import { BrandLogo } from '#/components/brand-logo.tsx'
+import { DemoTourButton } from '#/components/demo-tour.tsx'
 import { authClient } from '#/lib/auth-client.ts'
 import { LiveProvider } from '#/lib/live.tsx'
 import { getViewer } from '#/server/fns/viewer.ts'
@@ -123,6 +124,7 @@ function AppLayout() {
               <ChevronRight className="size-3 text-subtle" />
               <span className="truncate font-medium">{current?.label ?? 'Overview'}</span>
             </div>
+            <DemoTourButton />
           </header>
           <div className="workspace-content mx-auto max-w-[1440px] px-4 py-7 sm:px-7 lg:px-10 lg:py-9">
             <Outlet />
@@ -162,7 +164,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         >
           <BrandLogo className="w-[112px] grayscale brightness-150" />
         </Link>
-        <nav aria-label="Main navigation" className="flex-1 overflow-y-auto px-3">
+        <nav aria-label="Main navigation" data-tour="nav" className="flex-1 overflow-y-auto px-3">
           {nav.map((section, i) => (
             <div key={section.title ?? i} className="mb-6">
               {section.title ? (

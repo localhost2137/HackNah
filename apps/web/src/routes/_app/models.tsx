@@ -174,7 +174,7 @@ function ModelsPage() {
           ) : null
         }
       />
-      <Card>
+      <Card data-tour="models-table">
         {models.length === 0 ? (
           <EmptyState
             title="No models in the catalog"
