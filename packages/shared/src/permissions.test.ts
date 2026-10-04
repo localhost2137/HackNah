@@ -2,30 +2,25 @@ import { describe, expect, it } from 'vitest'
 import {
   builtinToolAllowed,
   isBuiltinTool,
-  mcpServerAllowed,
-  mcpToolAllowed,
   mergePermissions,
   modelAllowed,
   NO_PERMISSIONS,
+  normalizePermissions,
+  resourceCoversTool,
+  resourcePatterns,
   withMcpTool,
 } from './permissions.ts'
 
 describe('group permissions', () => {
   const merged = mergePermissions([
-    { models: ['claude-haiku-*'], builtinTools: ['Read', 'Grep'], mcp: { gh: ['get_issue'] } },
-    {
-      models: ['claude-sonnet-*', 'claude-haiku-*'],
-      builtinTools: ['Bash'],
-      mcp: { gh: ['list_*'], linear: ['*'] },
-    },
-    // Stored before MCP permissions existed.
+    { models: ['claude-haiku-*'], builtinTools: ['Read', 'Grep'] },
+    { models: ['claude-sonnet-*', 'claude-haiku-*'], builtinTools: ['Bash'] },
     { models: [], builtinTools: [] },
   ])
 
   it('unions every group', () => {
     expect(merged.models).toEqual(['claude-haiku-*', 'claude-sonnet-*'])
     expect(merged.builtinTools).toEqual(['Read', 'Grep', 'Bash'])
-    expect(merged.mcp).toEqual({ gh: ['get_issue', 'list_*'], linear: ['*'] })
   })
 
   it('matches models and built-in tools by glob', () => {
@@ -36,14 +31,20 @@ describe('group permissions', () => {
     expect(modelAllowed(NO_PERMISSIONS, 'claude-haiku-4')).toBe(false)
   })
 
-  it('hides MCP servers without an entry and allows only matching tools', () => {
-    expect(mcpServerAllowed(merged, 'gh')).toBe(true)
-    expect(mcpServerAllowed(merged, 'slack')).toBe(false)
-    expect(mcpToolAllowed(merged, 'gh', 'get_issue')).toBe(true)
-    expect(mcpToolAllowed(merged, 'gh', 'list_repos')).toBe(true)
-    expect(mcpToolAllowed(merged, 'gh', 'create_issue')).toBe(false)
-    expect(mcpToolAllowed(merged, 'linear', 'anything')).toBe(true)
-    expect(mcpToolAllowed({ ...NO_PERMISSIONS, mcp: { '*': ['*'] } }, 'slack', 'post')).toBe(true)
+  it('drops the MCP section groups used to carry', () => {
+    const stored = { models: ['*'], builtinTools: [], mcp: { gh: ['*'] } }
+    expect(normalizePermissions(stored)).toEqual({ models: ['*'], builtinTools: [] })
+  })
+
+  it('matches the tools a resource holds per server, and for every server', () => {
+    const tools = { gh: ['get_issue', 'list_*'], linear: ['*'] }
+    expect(resourceCoversTool(tools, 'gh', 'get_issue')).toBe(true)
+    expect(resourceCoversTool(tools, 'gh', 'list_repos')).toBe(true)
+    expect(resourceCoversTool(tools, 'gh', 'create_issue')).toBe(false)
+    expect(resourceCoversTool(tools, 'linear', 'anything')).toBe(true)
+    expect(resourceCoversTool(tools, 'slack', 'post')).toBe(false)
+    expect(resourcePatterns(tools, 'slack')).toEqual([])
+    expect(resourceCoversTool({ '*': ['get_*'] }, 'slack', 'get_user')).toBe(true)
   })
 
   it('tells built-in tools from MCP tools', () => {

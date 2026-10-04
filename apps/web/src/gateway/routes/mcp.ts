@@ -13,7 +13,7 @@ import { type AppContext, type AppEnv, clientInfo } from '../context.ts'
 import { sessionStub } from '../do/session.ts'
 import {
   accessibleResources,
-  effectivePermissions,
+  isAdmin,
   type McpAccess,
   mcpAccess,
   mcpServerVisible,
@@ -103,11 +103,11 @@ async function handle(
 }
 
 async function userMcpAccess(c: AppContext, session: ResolvedSession): Promise<McpAccess> {
-  const [resources, permissions] = await Promise.all([
+  const [resources, admin] = await Promise.all([
     accessibleResources(c.get('db'), c.get('principal')),
-    effectivePermissions(c.get('db'), c.get('principal')),
+    isAdmin(c.get('db'), c.get('principal')),
   ])
-  return mcpAccess(resources, permissions, session.state?.resourceIds)
+  return mcpAccess(resources, admin, session.state?.resourceIds)
 }
 
 async function orgServers(db: Db, orgId: string): Promise<Server[]> {

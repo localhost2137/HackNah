@@ -90,6 +90,41 @@ describe('single-tenant migration', () => {
       db.close()
     }
   })
+  it('turns single-server resources and group MCP permissions into multi-server resources', () => {
+    const db = database()
+    try {
+      db.exec("INSERT INTO `group` VALUES ('g1','x','Backend',NULL,0)")
+      db.exec(migration('0003_single_tenant'))
+      db.exec(migration('0004_group_permissions'))
+      db.exec(migration('0006_group_mcp_permissions'))
+      const org = (db.prepare('SELECT id FROM organization').get() as { id: string }).id
+      db.prepare(
+        "INSERT INTO mcp_server (id,org_id,name,slug,url,auth_type,credential_mode,tools,enabled,created_at) VALUES ('gh',?,'GitHub','gh','https://x','none','org','[]',1,0)",
+      ).run(org)
+      db.exec(
+        "INSERT INTO resource (id,org_id,name,mcp_server_id,tool_patterns,created_at) VALUES ('r_read','x','Read','gh','[\"get_*\"]',0),('r_all','x','All','gh','[]',0)",
+      )
+      db.exec(
+        'UPDATE `group` SET permissions = json_set(permissions, \'$.mcp\', json(\'{"gh":["list_*"],"*":["search_*"]}\')) WHERE id = \'g1\'',
+      )
+      db.exec(migration('0011_resource_tools'))
+
+      expect(db.prepare('SELECT id,tools,mcp_server_id FROM resource ORDER BY id').all()).toEqual([
+        { id: 'r_all', tools: '{"gh":["*"]}', mcp_server_id: null },
+        { id: 'r_read', tools: '{"gh":["get_*"]}', mcp_server_id: null },
+        { id: 'res_grp_g1', tools: '{"gh":["list_*"],"*":["search_*"]}', mcp_server_id: null },
+      ])
+      expect(
+        db.prepare('SELECT resource_id,subject_type,subject_id FROM resource_grant').all(),
+      ).toEqual([{ resource_id: 'res_grp_g1', subject_type: 'group', subject_id: 'g1' }])
+      expect(db.prepare('SELECT id,permissions FROM `group` ORDER BY id').all()).toEqual([
+        { id: 'g1', permissions: '{"models":[],"builtinTools":[]}' },
+        { id: 'grp_default', permissions: '{"models":["*"],"builtinTools":["*"]}' },
+      ])
+    } finally {
+      db.close()
+    }
+  })
   it('refuses to silently merge an existing multi-tenant installation', () => {
     const db = database()
     try {

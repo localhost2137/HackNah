@@ -167,7 +167,7 @@ export function fixturesSql(mockPort) {
       status: 'trusted',
       created_at: now,
     }),
-    `UPDATE "group" SET permissions='{"models":["*"],"builtinTools":["*"],"mcp":{"*":["*"]}}' WHERE is_default=1;`,
+    `UPDATE "group" SET permissions='{"models":["*"],"builtinTools":["*"]}' WHERE is_default=1;`,
     'DELETE FROM model;',
     'DELETE FROM rate_limit;',
     ...Object.values(models).map((m) => insert('model', m)),

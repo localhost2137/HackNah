@@ -126,7 +126,7 @@ function WorkflowPage() {
       servers: (servers ?? []).map((s) => ({ value: s.id, label: s.name })),
       resources: (resources ?? []).map((r) => ({
         value: r.id,
-        label: r.serverName ? `${r.serverName} · ${r.name}` : r.name,
+        label: r.name,
       })),
       groups: (groups ?? []).map((g) => ({ value: g.id, label: g.name })),
       limits: (limits ?? [])

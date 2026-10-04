@@ -1,24 +1,18 @@
 import { globMatch } from './engine.ts'
 
-/** What members of a group may use. MCP tools may also be granted through resources. */
+/**
+ * What members of a group may use. MCP tools are not listed here: a group gets them through the
+ * resources granted to it.
+ */
 export type GroupPermissions = {
   /** Glob patterns over model ids, e.g. `claude-sonnet-*`. */
   models: string[]
   /** Glob patterns over Claude Code built-in tool names, e.g. `WebFetch` or `*`. */
   builtinTools: string[]
-  /**
-   * MCP servers the group sees, keyed by server id (`*` for every server), each with glob
-   * patterns over its tool names. A server without an entry is invisible to the group.
-   */
-  mcp: Record<string, string[]>
 }
 
-export const NO_PERMISSIONS: GroupPermissions = { models: [], builtinTools: [], mcp: {} }
-export const ALL_PERMISSIONS: GroupPermissions = {
-  models: ['*'],
-  builtinTools: ['*'],
-  mcp: { '*': ['*'] },
-}
+export const NO_PERMISSIONS: GroupPermissions = { models: [], builtinTools: [] }
+export const ALL_PERMISSIONS: GroupPermissions = { models: ['*'], builtinTools: ['*'] }
 
 /** Built-in tools Claude Code ships with, offered as suggestions in the dashboard. */
 export const BUILTIN_TOOLS = [
@@ -35,23 +29,18 @@ export const BUILTIN_TOOLS = [
   'Write',
 ] as const
 
-/** Fills fields added after a group's permissions were stored. */
+/** Fills fields added after a group's permissions were stored, and drops retired ones. */
 export function normalizePermissions(p: Partial<GroupPermissions>): GroupPermissions {
-  return { models: p.models ?? [], builtinTools: p.builtinTools ?? [], mcp: p.mcp ?? {} }
+  return { models: p.models ?? [], builtinTools: p.builtinTools ?? [] }
 }
 
 /** Group permissions are additive: a user may use whatever any of their groups allows. */
 export function mergePermissions(all: Partial<GroupPermissions>[]): GroupPermissions {
   const perms = all.map(normalizePermissions)
   const union = (lists: string[][]) => [...new Set(lists.flat())]
-  const mcp: Record<string, string[]> = {}
-  for (const p of perms)
-    for (const [server, tools] of Object.entries(p.mcp))
-      mcp[server] = union([mcp[server] ?? [], tools])
   return {
     models: union(perms.map((p) => p.models)),
     builtinTools: union(perms.map((p) => p.builtinTools)),
-    mcp,
   }
 }
 
@@ -59,7 +48,7 @@ export function modelAllowed(p: GroupPermissions, model: string): boolean {
   return p.models.some((pattern) => globMatch(pattern, model))
 }
 
-/** MCP tools (`mcp__*`) are governed by MCP permissions and resource grants, not by this list. */
+/** MCP tools (`mcp__*`) are governed by resource grants, not by this list. */
 export function isBuiltinTool(name: string): boolean {
   return !name.startsWith('mcp__')
 }
@@ -68,17 +57,17 @@ export function builtinToolAllowed(p: GroupPermissions, name: string): boolean {
   return p.builtinTools.some((pattern) => globMatch(pattern, name))
 }
 
-function mcpPatterns(p: GroupPermissions, serverId: string): string[] {
-  return [...(p.mcp['*'] ?? []), ...(p.mcp[serverId] ?? [])]
+/** The tool patterns a resource holds for a server, including those it holds for every server. */
+export function resourcePatterns(tools: Record<string, string[]>, serverId: string): string[] {
+  return [...(tools['*'] ?? []), ...(tools[serverId] ?? [])]
 }
 
-/** Whether the server is visible at all, i.e. at least some of its tools may be allowed. */
-export function mcpServerAllowed(p: GroupPermissions, serverId: string): boolean {
-  return mcpPatterns(p, serverId).length > 0
-}
-
-export function mcpToolAllowed(p: GroupPermissions, serverId: string, tool: string): boolean {
-  return mcpPatterns(p, serverId).some((pattern) => globMatch(pattern, tool))
+export function resourceCoversTool(
+  tools: Record<string, string[]>,
+  serverId: string,
+  tool: string,
+): boolean {
+  return resourcePatterns(tools, serverId).some((pattern) => globMatch(pattern, tool))
 }
 
 /**

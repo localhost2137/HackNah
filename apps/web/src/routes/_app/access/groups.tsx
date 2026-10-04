@@ -22,6 +22,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
+import { toolSummary } from '#/components/mcp-tool-picker.tsx'
 import { SubjectPicker } from '#/components/subject-picker.tsx'
 import {
   deleteGroup,
@@ -55,7 +56,6 @@ export const Route = createFileRoute('/_app/access/groups')({
 })
 
 type Group = Awaited<ReturnType<typeof listGroups>>[number]
-type Server = Awaited<ReturnType<typeof listMcpServers>>[number]
 type GroupDraft = {
   id?: string
   name: string
@@ -68,7 +68,6 @@ type PermissionsDraft = {
   resourceIds: string[]
   models: string
   builtinTools: string
-  mcp: Record<string, string[]>
 }
 
 const splitPatterns = (s: string) =>
@@ -113,8 +112,6 @@ function GroupsPage() {
           permissions: {
             models: splitPatterns(d.models),
             builtinTools: splitPatterns(d.builtinTools),
-            // A server with no tools picked is the same as an unchecked one.
-            mcp: Object.fromEntries(Object.entries(d.mcp).filter(([, tools]) => tools.length)),
           },
         },
       })
@@ -128,18 +125,11 @@ function GroupsPage() {
   })
 
   const resourceName = (id: string) => resources.data?.find((r) => r.id === id)?.name ?? id
-  const mcpSummary = (mcp: Record<string, string[]>) =>
-    Object.entries(mcp).map(([id, tools]) => {
-      const server =
-        id === '*' ? 'Every server' : (servers.data?.find((s) => s.id === id)?.name ?? id)
-      return tools.includes('*') ? server : `${server}: ${tools.join(', ')}`
-    })
-
   return (
     <>
       <PageHeader
         title="Groups"
-        description="Groups decide what their members may use: MCP servers and tools, models and Claude Code's built-in tools. Everyone is in the default group; permissions from all of a member's groups add up."
+        description="Groups decide what their members may use: models, Claude Code's built-in tools, and the resources (sets of MCP tools) granted to them. Everyone is in the default group; permissions from all of a member's groups add up."
         actions={
           isAdmin ? (
             <Button
@@ -185,7 +175,6 @@ function GroupsPage() {
                             resourceIds: g.resourceIds,
                             models: g.permissions.models.join('\n'),
                             builtinTools: g.permissions.builtinTools.join('\n'),
-                            mcp: g.permissions.mcp,
                           })
                         }
                       >
@@ -211,7 +200,6 @@ function GroupsPage() {
                 }
               />
               <div className="flex flex-col gap-1.5 px-4 py-3 text-xs">
-                <PermissionRow label="MCP" values={mcpSummary(g.permissions.mcp)} empty="none" />
                 <PermissionRow
                   label="Resources"
                   values={g.resourceIds.map(resourceName)}
@@ -325,11 +313,6 @@ function GroupsPage() {
       >
         {permissions ? (
           <div className="flex flex-col gap-5">
-            <McpPermissions
-              servers={servers.data ?? []}
-              value={permissions.mcp}
-              onChange={(mcp) => setPermissions({ ...permissions, mcp })}
-            />
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-muted">Resources</span>
               <ul className="max-h-60 divide-y divide-line overflow-y-auto rounded-md border border-line">
@@ -350,7 +333,9 @@ function GroupsPage() {
                         className="accent-[var(--color-accent)]"
                       />
                       <span className="flex-1 text-xs">{r.name}</span>
-                      <span className="text-[11px] text-subtle">{r.serverName}</span>
+                      <span className="text-[11px] text-subtle">
+                        {toolSummary(r.tools, servers.data ?? []).join(' · ')}
+                      </span>
                     </label>
                   </li>
                 ))}
@@ -359,7 +344,8 @@ function GroupsPage() {
                 ) : null}
               </ul>
               <span className="text-[11px] text-subtle">
-                Named sets of MCP tools from the Resources page; they add to the servers above.
+                Named sets of MCP tools from the Resources page. A group gets MCP tools only through
+                the resources ticked here.
               </span>
             </div>
             <Field
@@ -443,98 +429,6 @@ function PermissionRow({
           </Badge>
         ))}
       </div>
-    </div>
-  )
-}
-
-/**
- * Which MCP servers the group sees and which of their tools it may call. A server that is not
- * checked is hidden from the group's tool list entirely.
- */
-function McpPermissions({
-  servers,
-  value,
-  onChange,
-}: {
-  servers: Server[]
-  value: Record<string, string[]>
-  onChange: (value: Record<string, string[]>) => void
-}) {
-  const set = (id: string, tools: string[] | null) => {
-    const { [id]: _, ...rest } = value
-    onChange(tools ? { ...rest, [id]: tools } : rest)
-  }
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted">MCP servers</span>
-      <ul className="divide-y divide-line rounded-md border border-line">
-        {servers.map((s) => {
-          const tools = value[s.id]
-          const visible = tools !== undefined
-          const all = tools?.includes('*') ?? false
-          // Patterns that do not name a known tool (e.g. `get_*`) are kept and shown as is.
-          const names = [
-            ...s.tools.map((t) => t.name),
-            ...(tools ?? []).filter((t) => t !== '*' && !s.tools.some((x) => x.name === t)),
-          ]
-          return (
-            <li key={s.id} className="flex flex-col gap-2 px-3 py-2">
-              <label className="flex cursor-pointer items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={visible}
-                  onChange={(e) => set(s.id, e.target.checked ? ['*'] : null)}
-                  className="accent-[var(--color-accent)]"
-                />
-                <span className="flex-1 text-xs">{s.name}</span>
-                {!s.enabled ? <Badge>disabled</Badge> : null}
-                {visible ? (
-                  <button
-                    type="button"
-                    className="text-[11px] text-accent-strong hover:underline"
-                    onClick={() => set(s.id, all ? [] : ['*'])}
-                  >
-                    {all ? 'Pick tools' : 'All tools'}
-                  </button>
-                ) : null}
-              </label>
-              {visible && !all ? (
-                names.length === 0 ? (
-                  <p className="pl-7 text-[11px] text-subtle">
-                    Tool list not loaded yet. Refresh tools on the Integrations page.
-                  </p>
-                ) : (
-                  <div className="flex max-h-40 flex-wrap gap-1 overflow-y-auto pl-7">
-                    {names.map((name) => {
-                      const on = tools.includes(name)
-                      return (
-                        <button
-                          key={name}
-                          type="button"
-                          onClick={() =>
-                            set(s.id, on ? tools.filter((t) => t !== name) : [...tools, name])
-                          }
-                        >
-                          <Badge tone={on ? 'accent' : 'neutral'} className="font-mono">
-                            {name}
-                          </Badge>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )
-              ) : null}
-            </li>
-          )
-        })}
-        {servers.length === 0 ? (
-          <li className="px-3 py-3 text-xs text-muted">No MCP servers connected</li>
-        ) : null}
-      </ul>
-      <span className="text-[11px] text-subtle">
-        Unchecked servers are hidden from the group. Pick tools to allow only some of a server's
-        tools.
-      </span>
     </div>
   )
 }

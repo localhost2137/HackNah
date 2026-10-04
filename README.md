@@ -91,8 +91,10 @@ Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Mod
 - **Dashboard login.** Email and password, or OIDC single sign-on (Settings → Single sign-on).
   People on the configured email domain must use SSO and join as members; admins keep password login as a
   fallback. Removing a member also revokes their Claude Code devices.
-- **Access.** Admins group MCP tools into resources (tool glob patterns) and grant them to users or groups.
-  Admins can use every resource. Checks are D1 queries, cached for 10 seconds.
+- **Access.** A resource is a named set of MCP tools, from one server or several (server id to tool
+  glob patterns). Admins grant resources to users or groups, and that is the only way to give anyone
+  MCP tools; groups themselves hold models and built-in tools. Admins can call every tool.
+  Checks are D1 queries, cached for 10 seconds.
 - **MCP credentials** are AES-GCM encrypted with additional authenticated data (AAD) bound to the server and the
   user. They are only decrypted inside the Worker when calling the upstream MCP server.
 - **Redaction** replaces secrets and PII with `[REDACTED_EMAIL_1]`-style placeholders before the model sees them,
@@ -246,10 +248,9 @@ Try these investigations through the gateway/plugin once connected:
 - As admin: “Create a follow-up Jira issue for missing replay canary coverage, referencing PAY-1847.
   Use a stable idempotency key so retries do not create duplicates.”
 
-`seed-member` and the seeded SSO member belong to **Demo investigators**, which grants only read
-access through explicit per-server tool permissions. Enable Jira write tools for a group to exercise
-employee write policies. Resources are also seeded for optional session scoping; no redundant legacy
-resource grants bypass the group tool switches. Created issues/comments persist in D1, are
+`seed-member` and the seeded SSO member belong to **Demo investigators**, which is granted the three
+read-only resources (one per mock integration). Grant the **Jira · write tickets** resource to a group
+to exercise employee write policies. Created issues/comments persist in D1, are
 attributed upstream to the mock integration bot, and retain employee attribution in gateway logs.
 Creating a ticket is not a simulation of a successful write: it can be retrieved and searched afterward.
 

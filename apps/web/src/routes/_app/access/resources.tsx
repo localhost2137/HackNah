@@ -6,12 +6,10 @@ import {
   Field,
   Input,
   PageHeader,
-  Select,
   Sheet,
   Table,
   TBody,
   TD,
-  Textarea,
   TH,
   THead,
   TR,
@@ -21,6 +19,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
+import { McpToolPicker, toolSummary } from '#/components/mcp-tool-picker.tsx'
 import { type PickerOption, SubjectPicker } from '#/components/subject-picker.tsx'
 import {
   deleteResource,
@@ -53,8 +52,7 @@ type Draft = {
   id?: string
   name: string
   description: string
-  mcpServerId: string
-  toolPatterns: string
+  tools: Record<string, string[]>
 }
 
 function ResourcesPage() {
@@ -75,11 +73,7 @@ function ResourcesPage() {
           id: d.id,
           name: d.name,
           description: d.description || undefined,
-          mcpServerId: d.mcpServerId,
-          toolPatterns: d.toolPatterns
-            .split(/[\n,]/)
-            .map((s) => s.trim())
-            .filter(Boolean),
+          tools: d.tools,
         },
       }),
     onSuccess: async () => {
@@ -121,7 +115,7 @@ function ResourcesPage() {
     <>
       <PageHeader
         title="Resources"
-        description="A resource is a named set of MCP tools. Grant it to people or groups; in Claude Code a session can narrow itself to some of them with /acl resources."
+        description="A resource is a named set of MCP tools, from one server or several. Grant it to people or groups: it is the only way to give them MCP tools. In Claude Code a session can narrow itself to some resources with /acl resources."
         actions={
           isAdmin ? (
             <Button
@@ -131,8 +125,7 @@ function ResourcesPage() {
                 setEditing({
                   name: '',
                   description: '',
-                  mcpServerId: serverList[0]?.id ?? '',
-                  toolPatterns: '',
+                  tools: {},
                 })
               }
             >
@@ -164,7 +157,6 @@ function ResourcesPage() {
             <THead>
               <tr>
                 <TH>Resource</TH>
-                <TH>Server</TH>
                 <TH>Tools</TH>
                 <TH>Granted to</TH>
                 {isAdmin ? <TH /> : null}
@@ -182,16 +174,13 @@ function ResourcesPage() {
                     ) : null}
                     <div className="font-mono text-[11px] text-subtle">{r.id}</div>
                   </TD>
-                  <TD className="text-xs">{r.serverName}</TD>
                   <TD>
-                    <div className="flex max-w-72 flex-wrap gap-1">
-                      {r.toolPatterns.length === 0 ? (
-                        <Badge tone="accent">all tools</Badge>
+                    <div className="flex max-w-96 flex-wrap gap-1">
+                      {Object.keys(r.tools).length === 0 ? (
+                        <span className="text-xs text-subtle">No tools yet</span>
                       ) : (
-                        r.toolPatterns.map((p) => (
-                          <Badge key={p} className="font-mono">
-                            {p}
-                          </Badge>
+                        toolSummary(r.tools, serverList).map((line) => (
+                          <Badge key={line}>{line}</Badge>
                         ))
                       )}
                     </div>
@@ -231,8 +220,7 @@ function ResourcesPage() {
                               id: r.id,
                               name: r.name,
                               description: r.description ?? '',
-                              mcpServerId: r.mcpServerId ?? '',
-                              toolPatterns: r.toolPatterns.join('\n'),
+                              tools: r.tools,
                             })
                           }
                         >
@@ -256,6 +244,7 @@ function ResourcesPage() {
       </Card>
 
       <Sheet
+        wide
         open={editing !== null}
         onOpenChange={(o) => !o && setEditing(null)}
         title={editing?.id ? 'Edit resource' : 'New resource'}
@@ -288,35 +277,10 @@ function ResourcesPage() {
                 onChange={(e) => setEditing({ ...editing, description: e.target.value })}
               />
             </Field>
-            <Field label="MCP server">
-              <Select
-                value={editing.mcpServerId}
-                onChange={(e) => setEditing({ ...editing, mcpServerId: e.target.value })}
-              >
-                {serverList.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field
-              label="Tools"
-              hint="Tool name patterns, one per line, * as wildcard. Leave empty for every tool of the server."
-            >
-              <Textarea
-                rows={6}
-                value={editing.toolPatterns}
-                onChange={(e) => setEditing({ ...editing, toolPatterns: e.target.value })}
-                placeholder={'get_*\nlist_*\nsearch_code'}
-              />
-            </Field>
-            <ToolPreview
-              tools={serverList.find((s) => s.id === editing.mcpServerId)?.tools ?? []}
-              patterns={editing.toolPatterns
-                .split(/[\n,]/)
-                .map((s) => s.trim())
-                .filter(Boolean)}
+            <McpToolPicker
+              servers={serverList}
+              value={editing.tools}
+              onChange={(tools) => setEditing({ ...editing, tools })}
             />
             <FormError message={save.error?.message ?? null} />
           </div>
@@ -349,39 +313,5 @@ function ResourcesPage() {
         </div>
       </Sheet>
     </>
-  )
-}
-
-function ToolPreview({ tools, patterns }: { tools: { name: string }[]; patterns: string[] }) {
-  if (tools.length === 0)
-    return (
-      <p className="text-[11px] text-subtle">
-        Tool list not loaded yet. Refresh tools on the Integrations page to preview matches.
-      </p>
-    )
-  const match = (name: string) =>
-    patterns.length === 0 ||
-    patterns.some((p) =>
-      new RegExp(
-        `^${p
-          .split('*')
-          .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-          .join('.*')}$`,
-      ).test(name),
-    )
-  const matched = tools.filter((t) => match(t.name))
-  return (
-    <div>
-      <div className="mb-1.5 text-xs text-muted">
-        Matches {matched.length} of {tools.length} tools
-      </div>
-      <div className="flex max-h-40 flex-wrap gap-1 overflow-y-auto">
-        {tools.map((t) => (
-          <Badge key={t.name} tone={match(t.name) ? 'accent' : 'neutral'} className="font-mono">
-            {t.name}
-          </Badge>
-        ))}
-      </div>
-    </div>
   )
 }

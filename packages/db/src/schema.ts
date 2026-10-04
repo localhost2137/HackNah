@@ -482,8 +482,16 @@ export const resource = sqliteTable(
     orgId: text().notNull(),
     name: text().notNull(),
     description: text(),
+    /**
+     * The tools in the bundle: MCP server id (or `*` for every server) to glob patterns over its
+     * tool names, e.g. `{ "srv_github": ["create_*"], "srv_jira": ["*"] }`.
+     */
+    tools: json<Record<string, string[]>>()
+      .notNull()
+      .$defaultFn(() => ({})),
+    /** Unused since `tools`; kept because SQLite cannot drop a column with a foreign key. */
     mcpServerId: text().references(() => mcpServer.id, { onDelete: 'cascade' }),
-    /** Glob patterns over tool names, e.g. `create_*`. Empty means every tool of the server. */
+    /** Unused since `tools`. */
     toolPatterns: emptyList<string>(),
     createdAt: createdAt(),
   },

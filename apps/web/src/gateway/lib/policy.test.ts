@@ -12,14 +12,14 @@ import {
 } from './access.ts'
 
 type Row = Parameters<typeof resourcesForTool>[0][number]
-const row = (id: string, mcpServerId: string, toolPatterns: string[]) =>
-  ({ id, mcpServerId, toolPatterns, name: id }) as unknown as Row
+const row = (id: string, tools: Record<string, string[]>) =>
+  ({ id, tools, name: id }) as unknown as Row
 
 describe('resource matching', () => {
   const resources = [
-    row('read', 'gh', ['get_*', 'list_*', 'search_*']),
-    row('all', 'gh', []),
-    row('jira', 'jira', ['*']),
+    row('read', { gh: ['get_*', 'list_*', 'search_*'] }),
+    row('all', { gh: ['*'] }),
+    row('jira', { jira: ['*'] }),
   ]
 
   it('globs tool names literally apart from *', () => {
@@ -80,36 +80,47 @@ describe('group permissions', () => {
 })
 
 describe('MCP access', () => {
-  const resources = [row('res_gh', 'gh', ['list_*'])]
-  const permissions = {
-    models: [],
-    builtinTools: [],
-    mcp: { gh: ['get_issue'], linear: ['create_issue'] },
-  }
-  const access = mcpAccess(resources, permissions, undefined)
+  // One resource spans two servers; another covers every server for one kind of tool.
+  const resources = [
+    row('res_work', { gh: ['list_*'], linear: ['create_issue'] }),
+    row('res_search', { '*': ['search_*'] }),
+  ]
+  const access = mcpAccess(resources, false, undefined)
 
-  it('combines resource grants and group MCP permissions', () => {
+  it('grants what the resources hold, across servers', () => {
     expect(mcpToolAccess(access, 'gh', 'list_repos')).toEqual({
       allowed: true,
-      resourceIds: ['res_gh'],
+      resourceIds: ['res_work'],
     })
-    expect(mcpToolAccess(access, 'gh', 'get_issue')).toEqual({ allowed: true, resourceIds: [] })
-    expect(mcpToolAccess(access, 'gh', 'delete_repo').allowed).toBe(false)
     expect(mcpToolAccess(access, 'linear', 'create_issue').allowed).toBe(true)
     expect(mcpToolAccess(access, 'linear', 'delete_issue').allowed).toBe(false)
+    expect(mcpToolAccess(access, 'gh', 'delete_repo').allowed).toBe(false)
+    expect(mcpToolAccess(access, 'slack', 'search_messages')).toEqual({
+      allowed: true,
+      resourceIds: ['res_search'],
+    })
   })
 
-  it('hides servers nothing grants', () => {
+  it('shows a server when a resource holds any of its tools', () => {
     expect(mcpServerVisible(access, 'gh')).toBe(true)
     expect(mcpServerVisible(access, 'linear')).toBe(true)
-    expect(mcpServerVisible(access, 'slack')).toBe(false)
+    expect(mcpServerVisible(mcpAccess([resources[0]!], false, undefined), 'slack')).toBe(false)
+  })
+
+  it('lets admins call every tool, unless the session is narrowed', () => {
+    const admin = mcpAccess(resources, true, undefined)
+    expect(mcpToolAccess(admin, 'gh', 'delete_repo')).toEqual({ allowed: true, resourceIds: [] })
+    expect(mcpServerVisible(admin, 'anything')).toBe(true)
+    const narrowed = mcpAccess(resources, true, ['res_work'])
+    expect(mcpToolAccess(narrowed, 'gh', 'delete_repo').allowed).toBe(false)
+    expect(mcpToolAccess(narrowed, 'gh', 'list_repos').allowed).toBe(true)
   })
 
   it('keeps only the selected resources in a narrowed session', () => {
-    const scoped = mcpAccess(resources, permissions, ['res_gh'])
+    const scoped = mcpAccess(resources, false, ['res_work'])
     expect(mcpToolAccess(scoped, 'gh', 'list_repos').allowed).toBe(true)
-    expect(mcpToolAccess(scoped, 'gh', 'get_issue').allowed).toBe(false)
-    expect(mcpServerVisible(scoped, 'linear')).toBe(false)
+    expect(mcpToolAccess(scoped, 'slack', 'search_messages').allowed).toBe(false)
+    expect(mcpServerVisible(scoped, 'slack')).toBe(false)
   })
 })
 

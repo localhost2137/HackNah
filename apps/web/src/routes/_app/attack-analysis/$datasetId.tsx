@@ -512,7 +512,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
               >
                 <option value="">No resource mapping</option>
                 {resources.data
-                  ?.filter((r) => r.mcpServerId === serverId || !r.mcpServerId)
+                  ?.filter((r) => serverId in r.tools || '*' in r.tools)
                   .map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name}

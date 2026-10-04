@@ -12,7 +12,6 @@ import {
   credentialAad,
   type Decision,
   encryptString,
-  normalizePermissions,
   randomId,
   toolTierFromAnnotations,
 } from '@acl/shared'
@@ -291,7 +290,7 @@ export const getMcpServerDetail = createServerFn({ method: 'GET' })
         orderBy: [desc(group.isDefault), asc(group.name)],
       }),
       db.query.resource.findMany({
-        where: and(eq(resource.orgId, orgId), eq(resource.mcpServerId, server.id)),
+        where: eq(resource.orgId, orgId),
         orderBy: asc(resource.name),
       }),
       db
@@ -302,7 +301,7 @@ export const getMcpServerDetail = createServerFn({ method: 'GET' })
         })
         .from(resourceGrant)
         .innerJoin(resource, eq(resource.id, resourceGrant.resourceId))
-        .where(and(eq(resource.orgId, orgId), eq(resource.mcpServerId, server.id))),
+        .where(eq(resource.orgId, orgId)),
       db
         .select({
           toolName: event.toolName,
@@ -365,20 +364,13 @@ export const getMcpServerDetail = createServerFn({ method: 'GET' })
       })),
       // Tools that were called but are no longer listed by the server.
       unlistedCalls: [...usage].filter(([name]) => !tools.some((t) => t.name === name)).length,
-      groups: groups.map((g) => {
-        const { mcp } = normalizePermissions(g.permissions)
-        return {
-          id: g.id,
-          name: g.name,
-          isDefault: g.isDefault,
-          patterns: mcp[server.id] ?? [],
-          everyServer: mcp['*'] ?? [],
-        }
-      }),
+      groups: groups.map((g) => ({ id: g.id, name: g.name })),
+      // Every resource is a column: ticking a tool adds this server to that bundle.
       resources: resources.map((r) => ({
         id: r.id,
         name: r.name,
-        toolPatterns: r.toolPatterns,
+        patterns: r.tools[server.id] ?? [],
+        everyServer: r.tools['*'] ?? [],
         grants: grants.filter((g) => g.resourceId === r.id).map(({ type, id }) => ({ type, id })),
       })),
       recent: recent.map((r) => ({ ...r, toolName: bare(r.toolName) })),

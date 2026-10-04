@@ -112,7 +112,7 @@ export const runAnalysis = createServerFn({ method: 'POST' })
       db.query.group.findMany({ where: eq(group.orgId, orgId) }),
       db.select({ id: mcpServer.id }).from(mcpServer).where(eq(mcpServer.orgId, orgId)),
       db
-        .select({ id: resource.id, mcpServerId: resource.mcpServerId })
+        .select({ id: resource.id, tools: resource.tools })
         .from(resource)
         .where(eq(resource.orgId, orgId)),
     ])
@@ -124,11 +124,13 @@ export const runAnalysis = createServerFn({ method: 'POST' })
       data.resourceIds.some(
         (id) =>
           !resources.some(
-            (r) => r.id === id && (!r.mcpServerId || r.mcpServerId === data.mcpServerId),
+            (r) =>
+              r.id === id &&
+              ('*' in r.tools || (data.mcpServerId !== null && data.mcpServerId in r.tools)),
           ),
       )
     )
-      throw new Error('Resource does not belong to the selected server')
+      throw new Error('Resource does not include the selected server')
     const selectedGroups = groups.filter((g) => g.isDefault || data.groupIds.includes(g.id))
     const persona: Persona = {
       id: 'synthetic-analyst',

@@ -6,11 +6,11 @@ import {
   type GroupPermissions,
   globMatch,
   isBuiltinTool,
-  mcpServerAllowed,
-  mcpToolAllowed,
   mergePermissions,
   modelAllowed,
   NO_PERMISSIONS,
+  resourceCoversTool,
+  resourcePatterns,
 } from '@acl/shared'
 import { and, eq, inArray, isNotNull, or } from 'drizzle-orm'
 import type { Principal } from '../context.ts'
@@ -88,7 +88,7 @@ export async function userGroupIds(db: Db, p: Principal): Promise<string[]> {
   return (await userGroups(db, p)).map((g) => g.id)
 }
 
-/** Models, built-in tools and MCP tools the user may use. Admins may use everything. */
+/** Models and built-in tools the user may use. Admins may use everything. */
 export async function effectivePermissions(db: Db, p: Principal): Promise<GroupPermissions> {
   const role = await memberRole(db, p)
   if (!role) return NO_PERMISSIONS
@@ -142,45 +142,34 @@ export function applySessionScope(
 
 export { globMatch }
 
-/** Resource ids that grant `toolName` on `serverId`. Empty means the tool is not allowed. */
+/** Resource ids that grant `toolName` on `serverId`. Empty means no resource covers the tool. */
 export function resourcesForTool(
   resources: ResourceRow[],
   serverId: string,
   toolName: string,
 ): string[] {
-  return resources
-    .filter(
-      (r) =>
-        r.mcpServerId === serverId &&
-        (r.toolPatterns.length === 0 || r.toolPatterns.some((p) => globMatch(p, toolName))),
-    )
-    .map((r) => r.id)
+  return resources.filter((r) => resourceCoversTool(r.tools, serverId, toolName)).map((r) => r.id)
 }
 
 /**
- * Everything that can grant a user MCP tools: resource grants and their groups' MCP permissions.
- * A session narrowed with `/acl resources` only keeps the selected resources.
+ * What can grant a user MCP tools: the resources granted to them or their groups. Admins may call
+ * every tool. A session narrowed with `/acl resources` keeps only the selected resources, for
+ * admins too.
  */
-export type McpAccess = { resources: ResourceRow[]; permissions: GroupPermissions }
+export type McpAccess = { resources: ResourceRow[]; all: boolean }
 
 export function mcpAccess(
   resources: ResourceRow[],
-  permissions: GroupPermissions,
+  isAdmin: boolean,
   scope: string[] | undefined,
 ): McpAccess {
   const scoped = Boolean(scope?.length)
-  return {
-    resources: applySessionScope(resources, scope),
-    permissions: scoped ? NO_PERMISSIONS : permissions,
-  }
+  return { resources: applySessionScope(resources, scope), all: isAdmin && !scoped }
 }
 
 /** Whether any tool of the server may be granted, so it is worth listing at all. */
 export function mcpServerVisible(access: McpAccess, serverId: string): boolean {
-  return (
-    mcpServerAllowed(access.permissions, serverId) ||
-    access.resources.some((r) => r.mcpServerId === serverId)
-  )
+  return access.all || access.resources.some((r) => resourcePatterns(r.tools, serverId).length > 0)
 }
 
 /** Whether the user may call the tool, and the resources that grant it (may be empty). */
@@ -190,8 +179,9 @@ export function mcpToolAccess(
   toolName: string,
 ): { allowed: boolean; resourceIds: string[] } {
   const resourceIds = resourcesForTool(access.resources, serverId, toolName)
-  return {
-    allowed: resourceIds.length > 0 || mcpToolAllowed(access.permissions, serverId, toolName),
-    resourceIds,
-  }
+  return { allowed: access.all || resourceIds.length > 0, resourceIds }
+}
+
+export async function isAdmin(db: Db, p: Principal): Promise<boolean> {
+  return (await memberRole(db, p)) === 'admin'
 }

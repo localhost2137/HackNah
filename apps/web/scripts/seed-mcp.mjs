@@ -40,7 +40,7 @@ export async function seedMockMcp({ cwd, insert, expr, quote, now }) {
   const origin = process.env.MOCK_MCP_ORIGIN ?? 'http://localhost:3000'
   if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin).hostname))
     throw new Error('MOCK_MCP_ORIGIN must be local')
-  const mcpPermissions = {}
+  const readResources = []
   for (const provider of providers) {
     const id = `seed-mcp-${provider}`
     const exists = `EXISTS (SELECT 1 FROM mcp_server WHERE id = ${quote(id)})`
@@ -88,13 +88,13 @@ export async function seedMockMcp({ cwd, insert, expr, quote, now }) {
         org_id: 'seed-org',
         name: `${provider} · investigate (mock)`,
         description: 'Synthetic Aurelius Securities data; read-only investigation tools.',
-        mcp_server_id: id,
-        tool_patterns: JSON.stringify(readTools),
+        tool_patterns: '[]',
+        tools: JSON.stringify({ [id]: readTools }),
         created_at: now,
       },
       exists,
     )
-    mcpPermissions[id] = readTools
+    readResources.push(`${id}-read`)
     if (provider === 'jira')
       insert(
         'resource',
@@ -104,8 +104,8 @@ export async function seedMockMcp({ cwd, insert, expr, quote, now }) {
           name: 'Jira · write tickets (mock)',
           description:
             'Create local mock issues and comments. Admin-only until explicitly granted.',
-          mcp_server_id: id,
-          tool_patterns: JSON.stringify(['create_issue', 'add_comment']),
+          tool_patterns: '[]',
+          tools: JSON.stringify({ [id]: ['create_issue', 'add_comment'] }),
           created_at: now,
         },
         exists,
@@ -117,9 +117,17 @@ export async function seedMockMcp({ cwd, insert, expr, quote, now }) {
     name: 'Demo investigators',
     description: 'Read-only access to the three local mock integrations.',
     is_default: 0,
-    permissions: JSON.stringify({ models: [], builtinTools: [], mcp: mcpPermissions }),
+    permissions: JSON.stringify({ models: [], builtinTools: [] }),
     created_at: now,
   })
+  // The group reaches the mock integrations through the read-only resources granted to it.
+  for (const resourceId of readResources)
+    insert('resource_grant', {
+      resource_id: resourceId,
+      subject_type: 'group',
+      subject_id: 'seed-mock-investigators',
+      created_at: now,
+    })
   for (const userId of ['seed-member', 'seed-sso-member'])
     insert(
       'group_member',

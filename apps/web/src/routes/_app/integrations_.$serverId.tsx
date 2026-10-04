@@ -22,7 +22,7 @@ import { useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
 import { DecisionBadge } from '#/components/event-bits.tsx'
 import { num, timeAgo } from '#/lib/format.ts'
-import { setGroupMcpTools } from '#/server/fns/access.ts'
+import { setResourceServerTools } from '#/server/fns/access.ts'
 import { getMcpServerDetail, refreshMcpTools } from '#/server/fns/integrations.ts'
 
 const detailQuery = (serverId: string) =>
@@ -38,7 +38,7 @@ export const Route = createFileRoute('/_app/integrations_/$serverId')({
 })
 
 type Detail = Awaited<ReturnType<typeof getMcpServerDetail>>
-type Group = Detail['groups'][number]
+type Resource = Detail['resources'][number]
 
 const tierTone: Record<ToolTier, 'neutral' | 'warn' | 'bad'> = {
   read: 'neutral',
@@ -55,11 +55,11 @@ function ServerPage() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['mcp-servers'] })
   const setTools = useMutation({
-    mutationFn: (args: { groupId: string; tools: string[] }) =>
-      setGroupMcpTools({ data: { ...args, serverId } }),
+    mutationFn: (args: { resourceId: string; tools: string[] }) =>
+      setResourceServerTools({ data: { ...args, serverId } }),
     onSuccess: async () => {
       await invalidate()
-      await qc.invalidateQueries({ queryKey: ['groups'] })
+      await qc.invalidateQueries({ queryKey: ['resources'] })
     },
   })
   const refresh = useMutation({
@@ -73,14 +73,10 @@ function ServerPage() {
   const shown = tools.filter((t) => t.name.toLowerCase().includes(filter.toLowerCase()))
   const totalCalls = tools.reduce((n, t) => n + t.usage.calls, 0)
   const blocked = tools.reduce((n, t) => n + t.usage.blocked, 0)
-  const groupsWithAccess = groups.filter((g) => g.patterns.length || g.everyServer.length).length
+  const resourcesUsing = resources.filter((r) => r.patterns.length || r.everyServer.length).length
 
-  const toggle = (g: Group, tool: string, allowed: boolean) =>
-    setTools.mutate({ groupId: g.id, tools: withMcpTool(g.patterns, tool, allowed, toolNames) })
-  const coveringResources = (tool: string) =>
-    resources.filter(
-      (r) => r.toolPatterns.length === 0 || r.toolPatterns.some((p) => globMatch(p, tool)),
-    )
+  const toggle = (r: Resource, tool: string, allowed: boolean) =>
+    setTools.mutate({ resourceId: r.id, tools: withMcpTool(r.patterns, tool, allowed, toolNames) })
   const grantLabel = (grants: { type: string; id: string }[]) =>
     grants.length === 0
       ? 'Not granted to anyone'
@@ -130,8 +126,8 @@ function ServerPage() {
           tone={blocked ? 'warn' : 'neutral'}
         />
         <Stat
-          label="Groups with access"
-          value={`${groupsWithAccess} / ${groups.length}`}
+          label="Resources using it"
+          value={`${resourcesUsing} / ${resources.length}`}
           delta="Admins can call every tool"
         />
       </div>
@@ -139,7 +135,7 @@ function ServerPage() {
       <Card className="mb-4">
         <CardHeader
           title="Tools and who can call them"
-          description="Tick a box to let a group call that tool. A group with no ticked tools does not see this server at all. Resources add access on top of this."
+          description="Each column is a resource. Tick a box to put that tool in the resource; whoever the resource is granted to can then call it. Create resources and grant them on the Resources page."
           actions={
             <Input
               value={filter}
@@ -161,8 +157,7 @@ function ServerPage() {
                 <tr>
                   <TH>Tool</TH>
                   <TH className="text-right">Calls</TH>
-                  <TH>Resources</TH>
-                  {groups.map((g) => {
+                  {resources.map((g) => {
                     const all = g.patterns.includes('*') || g.everyServer.length > 0
                     const count = toolNames.filter((t) =>
                       [...g.patterns, ...g.everyServer].some((p) => globMatch(p, t)),
@@ -173,8 +168,8 @@ function ServerPage() {
                           className="flex cursor-pointer flex-col items-center gap-1"
                           title={
                             g.everyServer.length
-                              ? 'This group may use every MCP server; change it on the Groups page'
-                              : 'Every tool, including ones the server adds later'
+                              ? `Covers every MCP server; change it on the Resources page. ${grantLabel(g.grants)}`
+                              : `Every tool, including ones the server adds later. ${grantLabel(g.grants)}`
                           }
                         >
                           <span className="whitespace-nowrap">{g.name}</span>
@@ -185,7 +180,7 @@ function ServerPage() {
                               disabled={g.everyServer.length > 0 || setTools.isPending}
                               onChange={(e) =>
                                 setTools.mutate({
-                                  groupId: g.id,
+                                  resourceId: g.id,
                                   tools: e.target.checked ? ['*'] : [],
                                 })
                               }
@@ -225,28 +220,17 @@ function ServerPage() {
                         <span className="text-subtle">—</span>
                       )}
                     </TD>
-                    <TD>
-                      <div className="flex max-w-56 flex-wrap gap-1">
-                        {coveringResources(t.name).map((r) => (
-                          <Badge key={r.id} tone="info" title={grantLabel(r.grants)}>
-                            {r.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TD>
-                    {groups.map((g) => {
+                    {resources.map((g) => {
                       const inherited = g.everyServer.some((p) => globMatch(p, t.name))
                       const allowed = inherited || g.patterns.some((p) => globMatch(p, t.name))
                       return (
                         <TD key={g.id} className="text-center">
                           <input
                             type="checkbox"
-                            aria-label={`${g.name} may call ${t.name}`}
+                            aria-label={`${g.name} includes ${t.name}`}
                             checked={allowed}
                             disabled={inherited || setTools.isPending}
-                            title={
-                              inherited ? 'Allowed on every MCP server for this group' : undefined
-                            }
+                            title={inherited ? 'This resource covers every MCP server' : undefined}
                             onChange={(e) => toggle(g, t.name, e.target.checked)}
                             className="accent-[var(--color-accent)]"
                           />

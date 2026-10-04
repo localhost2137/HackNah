@@ -1,5 +1,6 @@
 import {
   chunkRows,
+  type Db,
   device,
   group,
   groupMember,
@@ -28,12 +29,10 @@ type Subject = z.infer<typeof subject>
 export const listResources = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
   .handler(async ({ context: { db, orgId } }) => {
-    const rows = await db
-      .select({ resource, serverName: mcpServer.name, serverSlug: mcpServer.slug })
-      .from(resource)
-      .leftJoin(mcpServer, eq(mcpServer.id, resource.mcpServerId))
-      .where(eq(resource.orgId, orgId))
-      .orderBy(asc(resource.name))
+    const rows = await db.query.resource.findMany({
+      where: eq(resource.orgId, orgId),
+      orderBy: asc(resource.name),
+    })
     const grants = await db
       .select({
         resourceId: resourceGrant.resourceId,
@@ -44,14 +43,30 @@ export const listResources = createServerFn({ method: 'GET' })
       .innerJoin(resource, eq(resource.id, resourceGrant.resourceId))
       .where(eq(resource.orgId, orgId))
     return rows.map((r) => ({
-      ...r.resource,
-      serverName: r.serverName,
-      serverSlug: r.serverSlug,
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      tools: r.tools,
+      createdAt: r.createdAt,
       grants: grants
-        .filter((g) => g.resourceId === r.resource.id)
+        .filter((g) => g.resourceId === r.id)
         .map((g) => ({ type: g.subjectType, id: g.subjectId })),
     }))
   })
+
+const toolPatterns = z.array(z.string().trim().min(1).max(200)).max(500)
+
+/** Drops servers left without tools and rejects ids that are not the org's servers. */
+async function checkedTools(db: Db, orgId: string, tools: Record<string, string[]>) {
+  const servers = new Set(
+    (await db.select({ id: mcpServer.id }).from(mcpServer).where(eq(mcpServer.orgId, orgId))).map(
+      (s) => s.id,
+    ),
+  )
+  const kept = Object.entries(tools).filter(([, patterns]) => patterns.length > 0)
+  if (kept.some(([id]) => id !== '*' && !servers.has(id))) throw new Error('Unknown MCP server')
+  return Object.fromEntries(kept)
+}
 
 export const saveResource = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
@@ -60,20 +75,15 @@ export const saveResource = createServerFn({ method: 'POST' })
       id: z.string().optional(),
       name: z.string().min(1).max(120),
       description: z.string().max(500).optional(),
-      mcpServerId: z.string(),
-      toolPatterns: z.array(z.string().min(1).max(200)).max(100),
+      /** MCP server id (or `*` for every server) to tool name patterns. */
+      tools: z.record(z.string(), toolPatterns),
     }),
   )
   .handler(async ({ data, context: { db, orgId, user: me } }) => {
-    const server = await db.query.mcpServer.findFirst({
-      where: and(eq(mcpServer.id, data.mcpServerId), eq(mcpServer.orgId, orgId)),
-    })
-    if (!server) throw new Error('Unknown MCP server')
     const values = {
       name: data.name,
       description: data.description ?? null,
-      mcpServerId: data.mcpServerId,
-      toolPatterns: data.toolPatterns,
+      tools: await checkedTools(db, orgId, data.tools),
     }
     let id = data.id
     if (id) {
@@ -95,6 +105,28 @@ export const saveResource = createServerFn({ method: 'POST' })
       data: values,
     })
     return { id }
+  })
+
+/** Sets which tools of one MCP server a resource holds. No patterns takes the server out. */
+export const setResourceServerTools = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(z.object({ resourceId: z.string(), serverId: z.string(), tools: toolPatterns }))
+  .handler(async ({ data, context: { db, orgId, user: me } }) => {
+    const row = await db.query.resource.findFirst({
+      where: and(eq(resource.id, data.resourceId), eq(resource.orgId, orgId)),
+    })
+    if (!row) throw new Error('Resource not found')
+    const { [data.serverId]: before = [], ...rest } = row.tools
+    const tools = await checkedTools(db, orgId, { ...rest, [data.serverId]: data.tools })
+    await db.update(resource).set({ tools }).where(eq(resource.id, row.id))
+    await audit(db, {
+      orgId,
+      actorId: me.id,
+      action: 'resource.server_tools',
+      target: row.id,
+      data: { serverId: data.serverId, before, after: data.tools },
+    })
+    return { ok: true }
   })
 
 export const deleteResource = createServerFn({ method: 'POST' })
@@ -343,22 +375,10 @@ export const setGroupPermissions = createServerFn({ method: 'POST' })
   .validator(
     z.object({
       groupId: z.string(),
-      permissions: z.object({
-        models: patterns,
-        builtinTools: patterns,
-        /** Server id (or `*`) to tool name patterns; leave a server out to hide it. */
-        mcp: z.record(z.string(), patterns.min(1)).default({}),
-      }),
+      permissions: z.object({ models: patterns, builtinTools: patterns }),
     }),
   )
   .handler(async ({ data, context: { db, orgId, user: me } }) => {
-    const servers = new Set(
-      (await db.select({ id: mcpServer.id }).from(mcpServer).where(eq(mcpServer.orgId, orgId))).map(
-        (s) => s.id,
-      ),
-    )
-    if (Object.keys(data.permissions.mcp).some((id) => id !== '*' && !servers.has(id)))
-      throw new Error('Unknown MCP server')
     const [row] = await db
       .update(group)
       .set({ permissions: data.permissions })
@@ -371,40 +391,6 @@ export const setGroupPermissions = createServerFn({ method: 'POST' })
       action: 'group.permissions',
       target: row.id,
       data: data.permissions,
-    })
-    return { ok: true }
-  })
-
-/** Sets which tools of one MCP server a group may call. No patterns hides the server. */
-export const setGroupMcpTools = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
-  .validator(z.object({ groupId: z.string(), serverId: z.string(), tools: patterns }))
-  .handler(async ({ data, context: { db, orgId, user: me } }) => {
-    const [g, server] = await Promise.all([
-      db.query.group.findFirst({ where: and(eq(group.id, data.groupId), eq(group.orgId, orgId)) }),
-      db.query.mcpServer.findFirst({
-        where: and(eq(mcpServer.id, data.serverId), eq(mcpServer.orgId, orgId)),
-      }),
-    ])
-    if (!g) throw new Error('Group not found')
-    if (!server) throw new Error('Unknown MCP server')
-    const permissions = normalizePermissions(g.permissions)
-    const { [server.id]: before = [], ...mcp } = permissions.mcp
-    await db
-      .update(group)
-      .set({
-        permissions: {
-          ...permissions,
-          mcp: data.tools.length ? { ...mcp, [server.id]: data.tools } : mcp,
-        },
-      })
-      .where(eq(group.id, g.id))
-    await audit(db, {
-      orgId,
-      actorId: me.id,
-      action: 'group.mcp_tools',
-      target: g.id,
-      data: { serverId: server.id, before, after: data.tools },
     })
     return { ok: true }
   })
