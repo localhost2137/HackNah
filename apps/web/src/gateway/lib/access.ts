@@ -108,8 +108,9 @@ export function permissionDenial(
 ): string | null {
   if (input.kind === 'model_request' && input.model && !modelAllowed(p, input.model))
     return `Your groups do not allow the model ${input.model}`
+  // Task/Agent calls are agent messages, but still tools a group has to allow.
   if (
-    input.kind === 'tool_call' &&
+    (input.kind === 'tool_call' || input.kind === 'agent_message') &&
     input.toolName &&
     !input.mcpServerId &&
     isBuiltinTool(input.toolName) &&

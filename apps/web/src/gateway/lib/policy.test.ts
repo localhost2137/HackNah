@@ -52,6 +52,8 @@ describe('group permissions', () => {
       permissionDenial(perms, { kind: 'tool_call', toolName: t, mcpServerId })
     expect(tool('Read')).toBeNull()
     expect(tool('Bash')).toMatch(/Bash/)
+    // Handing a task to a subagent is an agent message, but still a tool the group must allow.
+    expect(permissionDenial(perms, { kind: 'agent_message', toolName: 'Task' })).toMatch(/Task/)
   })
 
   it('leaves MCP tools to resource grants', () => {
