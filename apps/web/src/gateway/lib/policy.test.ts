@@ -1,4 +1,4 @@
-import type { RateLimitRule } from '@acl/shared'
+import { type LimitRule, limitApplies, limitRule } from '@acl/shared'
 import { describe, expect, it } from 'vitest'
 import {
   applySessionScope,
@@ -10,7 +10,6 @@ import {
   permissionDenial,
   resourcesForTool,
 } from './access.ts'
-import { matchingRules } from './rate-limit.ts'
 
 type Row = Parameters<typeof resourcesForTool>[0][number]
 const row = (id: string, mcpServerId: string, toolPatterns: string[]) =>
@@ -53,6 +52,8 @@ describe('group permissions', () => {
       permissionDenial(perms, { kind: 'tool_call', toolName: t, mcpServerId })
     expect(tool('Read')).toBeNull()
     expect(tool('Bash')).toMatch(/Bash/)
+    // Handing a task to a subagent is an agent message, but still a tool the group must allow.
+    expect(permissionDenial(perms, { kind: 'agent_message', toolName: 'Task' })).toMatch(/Task/)
   })
 
   it('leaves MCP tools to resource grants', () => {
@@ -112,35 +113,30 @@ describe('MCP access', () => {
   })
 })
 
-describe('rate limit rules', () => {
-  const rule = (scope: RateLimitRule['scope'], target: string): RateLimitRule => ({
-    id: `${scope}:${target}`,
-    scope,
-    target,
-    limit: 10,
-    windowSec: 60,
-    per: 'user',
-  })
+describe('limit rules', () => {
+  const rule = (scope: LimitRule['scope'], target: string): LimitRule =>
+    limitRule.parse({ id: `${scope}:${target}`, scope, target, limit: 10, windowSec: 60 })
   const rules = [
     rule('mcp', 'gh'),
     rule('tool', 'gh__create_issue'),
     rule('tool', '*'),
     rule('resource', 'read'),
+    rule('model', '*'),
   ]
+  const principal = { orgId: 'org', userId: 'u', groupIds: [] }
+  const matching = (mcpServerId: string, toolName: string, resourceIds: string[]) =>
+    rules
+      .filter((r) =>
+        limitApplies(r, { scope: 'tool', mcpServerId, toolName, resourceIds }, principal),
+      )
+      .map((r) => r.id)
 
   it('matches by server, tool and resource', () => {
-    const ids = matchingRules(rules, {
-      mcpServerId: 'gh',
-      toolName: 'gh__create_issue',
-      resourceIds: ['all'],
-    }).map((r) => r.id)
-    expect(ids).toEqual(['mcp:gh', 'tool:gh__create_issue', 'tool:*'])
-    expect(
-      matchingRules(rules, {
-        mcpServerId: 'jira',
-        toolName: 'jira__get',
-        resourceIds: ['read'],
-      }).map((r) => r.id),
-    ).toEqual(['tool:*', 'resource:read'])
+    expect(matching('gh', 'gh__create_issue', ['all'])).toEqual([
+      'mcp:gh',
+      'tool:gh__create_issue',
+      'tool:*',
+    ])
+    expect(matching('jira', 'jira__get', ['read'])).toEqual(['tool:*', 'resource:read'])
   })
 })

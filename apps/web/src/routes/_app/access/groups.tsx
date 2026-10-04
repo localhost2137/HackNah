@@ -11,7 +11,13 @@ import {
   Sheet,
   Textarea,
 } from '@acl/ui'
-import { queryOptions, useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
+import {
+  queryOptions,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
@@ -28,11 +34,13 @@ import {
   setGroupResources,
 } from '#/server/fns/access.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
+import { listModels } from '#/server/fns/models.ts'
 
 const groupsQuery = queryOptions({ queryKey: ['groups'], queryFn: () => listGroups() })
 const membersQuery = queryOptions({ queryKey: ['members'], queryFn: () => listMembers() })
 const resourcesQuery = queryOptions({ queryKey: ['resources'], queryFn: () => listResources() })
 const serversQuery = queryOptions({ queryKey: ['mcp-servers'], queryFn: () => listMcpServers() })
+const modelsQuery = queryOptions({ queryKey: ['models'], queryFn: () => listModels() })
 
 export const Route = createFileRoute('/_app/access/groups')({
   loader: ({ context: { queryClient } }) =>
@@ -41,6 +49,7 @@ export const Route = createFileRoute('/_app/access/groups')({
       queryClient.ensureQueryData(membersQuery),
       queryClient.ensureQueryData(resourcesQuery),
       queryClient.ensureQueryData(serversQuery),
+      queryClient.ensureQueryData(modelsQuery),
     ]),
   component: GroupsPage,
 })
@@ -364,6 +373,10 @@ function GroupsPage() {
                 placeholder={'claude-sonnet-*\nclaude-haiku-*'}
               />
             </Field>
+            <ModelChips
+              value={permissions.models}
+              onChange={(models) => setPermissions({ ...permissions, models })}
+            />
             <Field
               label="Built-in tools"
               hint="Claude Code tool name patterns, one per line. Use * for every built-in tool."
@@ -522,6 +535,34 @@ function McpPermissions({
         Unchecked servers are hidden from the group. Pick tools to allow only some of a server's
         tools.
       </span>
+    </div>
+  )
+}
+
+/** Models from the catalog, toggled on and off like built-in tools. */
+function ModelChips({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { data: models = [] } = useQuery(modelsQuery)
+  if (models.length === 0) return null
+  const current = splitPatterns(value)
+  return (
+    <div className="-mt-3 flex flex-wrap gap-1">
+      {[{ pattern: '*', label: 'Every model' }, ...models].map((m) => {
+        const on = current.includes(m.pattern)
+        return (
+          <button
+            key={m.pattern}
+            type="button"
+            title={m.pattern}
+            onClick={() =>
+              onChange(
+                (on ? current.filter((p) => p !== m.pattern) : [...current, m.pattern]).join('\n'),
+              )
+            }
+          >
+            <Badge tone={on ? 'accent' : 'neutral'}>{m.label || m.pattern}</Badge>
+          </button>
+        )
+      })}
     </div>
   )
 }

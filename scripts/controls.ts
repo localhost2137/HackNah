@@ -47,15 +47,15 @@ type Case = {
 }
 
 /**
- * Where the gateway runs the workflow today: prompts and tool results on their way to the
- * model, tool calls, and messages between agents posted to /v1/acl/inspect. Model responses
- * and tool descriptions pass through uninspected, and the report says so instead of counting
- * them as caught.
+ * The stages the gateway runs workflows on: model input, tool calls, tool results, model output
+ * and messages between agents. Tool descriptions pass through uninspected, and the report says
+ * so instead of counting them as caught.
  */
 const INSPECTED = new Set([
   'user_input',
   'tool_result',
   'tool_arguments',
+  'model_output',
   'agent_message',
   'identity',
 ])

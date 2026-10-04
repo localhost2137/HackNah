@@ -3,7 +3,9 @@ import { createFileRoute, Link, Outlet, redirect, useNavigate } from '@tanstack/
 import {
   Activity,
   Boxes,
+  Cpu,
   Database,
+  FlaskConical,
   Gauge,
   KeyRound,
   LayoutDashboard,
@@ -47,7 +49,9 @@ const nav: { title?: string; items: NavItem[] }[] = [
     title: 'Policy',
     items: [
       { to: '/workflows', label: 'Workflows', icon: ListChecks },
-      { to: '/rate-limits', label: 'Rate limits', icon: Gauge },
+      { to: '/attack-analysis', label: 'Attack analysis', icon: FlaskConical },
+      { to: '/limits', label: 'Limits', icon: Gauge },
+      { to: '/models', label: 'Models', icon: Cpu },
       { to: '/datasets', label: 'Datasets', icon: Database },
     ],
   },
@@ -72,10 +76,10 @@ const nav: { title?: string; items: NavItem[] }[] = [
 function AppLayout() {
   return (
     <LiveProvider>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen bg-bg">
         <Sidebar />
         <main className="min-w-0 flex-1">
-          <div className="mx-auto max-w-[1400px] px-8 py-6">
+          <div className="mx-auto max-w-[1400px] px-6 py-7 lg:px-9 lg:py-8">
             <Outlet />
           </div>
         </main>
@@ -90,18 +94,18 @@ function Sidebar() {
   const live = useLive()
 
   return (
-    <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-panel">
-      <div className="flex items-center gap-2 px-4 pt-4 pb-3">
-        <span className="flex size-6 items-center justify-center rounded bg-accent text-white">
-          <ShieldCheck className="size-3.5" />
+    <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-[#0a1421]">
+      <div className="flex items-center gap-2.5 px-5 pt-5 pb-6">
+        <span className="flex size-6 items-center justify-center rounded-md bg-accent-soft text-accent-strong">
+          <ShieldCheck className="size-4" />
         </span>
-        <span className="text-[13px] font-semibold tracking-tight">AI Control Layer</span>
+        <span className="text-sm font-semibold tracking-tight">AI Control Layer</span>
       </div>
-      <nav className="flex-1 overflow-y-auto px-2 py-2">
+      <nav className="flex-1 overflow-y-auto px-3">
         {nav.map((section, i) => (
-          <div key={section.title ?? i} className="mb-3">
+          <div key={section.title ?? i} className="mb-5">
             {section.title ? (
-              <div className="px-2 pb-1 text-[10px] font-semibold tracking-wider text-subtle uppercase">
+              <div className="px-2 pb-2 text-[10px] font-semibold tracking-[0.12em] text-subtle uppercase">
                 {section.title}
               </div>
             ) : null}
@@ -110,8 +114,8 @@ function Sidebar() {
                 key={item.to}
                 to={item.to}
                 activeOptions={{ exact: item.to === '/' || item.to === '/settings' }}
-                className="group flex h-8 items-center gap-2 rounded-md px-2 text-[13px] text-muted hover:bg-panel-2 hover:text-fg"
-                activeProps={{ className: 'bg-panel-2 !text-fg' }}
+                className="group mb-0.5 flex h-9 items-center gap-2.5 rounded-md px-2.5 text-[13px] text-muted transition-colors hover:bg-panel-2/70 hover:text-fg"
+                activeProps={{ className: 'bg-accent-soft !text-accent-strong' }}
               >
                 <item.icon className="size-4 shrink-0" />
                 <span className="flex-1">{item.label}</span>
@@ -120,8 +124,8 @@ function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="border-t border-line p-3">
-        <div className="flex items-center gap-2">
+      <div className="border-t border-line p-4">
+        <div className="flex items-center gap-2.5">
           <span
             className={cn('size-2 rounded-full', live.connected ? 'bg-ok' : 'bg-subtle')}
             title={live.connected ? 'Live updates connected' : 'Live updates offline'}

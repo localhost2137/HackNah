@@ -13,8 +13,9 @@ import {
 import { z } from 'zod'
 import { DecisionBadge, KindLabel, RiskMeter } from '#/components/event-bits.tsx'
 import { Segmented } from '#/components/filters.tsx'
+import { PerformancePanel, SpendPanel } from '#/components/usage-panels.tsx'
 import { num, pct, timeAgo } from '#/lib/format.ts'
-import { getOverview, type TimeRange, timeRange } from '#/server/fns/traffic.ts'
+import { getOverview, getUsage, type TimeRange, timeRange } from '#/server/fns/traffic.ts'
 
 const overviewQuery = (range: TimeRange) =>
   queryOptions({
@@ -23,10 +24,21 @@ const overviewQuery = (range: TimeRange) =>
     refetchInterval: 30_000,
   })
 
+const usageQuery = (range: TimeRange) =>
+  queryOptions({
+    queryKey: ['overview', range, 'usage'],
+    queryFn: () => getUsage({ data: { range } }),
+    refetchInterval: 30_000,
+  })
+
 export const Route = createFileRoute('/_app/')({
   validateSearch: z.object({ range: timeRange.default('24h') }),
   loaderDeps: ({ search }) => ({ range: search.range }),
-  loader: ({ context, deps }) => context.queryClient.ensureQueryData(overviewQuery(deps.range)),
+  loader: ({ context, deps }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData(overviewQuery(deps.range)),
+      context.queryClient.ensureQueryData(usageQuery(deps.range)),
+    ]),
   component: Overview,
 })
 
@@ -34,6 +46,7 @@ function Overview() {
   const { range } = Route.useSearch()
   const navigate = Route.useNavigate()
   const { data } = useQuery(overviewQuery(range))
+  const { data: usage } = useQuery(usageQuery(range))
   if (!data) return null
 
   const fmtTick = (iso: string) =>
@@ -82,25 +95,25 @@ function Overview() {
               <AreaChart data={data.series} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
                 <defs>
                   <linearGradient id="allowed" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#7c6cff" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#7c6cff" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#7894f8" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#7894f8" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="blocked" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#ff5c72" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#ff5c72" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#ef7088" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#ef7088" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="#232735" vertical={false} />
+                <CartesianGrid stroke="#202d40" vertical={false} />
                 <XAxis
                   dataKey="bucket"
                   tickFormatter={fmtTick}
-                  stroke="#5d6377"
+                  stroke="#667286"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
-                  stroke="#5d6377"
+                  stroke="#667286"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
@@ -109,24 +122,25 @@ function Overview() {
                 />
                 <Tooltip
                   contentStyle={{
-                    background: '#11131a',
-                    border: '1px solid #2f3445',
-                    borderRadius: 6,
+                    background: '#0e1827',
+                    border: '1px solid #2a3950',
+                    borderRadius: 8,
                     fontSize: 12,
+                    boxShadow: '0 8px 24px rgb(0 0 0 / 0.25)',
                   }}
                   labelFormatter={(l) => new Date(String(l)).toLocaleString()}
                 />
                 <Area
                   type="monotone"
                   dataKey="allowed"
-                  stroke="#7c6cff"
+                  stroke="#7894f8"
                   fill="url(#allowed)"
                   strokeWidth={1.5}
                 />
                 <Area
                   type="monotone"
                   dataKey="blocked"
-                  stroke="#ff5c72"
+                  stroke="#ef7088"
                   fill="url(#blocked)"
                   strokeWidth={1.5}
                 />
@@ -135,6 +149,13 @@ function Overview() {
           )}
         </div>
       </Card>
+
+      {usage ? (
+        <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+          <SpendPanel spend={usage.spend} />
+          <PerformancePanel performance={usage.performance} range={range} />
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

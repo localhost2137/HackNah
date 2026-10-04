@@ -3,6 +3,7 @@ import {
   type BlockSpec,
   blockOutput,
   type EvaluationResult,
+  formatAmount,
   type GraphIssue,
   nodeOutputs,
   type PolicyEdge,
@@ -10,6 +11,7 @@ import {
   type PolicyNode,
   policyGraph,
   validateGraph,
+  windowLabel,
 } from '@acl/shared'
 import { Badge, Button, Card, Dialog, Field, Input, PageHeader, Select } from '@acl/ui'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -29,7 +31,7 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from '@xyflow/react'
-import { ArrowLeft, Maximize2, Plus, X } from 'lucide-react'
+import { ArrowLeft, History, Maximize2, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
 import { DryRun } from '#/components/workflow/dry-run.tsx'
@@ -41,10 +43,10 @@ import {
 } from '#/components/workflow/graph-nodes.tsx'
 import { Inspector, type PickerOptions } from '#/components/workflow/inspector.tsx'
 import { recommendSteps, type Suggestion } from '#/components/workflow/recommendations.ts'
-import { ShadowImpact } from '#/components/workflow/shadow-impact.tsx'
 import { timeAgo } from '#/lib/format.ts'
 import { listGroups, listResources } from '#/server/fns/access.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
+import { listLimits } from '#/server/fns/limits.ts'
 import { discardDraft, getWorkflow, publishDraft, saveDraft } from '#/server/fns/workflow.ts'
 
 const workflowQuery = (workflowId: string) =>
@@ -55,6 +57,7 @@ const workflowQuery = (workflowId: string) =>
 const serversQuery = queryOptions({ queryKey: ['mcp-servers'], queryFn: () => listMcpServers() })
 const resourcesQuery = queryOptions({ queryKey: ['resources'], queryFn: () => listResources() })
 const groupsQuery = queryOptions({ queryKey: ['groups'], queryFn: () => listGroups() })
+const limitsQuery = queryOptions({ queryKey: ['limits'], queryFn: () => listLimits() })
 
 export const Route = createFileRoute('/_app/workflows/$workflowId')({
   loader: ({ context, params }) =>
@@ -101,6 +104,7 @@ function WorkflowPage() {
   const { data: servers } = useQuery(serversQuery)
   const { data: resources } = useQuery(resourcesQuery)
   const { data: groups } = useQuery(groupsQuery)
+  const { data: limits } = useQuery(limitsQuery)
   const [graph, setGraph] = useState<PolicyGraph | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [note, setNote] = useState('')
@@ -125,8 +129,14 @@ function WorkflowPage() {
         label: r.serverName ? `${r.serverName} · ${r.name}` : r.name,
       })),
       groups: (groups ?? []).map((g) => ({ value: g.id, label: g.name })),
+      limits: (limits ?? [])
+        .filter((l) => l.action === 'workflow')
+        .map((l) => ({
+          value: l.id,
+          label: l.name || `${formatAmount(l.measure, l.limit)} per ${windowLabel(l.windowSec)}`,
+        })),
     }),
-    [servers, resources, groups],
+    [servers, resources, groups, limits],
   )
 
   const refresh = () =>
@@ -156,6 +166,18 @@ function WorkflowPage() {
       await refresh()
     },
   })
+  const navigate = Route.useNavigate()
+  const openImpact = async () => {
+    const version =
+      dirty && graph
+        ? (await save.mutateAsync(graph)).version
+        : (data?.draft?.version ?? data?.published?.version)
+    await navigate({
+      to: '/workflows/$workflowId/impact',
+      params: { workflowId },
+      search: { version },
+    })
+  }
 
   if (!data || !graph) return null
 
@@ -169,7 +191,7 @@ function WorkflowPage() {
       </Link>
       <PageHeader
         title={data.workflow.name}
-        description="Set which requests start this workflow on its first step, then follow them from left to right to an allow, a block or an approval."
+        description="Pick the stages this workflow runs on in its first step, ask about the request with condition blocks, then follow it from left to right to an allow, a block, an approval or Skip."
         actions={
           isAdmin ? (
             <>
@@ -182,6 +204,9 @@ function WorkflowPage() {
                   Discard draft
                 </Button>
               ) : null}
+              <Button onClick={openImpact} disabled={!parsed?.success || save.isPending}>
+                <History className="size-4" /> Impact
+              </Button>
               <Button
                 onClick={() => save.mutate(graph)}
                 disabled={!dirty || !parsed?.success || save.isPending}
@@ -239,7 +264,6 @@ function WorkflowPage() {
       {mounted ? (
         <ReactFlowProvider>
           <Editor
-            workflowId={workflowId}
             graph={graph}
             setGraph={setGraph}
             issues={issues}
@@ -285,23 +309,20 @@ function WorkflowPage() {
 }
 
 type Version = Awaited<ReturnType<typeof getWorkflow>>['versions'][number]
-type Tab = 'inspect' | 'test' | 'impact' | 'history'
+type Tab = 'inspect' | 'test' | 'history'
 
 const tabLabels: Record<Tab, string> = {
   inspect: 'Details',
   test: 'Test request',
-  impact: 'Impact',
   history: 'History',
 }
 const tabTitles: Record<Tab, string> = {
   inspect: 'Step settings',
   test: 'Try an example request',
-  impact: 'Impact on past traffic',
   history: 'Saved versions',
 }
 
 function Editor({
-  workflowId,
   graph,
   setGraph,
   issues,
@@ -310,7 +331,6 @@ function Editor({
   versions,
   publishedId,
 }: {
-  workflowId: string
   graph: PolicyGraph
   setGraph: (g: PolicyGraph) => void
   issues: GraphIssue[]
@@ -627,7 +647,7 @@ function Editor({
           <Button variant="ghost" onClick={() => flow.fitView({ padding: 0.12, duration: 250 })}>
             <Maximize2 className="size-4" /> Fit chart
           </Button>
-          {(['inspect', 'test', 'impact', 'history'] as const).map((t) => (
+          {(['inspect', 'test', 'history'] as const).map((t) => (
             <Button
               key={t}
               variant={panelOpen && tab === t ? 'primary' : 'ghost'}
@@ -729,14 +749,14 @@ function Editor({
             maxZoom={1.8}
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={24} size={1} color="#343b50" />
+            <Background gap={24} size={1} color="#2a3950" />
             <Controls showInteractive={false} />
             {graph.nodes.length > 10 ? (
               <MiniMap
                 pannable
                 zoomable
-                nodeColor="#69728b"
-                maskColor="rgba(10,11,16,0.65)"
+                nodeColor="#667286"
+                maskColor="rgba(8,17,31,0.65)"
                 style={{ width: 140, height: 85 }}
               />
             ) : null}
@@ -773,8 +793,6 @@ function Editor({
                 )
               ) : tab === 'test' ? (
                 <DryRun graph={graph} options={options} onResult={setRun} />
-              ) : tab === 'impact' ? (
-                <ShadowImpact workflowId={workflowId} graph={graph} />
               ) : (
                 <VersionList
                   versions={versions}
@@ -841,12 +859,14 @@ function GraphHelp({ issues }: { issues: GraphIssue[] }) {
         automatically. Select a step or connection and press Delete to remove it.
       </p>
       <p>
-        <span className="text-fg">Routes</span> check who and what the request is (server, tool,
-        tier, resource, group, device, model) and leave through{' '}
-        <span className="text-fg">match</span> or <span className="text-fg">else</span>.{' '}
-        <span className="text-fg">Checks</span> inspect the content, the device and the session.
-        Every path should end in an outcome: allow, block, or an approval by an admin, Touch ID, a
-        browser sign-in or a confirmation.
+        The start step picks the stages the workflow runs on.{' '}
+        <span className="text-fg">Conditions</span> ask one thing about the request (tool, model,
+        server, tier, group, resource, device) and leave through{' '}
+        <span className="text-fg">Yes</span> or <span className="text-fg">No</span>: link Yes to the
+        next condition for AND, No for OR. <span className="text-fg">Checks</span> inspect the
+        content, the device and the session. Every path should end in an outcome: allow, block, an
+        approval by an admin, Touch ID, a browser sign-in or a confirmation, or Skip when the
+        workflow does not apply.
       </p>
       {issues.length > 0 ? (
         <ul className="flex flex-col gap-1">

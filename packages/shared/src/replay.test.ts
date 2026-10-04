@@ -72,7 +72,7 @@ describe('replayWithShadow', () => {
     const toolsOnly: PolicyGraph = {
       ...defaultWorkflow,
       nodes: defaultWorkflow.nodes.map((n) =>
-        n.type === 'trigger' ? { ...n, conditions: [{ field: 'kind', values: ['tool_call'] }] } : n,
+        n.type === 'trigger' ? { ...n, stages: ['tool_call' as const] } : n,
       ),
     }
     const v = await replayWithShadow(
@@ -81,6 +81,47 @@ describe('replayWithShadow', () => {
       dangerous,
     )
     expect(v).toMatchObject({ shadow: 'not_started', before: 'allow', after: 'allow' })
+  })
+
+  it('keeps the outcome when the rule ends in Skip', async () => {
+    const skipsAll: PolicyGraph = {
+      fallback: 'block',
+      nodes: [
+        { id: 'start', type: 'trigger', position: { x: 0, y: 0 }, stages: [] },
+        {
+          id: 'skip',
+          type: 'decision',
+          position: { x: 0, y: 0 },
+          action: 'skip',
+          method: 'admin',
+          timeoutSec: 300,
+          reason: '',
+        },
+      ],
+      edges: [{ id: 'e', source: 'start', sourceHandle: 'next', target: 'skip' }],
+    }
+    const v = await replayWithShadow(
+      { ...shadow, definition: skipsAll },
+      { decision: 'block', checks: [ranDecision('other', 'block')] },
+      dangerous,
+    )
+    expect(v).toMatchObject({ shadow: 'not_started', before: 'block', after: 'block' })
+  })
+
+  it('ignores recorded workflows that skipped', async () => {
+    const skipped: CheckResult = {
+      workflowId: 'other',
+      stepId: 'skip',
+      type: 'decision',
+      outcome: 'skipped',
+      durationMs: 0,
+    }
+    const v = await replayWithShadow(
+      shadow,
+      { decision: 'allow', checks: [skipped, ranDecision(shadow.id)] },
+      clean,
+    )
+    expect(v).toMatchObject({ shadow: 'allow', before: 'allow', after: 'allow' })
   })
 
   it('loosens when the draft replaces a live version that blocked', async () => {

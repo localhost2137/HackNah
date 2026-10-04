@@ -46,22 +46,24 @@ uses public test numbers.
 ## What "required" means
 
 A case is required when its payload is not obfuscated, it is not a look-alike benign case, and
-the gateway inspects its channel. Today that is prompts and tool results on their way to the
-model (`user_input`, `tool_result`), tool calls (`tool_arguments`), messages between agents
-(`agent_message`) and device identity.
+the gateway inspects its channel. That covers every stage a workflow can run on: model input
+(`user_input`), tool calls (`tool_arguments`), tool results (`tool_result`), model output
+(`model_output`), messages between agents (`agent_message`) and device identity.
 
-Messages between agents count as inspected: an orchestrator posts them to
-`POST /v1/acl/inspect` and they run through the same workflow.
-
-Model responses and tool descriptions are **not inspected yet**. The cases exist so the report
-shows those columns as uncovered, and so they start counting the day the gateway scans them:
-add the channel to `INSPECTED` in `scripts/controls.ts`.
+Tool descriptions are **not inspected yet**. The cases exist so the report shows that column as
+uncovered, and so they start counting the day the gateway scans them: add the channel to
+`INSPECTED` in `scripts/controls.ts`.
 
 ## Scope of the run
 
 The suite calls the same `evaluateGraph()` the gateway calls, with the sample policy from
 `packages/shared/src/presets.ts`. It does not start the gateway, so it does not cover
-authentication, rate limits or the approval queue; those have their own unit tests.
+authentication, limits, streaming or the approval queue. `pnpm test:gateway` does: it runs the real
+gateway against a scripted model and checks what the client receives.
+
+The dashboard's Attack analysis page is a third thing: it replays synthetic traffic against the
+workflows you have published. This suite and the Datasets page use the labelled rows in this
+folder.
 
 ## Public datasets
 

@@ -32,7 +32,8 @@ export function recordedResult(decision: Decision, checks: CheckResult[]): Recor
 export function recordedWorkflowOutcomes(checks: CheckResult[]): Map<string, ReplayOutcome> {
   const outcomes = new Map<string, ReplayOutcome>()
   for (const c of checks) {
-    if (c.type !== 'decision' || !c.workflowId) continue
+    // A workflow that ended in Skip did not apply.
+    if (c.type !== 'decision' || !c.workflowId || c.outcome === 'skipped') continue
     outcomes.set(
       c.workflowId,
       c.action === 'block' ? 'block' : c.action === 'require_approval' ? 'approval' : 'allow',
@@ -49,7 +50,10 @@ export function recordedDeviceStatus(checks: CheckResult[]): DeviceStatus {
 
 export type ShadowVerdict = {
   recorded: RecordedResult
-  /** What the rule decides alone; `not_started` when its start conditions or groups don't match. */
+  /**
+   * What the rule decides alone; `not_started` when its stages or groups don't match, or its path
+   * ends in Skip.
+   */
   shadow: ReplayOutcome | 'not_started'
   /** What the user got, and would get with the rule live. */
   before: ReplayOutcome
@@ -76,16 +80,16 @@ export async function replayWithShadow(
   others.delete(shadow.id)
   const rest = [...others.values()].reduce<ReplayOutcome>(stricter, 'allow')
 
-  if (selectWorkflows([shadow], input).length === 0) {
-    return {
-      recorded: status,
-      shadow: 'not_started',
-      before,
-      after: early ? 'block' : rest,
-      result: null,
-    }
-  }
+  const notStarted = (result: EvaluationResult | null): ShadowVerdict => ({
+    recorded: status,
+    shadow: 'not_started',
+    before,
+    after: early ? 'block' : rest,
+    result,
+  })
+  if (selectWorkflows([shadow], input).length === 0) return notStarted(null)
   const result = await evaluateGraph(shadow.definition, input, deps)
+  if (result.decision === 'skip') return notStarted(result)
   const own: ReplayOutcome =
     result.decision === 'block' ? 'block' : result.decision === 'pending' ? 'approval' : 'allow'
   return {

@@ -26,6 +26,7 @@ import {
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
+import { PolicyFileCard } from '#/components/policy-file-card.tsx'
 import { dateTime, timeAgo } from '#/lib/format.ts'
 import { getConnectInfo, listAuditLog } from '#/server/fns/settings.ts'
 import { deleteSsoProvider, getSsoProvider, saveSsoProvider } from '#/server/fns/sso.ts'
@@ -49,6 +50,7 @@ export const Route = createFileRoute('/_app/settings/')({
 })
 
 function SettingsPage() {
+  const { isAdmin } = Route.useRouteContext()
   const { data: info } = useQuery(infoQuery)
 
   return (
@@ -63,6 +65,7 @@ function SettingsPage() {
             </div>
           </Card>
           <SsoCard />
+          {isAdmin ? <PolicyFileCard /> : null}
         </div>
         <AuditLog />
       </div>

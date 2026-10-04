@@ -264,8 +264,8 @@ export class McpServer {
 
     const started = performance.now();
     // Approval level "touchid": sign with the presence key. macOS shows
-    // "hy-guard is trying to approve a Claude Code action: <description>".
-    const presence = config.presence && d.approval === 'touchid' ? `approve a Claude Code action: ${this.#describe(name, args)}` : false;
+    // "hy-guard is trying to run <tool> via <host> (<arguments>)", written by the signer.
+    const presence = config.presence && d.approval === 'touchid';
     if (presence) {
       this.#progress(progressToken, `Waiting for Touch ID on this Mac: ${this.#describe(name, args)}`);
       uiCall(ctx().toolUseId, { state: 'waiting_touchid' });

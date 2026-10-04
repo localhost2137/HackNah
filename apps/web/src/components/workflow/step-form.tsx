@@ -38,10 +38,13 @@ export function FieldForm({
   fields,
   value,
   onChange,
+  limits = [],
 }: {
   fields: BlockField[]
   value: Values
   onChange: (patch: Values) => void
+  /** Rules on the Limits page a Limit block can read. */
+  limits?: { value: string; label: string }[]
 }) {
   return (
     <>
@@ -116,6 +119,27 @@ export function FieldForm({
                   value={(current as string[]) ?? []}
                   onChange={set}
                 />
+              </Field>
+            )
+          case 'limit':
+            return (
+              <Field
+                key={field.key}
+                label={field.label}
+                hint={
+                  limits.length
+                    ? 'Only limits set to "let the workflow decide" are listed.'
+                    : 'Add a limit set to "let the workflow decide" on the Limits page first.'
+                }
+              >
+                <Select value={String(current ?? '')} onChange={(e) => set(e.target.value)}>
+                  <option value="">Choose a limit…</option>
+                  {limits.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
               </Field>
             )
           case 'argument_rules':

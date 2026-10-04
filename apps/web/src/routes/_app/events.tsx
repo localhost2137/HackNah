@@ -1,4 +1,5 @@
 import type { Decision, EventKind, GatewayEvent } from '@acl/shared'
+import { eventKind, formatAmount, kindLabels } from '@acl/shared'
 import {
   Badge,
   Button,
@@ -28,6 +29,7 @@ import {
   JsonBlock,
   KindLabel,
   RiskMeter,
+  WorkflowRuns,
 } from '#/components/event-bits.tsx'
 import { FilterChip, Segmented } from '#/components/filters.tsx'
 import { dateTime, decisionMeta, num, timeAgo } from '#/lib/format.ts'
@@ -57,6 +59,7 @@ function matchesLive(e: GatewayEvent, s: EventsSearch) {
   if (s.kind && e.kind !== s.kind) return false
   if (s.user && e.userId !== s.user) return false
   if (s.session && e.sessionId !== s.session) return false
+  if (s.workflow && !e.workflows.some((w) => w.id === s.workflow)) return false
   if (
     s.q &&
     !`${e.toolName ?? ''} ${e.model ?? ''} ${e.id}`.toLowerCase().includes(s.q.toLowerCase())
@@ -102,6 +105,7 @@ function EventsPage() {
         latencyMs: e.latencyMs,
         inputTokens: e.inputTokens,
         outputTokens: e.outputTokens,
+        costUsd: e.costUsd ?? null,
         sessionId: e.sessionId,
         country: e.country,
         createdAt: new Date(e.createdAt),
@@ -185,6 +189,9 @@ function EventsPage() {
             {row.original.inputTokens != null
               ? `${num(row.original.inputTokens)} / ${num(row.original.outputTokens)}`
               : '—'}
+            {row.original.costUsd ? (
+              <span className="ml-2 text-subtle">{formatAmount('cost', row.original.costUsd)}</span>
+            ) : null}
           </Mono>
         ),
       },
@@ -265,10 +272,12 @@ function EventsPage() {
             setSearch({ kind: (e.target.value || undefined) as EventKind | undefined })
           }
         >
-          <option value="">All kinds</option>
-          <option value="model_request">Model requests</option>
-          <option value="agent_message">Agent messages</option>
-          <option value="tool_call">Tool calls</option>
+          <option value="">All stages</option>
+          {eventKind.options.map((k) => (
+            <option key={k} value={k}>
+              {kindLabels[k]}
+            </option>
+          ))}
         </Select>
         <Input
           className="w-64"
@@ -288,6 +297,12 @@ function EventsPage() {
           <FilterChip
             label={`Session ${search.session.slice(0, 8)}`}
             onClear={() => setSearch({ session: undefined })}
+          />
+        ) : null}
+        {search.workflow ? (
+          <FilterChip
+            label={`Workflow ${search.workflow}`}
+            onClear={() => setSearch({ workflow: undefined })}
           />
         ) : null}
       </div>
@@ -398,21 +413,38 @@ function EventDrawer({ id, onClose }: { id: string | undefined; onClose: () => v
             />
             <Meta label="Time" value={dateTime(data.createdAt)} sub={`${data.latencyMs}ms`} />
             <Meta
-              label="Workflows"
-              value={
-                data.workflows.length
-                  ? data.workflows.map((w) => `${w.name} v${w.version}`).join(', ')
-                  : 'None matched'
-              }
-            />
-            <Meta
               label="Tokens"
               value={
                 data.inputTokens != null
                   ? `${num(data.inputTokens)} in / ${num(data.outputTokens)} out`
                   : '—'
               }
+              sub={
+                data.cacheReadTokens || data.cacheWriteTokens
+                  ? `cache ${num(data.cacheReadTokens ?? 0)} read / ${num(data.cacheWriteTokens ?? 0)} written`
+                  : undefined
+              }
             />
+            <Meta
+              label="Cost"
+              value={data.costUsd != null ? formatAmount('cost', data.costUsd) : '—'}
+              sub={data.gpuMs != null ? `${num(data.gpuMs / 1000)} GPU-s` : undefined}
+            />
+            <Meta
+              label="Control layer time"
+              value={data.overheadMs != null ? `${data.overheadMs}ms` : '—'}
+              sub={
+                data.overheadMs != null && data.latencyMs > data.overheadMs
+                  ? `upstream ${data.latencyMs - data.overheadMs}ms`
+                  : undefined
+              }
+            />
+            <div className="col-span-2">
+              <dt className="text-[11px] text-subtle">Workflows</dt>
+              <dd className="mt-1">
+                <WorkflowRuns workflows={data.workflows} />
+              </dd>
+            </div>
           </dl>
           <section>
             <h4 className="mb-2 text-xs font-semibold text-muted uppercase">Checks</h4>

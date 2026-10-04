@@ -1,5 +1,12 @@
-import type { ApprovalMethod } from './events.ts'
-import type { CheckConfig, CheckType, Condition, PolicyNode, PolicyNodeType } from './workflow.ts'
+import { type ApprovalMethod, type EventKind, eventKind, kindLabels } from './events.ts'
+import type {
+  CheckConfig,
+  CheckType,
+  Condition,
+  ConditionField,
+  PolicyNode,
+  PolicyNodeType,
+} from './workflow.ts'
 
 /**
  * Every workflow node is an instance of a block. A block declares what it reads from the
@@ -12,13 +19,14 @@ export type Tone = 'ok' | 'bad' | 'warn' | 'neutral' | 'accent'
 
 export type BlockId =
   | 'trigger'
-  | 'route'
+  | `if_${ConditionField}`
   | CheckType
   | 'allow'
   | 'block'
+  | 'skip'
   | `approve_${ApprovalMethod}`
 
-export type BlockGroup = 'Routing' | 'Content' | 'Tool' | 'Device' | 'Session' | 'Outcome'
+export type BlockGroup = 'Conditions' | 'Content' | 'Tool' | 'Device' | 'Session' | 'Outcome'
 
 /** Request data a block reads. The test panel only asks for what the graph's blocks use. */
 export type BlockInput =
@@ -36,6 +44,8 @@ export type BlockInput =
   | 'hook'
   | 'idle'
   | 'definition'
+  | 'usage'
+  | 'model'
 
 export const inputLabels: Record<BlockInput, string> = {
   content: 'Prompt, tool result or tool arguments',
@@ -52,6 +62,8 @@ export const inputLabels: Record<BlockInput, string> = {
   hook: "Claude Code's hook record of the call",
   idle: 'Keyboard and mouse idle time',
   definition: 'Pinned tool definition',
+  usage: 'Spend and requests counted by a limit',
+  model: 'Model id',
 }
 
 export type BlockOutput = {
@@ -71,6 +83,9 @@ export type BlockField = { key: string; label: string; hint?: string } & (
   | { kind: 'select' | 'multi'; options: Option[] }
   | { kind: 'switch' }
   | { kind: 'argument_rules' }
+  | { kind: 'limit' }
+  /** The values of a condition block, edited with the picker for its field. */
+  | { kind: 'condition' }
 )
 
 type Body<N> = N extends PolicyNode ? Omit<N, 'id' | 'position'> : never
@@ -90,6 +105,8 @@ export type BlockSpec = {
   /** Anything worth knowing beyond the one sentence; shown in the step settings only. */
   details?: string
   inputs: BlockInput[]
+  /** The stages this block inspects; elsewhere it is skipped and leaves through `pass`. */
+  appliesTo?: EventKind[]
   outputs: BlockOutput[]
   /** The output an inserted block continues the existing path through; null for outcomes. */
   through: string | null
@@ -100,7 +117,8 @@ export type BlockSpec = {
 }
 
 const conditionLabels: Record<Condition['field'], string> = {
-  kind: 'Kind',
+  kind: 'Stage',
+  source: 'Source',
   mcpServer: 'MCP server',
   tool: 'Tool',
   resource: 'Resource',
@@ -139,6 +157,9 @@ const osPostureOptions: Option[] = [
   { value: 'fw', label: 'Firewall' },
 ]
 
+/** Stages that come from the device: device and presence checks only apply to these. */
+const requestStages: EventKind[] = ['model_request', 'tool_call', 'agent_message']
+
 const pass = (label: string, next: BlockId[]): BlockOutput => ({
   id: 'pass',
   label,
@@ -152,7 +173,7 @@ function checkBlock<T extends CheckType>(
   type: T,
   spec: Pick<
     BlockSpec,
-    'group' | 'label' | 'description' | 'source' | 'details' | 'inputs' | 'outputs'
+    'group' | 'label' | 'description' | 'source' | 'details' | 'inputs' | 'outputs' | 'appliesTo'
   > & {
     fields?: BlockField[]
     defaults: CheckOf<T>
@@ -168,6 +189,7 @@ function checkBlock<T extends CheckType>(
     source: spec.source,
     details: spec.details,
     inputs: spec.inputs,
+    appliesTo: spec.appliesTo,
     outputs: spec.outputs,
     through: 'pass',
     fields: spec.fields ?? [],
@@ -177,6 +199,103 @@ function checkBlock<T extends CheckType>(
         ? spec.summary(node.check as CheckOf<T>)
         : '',
   }
+}
+
+const conditionSpecs: Record<
+  ConditionField,
+  { label: string; description: string; source: string; inputs: BlockInput[] }
+> = {
+  kind: {
+    label: 'Stage is',
+    description:
+      'Splits by stage: model input, tool call, tool result, model output or agent message.',
+    source: 'The request',
+    inputs: [],
+  },
+  tool: {
+    label: 'Tool is',
+    description: 'Matches the tool name. Use * as a wildcard: Bash, delete_*.',
+    source: 'The request',
+    inputs: ['tool'],
+  },
+  source: {
+    label: 'Tool source is',
+    description: 'Is the tool from an MCP server or built into the agent?',
+    source: 'The request',
+    inputs: ['tool'],
+  },
+  mcpServer: {
+    label: 'MCP server is',
+    description: 'Matches the MCP server the tool comes from.',
+    source: 'The request',
+    inputs: ['tool'],
+  },
+  tier: {
+    label: 'Tool tier is',
+    description: 'Is the tool read, write or destructive?',
+    source: 'MCP tool annotations',
+    inputs: ['tool'],
+  },
+  model: {
+    label: 'Model is',
+    description: 'Matches the model id. Use * as a wildcard: claude-opus-*.',
+    source: 'The request',
+    inputs: ['model'],
+  },
+  group: {
+    label: 'User group is',
+    description: 'Is the user in one of these groups?',
+    source: 'Groups page',
+    inputs: ['identity'],
+  },
+  resource: {
+    label: 'Resource is',
+    description: 'Does the tool belong to one of these resources?',
+    source: 'Resources page',
+    inputs: ['identity'],
+  },
+  deviceStatus: {
+    label: 'Device is',
+    description: 'Is the device trusted, new or a mismatch?',
+    source: 'Device token, checked by the gateway',
+    inputs: ['device'],
+  },
+  keyStorage: {
+    label: 'Key storage is',
+    description: 'Where does the device keep its key?',
+    source: 'The device, sent by the plugin',
+    inputs: ['key_storage'],
+  },
+}
+
+/** One block per question. Yes and No chained into each other make AND and OR. */
+function conditionBlocks(): BlockSpec[] {
+  return (Object.keys(conditionSpecs) as ConditionField[]).map((field) => ({
+    id: `if_${field}` as BlockId,
+    nodeType: 'condition',
+    group: 'Conditions',
+    label: conditionSpecs[field].label,
+    description: conditionSpecs[field].description,
+    source: conditionSpecs[field].source,
+    details: 'Chain Yes into the next condition for AND, No for OR.',
+    inputs: conditionSpecs[field].inputs,
+    outputs: [
+      {
+        id: 'yes',
+        label: 'Yes',
+        tone: 'accent',
+        next: ['keywords', 'arguments', 'judge', 'approve_touchid', 'block'],
+      },
+      { id: 'no', label: 'No', tone: 'neutral', next: ['skip', 'allow', 'if_tool', 'keywords'] },
+    ],
+    through: 'yes',
+    fields: [{ kind: 'condition', key: 'condition', label: 'Values' }],
+    create: () => ({ type: 'condition', condition: { field, values: [] } as Condition }),
+    summary: (node) =>
+      node.type !== 'condition' || node.condition.values.length === 0
+        ? 'No values yet'
+        : conditionText(node.condition).replace(/^[^:]+: /, ''),
+  }))
 }
 
 const reasonField: BlockField = {
@@ -231,61 +350,41 @@ const specs: BlockSpec[] = [
   {
     id: 'trigger',
     nodeType: 'trigger',
-    group: 'Routing',
+    group: 'Conditions',
     label: 'Start',
-    description: 'Picks which requests run this workflow.',
+    description: 'Picks which stages run this workflow.',
     source: 'The request',
     details:
-      'Decides which requests start this workflow. Without conditions every prompt and tool call does. A request that starts no workflow is allowed.',
+      'Picks the stages this workflow runs on. None ticked: every stage (model input, tool calls, tool results, model output and agent messages). Ask about tools, models or groups with condition blocks after it; a request that ends in Skip, or starts no workflow, is allowed.',
     inputs: [],
     outputs: [
       {
         id: 'next',
         label: 'Next',
         tone: 'accent',
-        next: ['fingerprint', 'posture', 'route', 'keywords'],
+        next: ['if_tool', 'if_model', 'fingerprint', 'keywords'],
       },
     ],
     through: 'next',
-    fields: [],
-    create: () => ({ type: 'trigger', mode: 'all', conditions: [] }),
-    summary: (node) =>
-      node.type !== 'trigger' || node.conditions.length === 0
-        ? 'Every prompt and tool call'
-        : node.conditions.map((c) => conditionText(c)).join(node.mode === 'all' ? ' and ' : ' or '),
-  },
-  {
-    id: 'route',
-    nodeType: 'match',
-    group: 'Routing',
-    label: 'Route',
-    description: 'Splits requests by tool, tier, server, group, device or model.',
-    source: 'The request',
-    inputs: ['tool', 'identity', 'device', 'key_storage'],
-    outputs: [
+    fields: [
       {
-        id: 'match',
-        label: 'Match',
-        tone: 'accent',
-        next: ['keywords', 'arguments', 'untrusted_content', 'judge', 'approve_touchid'],
-      },
-      {
-        id: 'else',
-        label: 'No match',
-        tone: 'neutral',
-        next: ['route', 'keywords', 'redact', 'allow'],
+        kind: 'multi',
+        key: 'stages',
+        label: 'Runs on',
+        hint: 'None ticked runs on every stage.',
+        options: eventKind.options.map((value) => ({ value, label: kindLabels[value] })),
       },
     ],
-    through: 'match',
-    fields: [],
-    create: () => ({ type: 'match', label: '', mode: 'all', conditions: [] }),
+    create: () => ({ type: 'trigger', stages: [] }),
     summary: (node) =>
-      node.type !== 'match' || node.conditions.length === 0
-        ? 'No conditions'
-        : node.conditions.map((c) => conditionText(c)).join(node.mode === 'all' ? ' and ' : ' or '),
+      node.type !== 'trigger' || node.stages.length === 0
+        ? 'Any stage'
+        : node.stages.map((k) => kindLabels[k]).join(', '),
   },
+  ...conditionBlocks(),
   checkBlock('fingerprint', {
     group: 'Device',
+    appliesTo: requestStages,
     label: 'Device check',
     description: 'Is this the device the token was issued to?',
     source: 'Device token, checked by the gateway',
@@ -293,7 +392,7 @@ const specs: BlockSpec[] = [
       'Compares the device presenting the token with the one it was issued to. Approving a request that came through New device also trusts that device.',
     inputs: ['device'],
     outputs: [
-      pass('Known device', ['keywords', 'posture', 'judge', 'redact', 'route']),
+      pass('Known device', ['keywords', 'posture', 'judge', 'redact', 'if_tool']),
       {
         id: 'new',
         label: 'New device',
@@ -307,6 +406,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('posture', {
     group: 'Device',
+    appliesTo: requestStages,
     label: 'EDR score',
     description: 'Reads the device health score.',
     source: 'CrowdStrike, sent by the plugin',
@@ -314,14 +414,19 @@ const specs: BlockSpec[] = [
       'Reads the CrowdStrike Zero Trust score for the device. A raised detection or a contained host leaves through Compromised; a stale, missing or unconfirmed score through Unknown.',
     inputs: ['posture'],
     outputs: [
-      pass('Healthy', ['os_posture', 'network', 'keywords', 'route']),
-      { id: 'low', label: 'Low score', tone: 'warn', next: ['route', 'block', 'approve_browser'] },
+      pass('Healthy', ['os_posture', 'network', 'keywords', 'if_tool']),
+      {
+        id: 'low',
+        label: 'Low score',
+        tone: 'warn',
+        next: ['if_tool', 'block', 'approve_browser'],
+      },
       { id: 'compromised', label: 'Compromised', tone: 'bad', next: ['block'] },
       {
         id: 'unknown',
         label: 'Unknown',
         tone: 'warn',
-        next: ['approve_browser', 'route', 'block'],
+        next: ['approve_browser', 'if_tool', 'block'],
       },
     ],
     fields: [
@@ -339,6 +444,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('os_posture', {
     group: 'Device',
+    appliesTo: requestStages,
     label: 'OS security',
     description: 'Checks disk encryption, SIP, Gatekeeper and firewall.',
     source: 'The device, sent by the plugin',
@@ -346,12 +452,12 @@ const specs: BlockSpec[] = [
       'Built-in checks the device reports about itself. A baseline for machines without an EDR; fails when a required protection is off.',
     inputs: ['os_posture'],
     outputs: [
-      pass('All on', ['network', 'keywords', 'route']),
+      pass('All on', ['network', 'keywords', 'if_tool']),
       {
         id: 'fail',
         label: 'Protection off',
         tone: 'bad',
-        next: ['block', 'route', 'approve_browser'],
+        next: ['block', 'if_tool', 'approve_browser'],
       },
     ],
     fields: [{ kind: 'multi', key: 'require', label: 'Must be on', options: osPostureOptions }],
@@ -360,6 +466,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('network', {
     group: 'Device',
+    appliesTo: requestStages,
     label: 'Network check',
     description: 'Flags a new network or impossible travel.',
     source: 'Request IP, checked by the gateway',
@@ -398,11 +505,11 @@ const specs: BlockSpec[] = [
   checkBlock('keywords', {
     group: 'Content',
     label: 'Keyword match',
-    description: 'Looks for your words or patterns in the request.',
+    description: 'Looks for your words or patterns in the text.',
     source: 'Your pattern list',
     inputs: ['content'],
     outputs: [
-      pass('No match', ['signatures', 'judge', 'redact', 'allow']),
+      pass('No match', ['signatures', 'learned', 'judge', 'redact']),
       { id: 'fail', label: 'Match', tone: 'bad', next: ['block', 'approve_admin', 'judge'] },
     ],
     fields: [
@@ -512,7 +619,7 @@ const specs: BlockSpec[] = [
     description: 'Asks a model to rate the risk from 0 to 1.',
     source: 'The model endpoint you set',
     details:
-      'Sends the input to a model on OpenRouter, or to any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM), and asks for a risk score between 0 and 1. Leaves through Error when the judge is down or times out.',
+      'Sends the input to a model on OpenRouter, or to any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM), and asks for a risk score between 0 and 1. When the judge is down or times out, the workflow fallback decides.',
     inputs: ['content', 'tool'],
     outputs: [
       pass('Low risk', ['redact', 'allow', 'untrusted_content']),
@@ -522,7 +629,6 @@ const specs: BlockSpec[] = [
         tone: 'bad',
         next: ['block', 'approve_admin', 'approve_touchid'],
       },
-      { id: 'error', label: 'Error', tone: 'warn', next: ['approve_admin', 'block', 'keywords'] },
     ],
     fields: [
       {
@@ -574,6 +680,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('arguments', {
     group: 'Tool',
+    appliesTo: ['tool_call'],
     label: 'Argument rules',
     description: 'Checks tool arguments against your rules.',
     source: 'Your rules',
@@ -597,6 +704,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('tool_pinning', {
     group: 'Tool',
+    appliesTo: ['tool_call'],
     label: 'Tool pin',
     description: 'Checks the tool is the one an admin approved.',
     source: 'Pinned tool definitions, sent by the plugin',
@@ -612,6 +720,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('untrusted_content', {
     group: 'Session',
+    appliesTo: ['model_request', 'tool_call'],
     label: 'Untrusted input',
     description: 'Did the session read outside content recently?',
     source: 'Session history, sent by the plugin',
@@ -635,6 +744,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('hook', {
     group: 'Session',
+    appliesTo: ['tool_call'],
     label: 'Hook check',
     description: 'Did Claude Code start this tool call?',
     source: 'Claude Code hook, sent by the plugin',
@@ -655,6 +765,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('idle', {
     group: 'Session',
+    appliesTo: requestStages,
     label: 'User present',
     description: 'Is someone at the keyboard?',
     source: 'Device idle time, sent by the plugin',
@@ -675,6 +786,24 @@ const specs: BlockSpec[] = [
     ],
     defaults: { type: 'idle', maxMinutes: 30 },
     summary: (c) => `Idle under ${c.maxMinutes} min`,
+  }),
+  checkBlock('limit', {
+    group: 'Session',
+    label: 'Usage limit',
+    description: 'Checks spend or usage against a limit.',
+    source: 'A rule from the Limits page',
+    details:
+      'Reads a rule from the Limits page set to "let the workflow decide": spend in USD, tokens, GPU time or requests for the user, their group or the org. Under the warning level the request passes; past it, it leaves through Near limit; past the limit, through Over limit.',
+    inputs: ['usage', 'identity'],
+    appliesTo: ['model_request', 'tool_call', 'agent_message'],
+    outputs: [
+      pass('Under limit', ['keywords', 'allow', 'if_tool']),
+      { id: 'warn', label: 'Near limit', tone: 'warn', next: ['allow', 'approve_confirm'] },
+      { id: 'over', label: 'Over limit', tone: 'bad', next: ['block', 'approve_admin'] },
+    ],
+    fields: [{ kind: 'limit', key: 'limitId', label: 'Limit' }],
+    defaults: { type: 'limit', limitId: '' },
+    summary: (c) => (c.limitId ? 'Usage against a limit' : 'No limit selected'),
   }),
   {
     id: 'allow',
@@ -743,6 +872,28 @@ const specs: BlockSpec[] = [
     }),
     summary: (node) => (node.type === 'decision' && node.reason) || 'Stop the request',
   },
+  {
+    id: 'skip',
+    nodeType: 'decision',
+    group: 'Outcome',
+    label: 'Skip',
+    description: 'Ends this workflow with no decision.',
+    source: '—',
+    details:
+      'End this workflow without a decision. It does not count towards the outcome, as if it had not started; other workflows still decide.',
+    inputs: [],
+    outputs: [],
+    through: null,
+    fields: [],
+    create: () => ({
+      type: 'decision',
+      action: 'skip',
+      method: 'admin',
+      timeoutSec: 300,
+      reason: '',
+    }),
+    summary: () => 'This workflow does not apply',
+  },
 ]
 
 export const blocks = Object.fromEntries(specs.map((b) => [b.id, b])) as Record<BlockId, BlockSpec>
@@ -754,8 +905,8 @@ export function blockId(node: PolicyNode): BlockId {
   switch (node.type) {
     case 'trigger':
       return 'trigger'
-    case 'match':
-      return 'route'
+    case 'condition':
+      return `if_${node.condition.field}`
     case 'check':
       return node.check.type
     case 'decision':
@@ -774,6 +925,6 @@ export function blockOutput(node: PolicyNode, output: string): BlockOutput | und
 /** Labels for the `type` stored on each entry of an event's `checks`. */
 export const stepLabels: Record<string, string> = {
   ...Object.fromEntries(specs.filter((b) => b.nodeType === 'check').map((b) => [b.id, b.label])),
-  match: 'Route',
+  condition: 'Condition',
   decision: 'Decision',
 }

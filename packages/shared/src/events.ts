@@ -1,8 +1,26 @@
 import { z } from 'zod'
 
-/** `agent_message` is a message one agent hands to another (a delegated task or its result). */
-export const eventKind = z.enum(['model_request', 'tool_call', 'agent_message'])
+/**
+ * The stage of an interaction a workflow inspects. `model_request` is everything sent to the model
+ * as user input, `tool_result` what a tool returned, `model_output` what the model generated, and
+ * `agent_message` a message one agent hands to another (a delegated task or its reply).
+ */
+export const eventKind = z.enum([
+  'model_request',
+  'tool_call',
+  'tool_result',
+  'model_output',
+  'agent_message',
+])
 export type EventKind = z.infer<typeof eventKind>
+
+export const kindLabels: Record<EventKind, string> = {
+  model_request: 'Model input',
+  tool_call: 'Tool call',
+  tool_result: 'Tool result',
+  model_output: 'Model output',
+  agent_message: 'Agent message',
+}
 
 export const decision = z.enum([
   'allow',
@@ -25,7 +43,15 @@ export const checkOutcome = z.enum(['pass', 'fail', 'error', 'skipped'])
 export type CheckOutcome = z.infer<typeof checkOutcome>
 
 /** Which published workflow version took part in a decision. */
-export const workflowRef = z.object({ id: z.string(), name: z.string(), version: z.number() })
+export const workflowRef = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number(),
+  /** What this workflow alone decided. */
+  decision: z.enum(['allow', 'block', 'pending', 'skip']).optional(),
+  /** Time this workflow took, judge calls included. */
+  durationMs: z.number().optional(),
+})
 export type WorkflowRef = z.infer<typeof workflowRef>
 
 export const checkResult = z.object({
@@ -64,7 +90,15 @@ export const gatewayEvent = z.object({
   workflows: z.array(workflowRef),
   inputTokens: z.number().nullable(),
   outputTokens: z.number().nullable(),
+  cacheReadTokens: z.number().nullable().optional(),
+  cacheWriteTokens: z.number().nullable().optional(),
+  /** What the upstream call cost, from the model catalog's prices. */
+  costUsd: z.number().nullable().optional(),
+  /** Inference time of a local model. */
+  gpuMs: z.number().nullable().optional(),
   latencyMs: z.number(),
+  /** Time spent in the control layer itself, without the upstream. */
+  overheadMs: z.number().nullable().optional(),
   upstreamStatus: z.number().nullable(),
   ip: z.string().nullable(),
   country: z.string().nullable(),

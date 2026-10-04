@@ -1,4 +1,4 @@
-import { conditionText, type PolicyGraph } from '@acl/shared'
+import { kindLabels, type PolicyGraph } from '@acl/shared'
 import {
   Badge,
   Button,
@@ -52,14 +52,12 @@ export const Route = createFileRoute('/_app/workflows/')({
 type Workflow = Awaited<ReturnType<typeof listWorkflows>>[number]
 type Settings = { workflowId: string; name: string; description: string; groupIds: string[] }
 
-const kindNames: Record<string, string> = { model_request: 'prompts', tool_call: 'tool calls' }
-
-function triggerText(graph: PolicyGraph, names: Record<string, string>): string {
+/** The stages a workflow runs on; what it asks after that lives in its condition blocks. */
+function triggerText(graph: PolicyGraph): string {
   const trigger = graph.nodes.find((n) => n.type === 'trigger')
-  if (!trigger || trigger.conditions.length === 0) return 'Every prompt and tool call'
-  return trigger.conditions
-    .map((c) => conditionText(c, names))
-    .join(trigger.mode === 'all' ? ' and ' : ' or ')
+  const stages = trigger?.type === 'trigger' ? trigger.stages : []
+  if (stages.length === 0) return 'Any stage'
+  return stages.map((k) => kindLabels[k]).join(', ')
 }
 
 function WorkflowsPage() {
@@ -75,7 +73,6 @@ function WorkflowsPage() {
   const list = workflows.data ?? []
   const groupList = groups.data ?? []
   const names: Record<string, string> = {
-    ...kindNames,
     ...Object.fromEntries(groupList.map((g) => [g.id, g.name])),
     ...Object.fromEntries((servers.data ?? []).map((s) => [s.id, s.name])),
     ...Object.fromEntries((resources.data ?? []).map((r) => [r.id, r.name])),
@@ -123,10 +120,7 @@ function WorkflowsPage() {
   const catchAll = list.some((w) => {
     const trigger = w.published?.definition.nodes.find((n) => n.type === 'trigger')
     return (
-      w.enabled &&
-      trigger?.type === 'trigger' &&
-      trigger.conditions.length === 0 &&
-      runsForEveryone(w)
+      w.enabled && trigger?.type === 'trigger' && trigger.stages.length === 0 && runsForEveryone(w)
     )
   })
 
@@ -134,7 +128,7 @@ function WorkflowsPage() {
     <>
       <PageHeader
         title="Workflows"
-        description="Every enabled workflow whose start conditions match the request, and whose groups include the user, runs. The strictest outcome wins: block, then approval, then allow."
+        description="Every enabled workflow that runs on the request's stage, and whose groups include the user, runs. The strictest outcome wins: block, then approval, then allow; a workflow that ends in Skip does not count."
         actions={
           isAdmin ? (
             <Button variant="primary" onClick={() => setCreating({ name: '', copyOf: '' })}>
@@ -164,7 +158,7 @@ function WorkflowsPage() {
               <tr>
                 {isAdmin ? <TH className="w-16" /> : null}
                 <TH>Workflow</TH>
-                <TH>Starts when</TH>
+                <TH>Runs on</TH>
                 <TH>Runs for</TH>
                 <TH>Version</TH>
                 <TH>Enabled</TH>
@@ -210,9 +204,7 @@ function WorkflowsPage() {
                       <div className="text-xs text-muted">{w.description}</div>
                     ) : null}
                   </TD>
-                  <TD className="max-w-72 text-xs text-muted">
-                    {triggerText(w.definition, names)}
-                  </TD>
+                  <TD className="max-w-72 text-xs text-muted">{triggerText(w.definition)}</TD>
                   <TD>
                     {runsForEveryone(w) ? (
                       <span className="text-xs text-muted">Everyone</span>

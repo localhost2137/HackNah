@@ -2,6 +2,7 @@ import { type Db, mcpServer } from '@acl/db'
 import {
   type Decision,
   type GatewayEvent,
+  type RedactConfig,
   RedactionVault,
   randomId,
   toolTierFromAnnotations,
@@ -17,13 +18,15 @@ import {
   mcpAccess,
   mcpServerVisible,
   mcpToolAccess,
+  userGroupIds,
 } from '../lib/access.ts'
 import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
+import { checkLimits } from '../lib/limits.ts'
 import { runPipeline } from '../lib/pipeline.ts'
-import { enforceRateLimits } from '../lib/rate-limit.ts'
 import { type ResolvedSession, resolveSession } from '../lib/session.ts'
-import { loadRateLimits } from '../lib/workflow.ts'
+import { markResultChecked } from '../lib/verdicts.ts'
+import { loadLimits } from '../lib/workflow.ts'
 import {
   type JsonRpcRequest,
   type JsonRpcResponse,
@@ -223,83 +226,152 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     return toolError(`You don't have access to ${fullName} in this session.`)
   }
 
-  const limited = await enforceRateLimits(
+  const limits = await checkLimits(
     c.env,
-    principal.orgId,
-    principal.userId,
-    await loadRateLimits(db, principal.orgId),
+    await loadLimits(db, principal.orgId),
     {
+      scope: 'tool',
       mcpServerId: server.id,
       toolName: fullName,
       resourceIds: event.resourceIds,
     },
+    {
+      orgId: principal.orgId,
+      userId: principal.userId,
+      groupIds: await userGroupIds(db, principal),
+    },
+    { concurrency: true },
   )
-  if (limited) {
+  event.checks = limits.checks
+  if (limits.blocked) {
     finish('rate_limited')
-    const wait = Math.ceil((limited.resetAt - Date.now()) / 1000)
-    return toolError(
-      `Rate limit reached for ${fullName} (${limited.rule.limit}/${limited.rule.windowSec}s). Retry in ${wait}s.`,
-    )
+    const { reason, resetAt } = limits.blocked
+    const wait = resetAt ? ` Retry in ${Math.ceil((resetAt - Date.now()) / 1000)}s.` : ''
+    return toolError(`${reason}.${wait}`)
   }
+  // Concurrency slots are held until the upstream answers.
+  const callWithinLimits = async () => {
+    const result = await runPipeline(
+      c.env,
+      db,
+      principal,
+      {
+        kind: 'tool_call',
+        text: argsText,
+        toolName: fullName,
+        mcpServerId: server.id,
+        resourceIds: event.resourceIds,
+        toolTier: toolTierFromAnnotations(
+          (server.tools as McpTool[]).find((t) => t.name === toolName)?.annotations,
+        ),
+        toolArguments: args,
+      },
+      {
+        eventId,
+        sessionId: session.id,
+        summary: `${fullName}: ${argsText.slice(0, 200)}`,
+        limits: limits.states,
+      },
+    )
+    event.checks = [...limits.checks, ...result.checks]
+    event.riskScore = result.riskScore
+    event.workflows = result.workflows
+    if (result.decision === 'block' || result.decision === 'declined') {
+      finish(result.decision)
+      return toolError(`Blocked by AI Control Layer: ${result.reasons.join('; ') || 'policy'}`)
+    }
 
+    const { redact } = result
+    const stub = session.id ? sessionStub(c.env, principal.orgId, session.id) : null
+    const vault = new RedactionVault(stub ? await stub.getVault() : {})
+
+    try {
+      const token = await upstreamToken(c.env, db, server, principal.userId)
+      const client = new McpClient(server.url, token, `${server.id}:${principal.userId}`)
+      // The agent only ever saw placeholders; the upstream needs the real values.
+      let response = (await client.callTool(toolName, vault.restoreDeep(args))) as ToolResponse
+      event.upstreamStatus = 200
+
+      // The result is checked before the agent sees it, as the Tool result stage.
+      const checked = await checkResult(c, session, server.id, fullName, event, response)
+      if (checked.withheld) {
+        finish(result.decision, response)
+        return toolError(`Tool result withheld by AI Control Layer: ${checked.withheld}`)
+      }
+      const before = vault.size
+      for (const options of [redact, checked.redact]) {
+        if (!options) continue
+        response = {
+          ...response,
+          content: response.content?.map((part) =>
+            part.type === 'text' && part.text
+              ? { ...part, text: vault.redact(part.text, options).text }
+              : part,
+          ),
+        }
+      }
+      if (stub && vault.size !== before) await stub.mergeVault(vault.toJSON())
+      await markResultChecked(c.env, principal.orgId, session.id, resultText(response))
+      finish(result.decision, response)
+      return response
+    } catch (err) {
+      event.upstreamStatus = 502
+      finish(result.decision)
+      return toolError(err instanceof Error ? err.message : 'Upstream MCP call failed')
+    }
+  }
+  try {
+    return await callWithinLimits()
+  } finally {
+    await limits.release()
+  }
+}
+
+type ToolResponse = { content?: { type: string; text?: string }[] }
+
+/** The text Claude Code puts into the tool result, as the next model request will carry it. */
+function resultText(response: ToolResponse): string {
+  return (response.content ?? []).map((p) => (p.type === 'text' ? (p.text ?? '') : '')).join('\n')
+}
+
+async function checkResult(
+  c: AppContext,
+  session: ResolvedSession,
+  mcpServerId: string,
+  toolName: string,
+  call: GatewayEvent,
+  response: ToolResponse,
+): Promise<{ withheld: string | null; redact: RedactConfig | null }> {
+  const text = resultText(response)
+  if (!text) return { withheld: null, redact: null }
+  const principal = c.get('principal')
+  const started = Date.now()
+  const eventId = randomId('evt')
   const result = await runPipeline(
     c.env,
-    db,
+    c.get('db'),
     principal,
-    {
-      kind: 'tool_call',
-      text: argsText,
-      toolName: fullName,
-      mcpServerId: server.id,
-      resourceIds: event.resourceIds,
-      toolTier: toolTierFromAnnotations(
-        (server.tools as McpTool[]).find((t) => t.name === toolName)?.annotations,
-      ),
-      toolArguments: args,
-    },
-    { eventId, sessionId: session.id, summary: `${fullName}: ${argsText.slice(0, 200)}` },
+    { kind: 'tool_result', text, toolName, mcpServerId, resourceIds: call.resourceIds },
+    { eventId, sessionId: session.id, summary: `Result of ${toolName}: ${text.slice(0, 200)}` },
   )
-  event.checks = result.checks
-  event.riskScore = result.riskScore
-  event.workflows = result.workflows
-  if (result.decision === 'block' || result.decision === 'declined') {
-    finish(result.decision)
-    return toolError(`Blocked by AI Control Layer: ${result.reasons.join('; ') || 'policy'}`)
+  const event: GatewayEvent = {
+    ...call,
+    id: eventId,
+    kind: 'tool_result',
+    decision: result.decision,
+    checks: result.checks,
+    riskScore: result.riskScore,
+    workflows: result.workflows,
+    latencyMs: Date.now() - started,
+    overheadMs: Date.now() - started,
+    payloadKey: null,
+    createdAt: new Date(started).toISOString(),
   }
-
-  const { redact } = result
-  const stub = session.id ? sessionStub(c.env, principal.orgId, session.id) : null
-  const vault = new RedactionVault(stub ? await stub.getVault() : {})
-
-  try {
-    const token = await upstreamToken(c.env, db, server, principal.userId)
-    const client = new McpClient(server.url, token, `${server.id}:${principal.userId}`)
-    // The agent only ever saw placeholders; the upstream needs the real values.
-    let response = (await client.callTool(toolName, vault.restoreDeep(args))) as {
-      content?: { type: string; text?: string }[]
-    }
-    if (redact) {
-      const before = vault.size
-      response = {
-        ...response,
-        content: response.content?.map((part) =>
-          part.type === 'text' && part.text
-            ? {
-                ...part,
-                text: vault.redact(part.text, { secrets: redact.secrets, pii: redact.pii }).text,
-              }
-            : part,
-        ),
-      }
-      if (stub && vault.size !== before) await stub.saveVault(vault.toJSON())
-    }
-    event.upstreamStatus = 200
-    finish(result.decision, response)
-    return response
-  } catch (err) {
-    event.upstreamStatus = 502
-    finish(result.decision)
-    return toolError(err instanceof Error ? err.message : 'Upstream MCP call failed')
+  c.executionCtx.waitUntil(recordEvent(c.env, event, { input: { text, toolName } }))
+  const refused = result.decision === 'block' || result.decision === 'declined'
+  return {
+    withheld: refused ? result.reasons.join('; ') || 'policy' : null,
+    redact: refused ? null : result.redact,
   }
 }
 

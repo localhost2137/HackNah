@@ -1,4 +1,11 @@
-import type { ApprovalMethod, CheckResult, EventKind, WorkflowRef } from './events.ts'
+import { blocks, conditionText } from './blocks.ts'
+import {
+  type ApprovalMethod,
+  type CheckResult,
+  type EventKind,
+  kindLabels,
+  type WorkflowRef,
+} from './events.ts'
 import { type ScoringModel, scoreModel } from './learned.ts'
 import {
   baselineSignatures,
@@ -7,21 +14,18 @@ import {
   severityRisk,
   textVariants,
 } from './signatures.ts'
-import {
-  type CheckConfig,
-  type CheckNode,
-  type CheckType,
-  type Condition,
-  type JudgeCheck,
-  type KeyStorage,
-  type MatchNode,
-  nodeOutputs,
-  type OsPostureKey,
-  type PolicyGraph,
-  type PolicyNode,
-  type RedactConfig,
-  type ToolTier,
-  type TriggerNode,
+import type {
+  CheckConfig,
+  CheckNode,
+  CheckType,
+  Condition,
+  JudgeCheck,
+  KeyStorage,
+  OsPostureKey,
+  PolicyGraph,
+  PolicyNode,
+  RedactConfig,
+  ToolTier,
 } from './workflow.ts'
 
 export type DeviceStatus = 'trusted' | 'new' | 'mismatch' | 'revoked'
@@ -75,7 +79,15 @@ export type EvaluationInput = {
   signals?: RequestSignals
 }
 
-export type JudgeVerdict = { score: number; reason: string }
+export type JudgeVerdict = {
+  score: number
+  reason: string
+  /** Tokens the judge call used, when the endpoint reports them. */
+  usage?: { inputTokens: number; outputTokens: number }
+}
+
+/** Where the user stands against one limit. */
+export type LimitStatus = { state: 'ok' | 'warn' | 'over'; reason: string }
 
 export type EngineDeps = {
   judge?: (check: JudgeCheck, input: EvaluationInput) => Promise<JudgeVerdict>
@@ -83,11 +95,14 @@ export type EngineDeps = {
   signatures?: Signature[]
   /** Trained models for the `learned` block. */
   models?: ScoringModel[]
+  /** Reads a limit for the `limit` block; the block is skipped without it. */
+  limit?: (limitId: string, input: EvaluationInput) => Promise<LimitStatus>
   now?: () => number
 }
 
 export type EvaluationResult = {
-  decision: 'allow' | 'block' | 'pending'
+  /** `skip`: the path ended in Skip, so this workflow does not count. */
+  decision: 'allow' | 'block' | 'pending' | 'skip'
   /** Every node the request passed through, in order, ending with the decision. */
   checks: CheckResult[]
   riskScore: number
@@ -119,9 +134,22 @@ export async function evaluateGraph(
   let trustsDevice = false
 
   const finish = (
-    action: 'allow' | 'block' | 'require_approval',
+    action: 'allow' | 'block' | 'require_approval' | 'skip',
     entry: { stepId: string; reason?: string; timeoutSec?: number; method?: ApprovalMethod },
   ): EvaluationResult => {
+    if (action === 'skip') {
+      checks.push({ stepId: entry.stepId, type: 'decision', outcome: 'skipped', durationMs: 0 })
+      return {
+        decision: 'skip',
+        checks,
+        riskScore: 0,
+        reasons: [],
+        approvalTimeoutSec: 300,
+        approvalMethod: null,
+        trustsDevice: false,
+        redact: null,
+      }
+    }
     checks.push({
       stepId: entry.stepId,
       type: 'decision',
@@ -159,6 +187,13 @@ export async function evaluateGraph(
     if (node.type === 'decision') {
       if (node.action !== 'require_approval')
         return finish(node.action, { stepId: node.id, reason: node.reason })
+      // Streamed output can't wait minutes for someone to decide.
+      if (input.kind === 'model_output')
+        return finish('block', {
+          stepId: node.id,
+          reason:
+            node.reason || 'Model output needs approval, which streamed output cannot wait for',
+        })
       const approval = resolveApproval(node.method, input.signals)
       if (approval.satisfied)
         return finish('allow', { stepId: node.id, reason: approval.satisfied, method: node.method })
@@ -171,26 +206,33 @@ export async function evaluateGraph(
     }
 
     let branch = 'next'
-    if (node.type === 'match') {
-      branch = matches(node, input) ? 'match' : 'else'
+    if (node.type === 'condition') {
+      branch = conditionHolds(node.condition, input) ? 'yes' : 'no'
       checks.push({
         stepId: node.id,
-        type: 'match',
+        type: 'condition',
         outcome: 'pass',
         branch,
-        reason: node.label || undefined,
+        reason: conditionText(node.condition),
         durationMs: 0,
       })
     } else if (node.type === 'check') {
       const started = now()
       const result = await runCheck(node, input, deps)
-      branch = result.branch
       checks.push({
         stepId: node.id,
         type: node.check.type,
         durationMs: Math.round(now() - started),
         ...result,
+        branch: result.outcome === 'error' ? undefined : result.branch,
       })
+      // A check that could not run is treated like an output with nothing connected.
+      if (result.outcome === 'error')
+        return finish(graph.fallback, {
+          stepId: '(fallback)',
+          reason: `${result.reason} (workflow fallback: ${graph.fallback})`,
+        })
+      branch = result.branch
       if (node.enabled && node.check.type === 'redact') redact = node.check
       if (node.check.type === 'fingerprint' && branch === 'new') trustsDevice = true
     }
@@ -216,7 +258,10 @@ export type ActiveWorkflow = {
   definition: PolicyGraph
 }
 
-export type CombinedResult = EvaluationResult & { workflows: WorkflowRef[] }
+export type CombinedResult = Omit<EvaluationResult, 'decision'> & {
+  decision: 'allow' | 'block' | 'pending'
+  workflows: WorkflowRef[]
+}
 
 /** The enabled workflows that run for a request: in scope for the user, and triggered by it. */
 export function selectWorkflows(
@@ -240,12 +285,14 @@ export async function evaluateWorkflows(
   input: EvaluationInput,
   deps: EngineDeps = {},
 ): Promise<CombinedResult> {
+  const now = deps.now ?? (() => performance.now())
   const selected = selectWorkflows(workflows, input)
   const results = await Promise.all(
-    selected.map(async (w) => ({
-      workflow: w,
-      result: await evaluateGraph(w.definition, input, deps),
-    })),
+    selected.map(async (w) => {
+      const started = now()
+      const result = await evaluateGraph(w.definition, input, deps)
+      return { workflow: w, result, durationMs: Math.round(now() - started) }
+    }),
   )
   return combineResults(results)
 }
@@ -257,16 +304,25 @@ export function combineResults(
   results: {
     workflow: Pick<ActiveWorkflow, 'id' | 'name' | 'version'>
     result: EvaluationResult
+    durationMs?: number
   }[],
 ): CombinedResult {
-  const workflows = results.map(({ workflow: { id, name, version } }) => ({ id, name, version }))
+  const workflows = results.map(({ workflow: { id, name, version }, result, durationMs }) => ({
+    id,
+    name,
+    version,
+    decision: result.decision,
+    ...(durationMs === undefined ? {} : { durationMs }),
+  }))
   const checks = results.flatMap(({ workflow, result }) =>
     result.checks.map((c) => ({ ...c, workflowId: workflow.id })),
   )
-  const blocked = results.filter((r) => r.result.decision === 'block')
-  const pending = results.filter((r) => r.result.decision === 'pending')
+  // A workflow that ended in Skip does not apply; only the others decide.
+  const applied = results.filter((r) => r.result.decision !== 'skip')
+  const blocked = applied.filter((r) => r.result.decision === 'block')
+  const pending = applied.filter((r) => r.result.decision === 'pending')
   const decision = blocked.length ? 'block' : pending.length ? 'pending' : 'allow'
-  const deciding = blocked.length ? blocked : pending.length ? pending : results
+  const deciding = blocked.length ? blocked : pending.length ? pending : applied
   const methods = pending.map((r) => r.result.approvalMethod ?? 'admin')
   const method =
     decision === 'pending' ? (approvalStrength.find((m) => methods.includes(m)) ?? 'admin') : null
@@ -277,7 +333,7 @@ export function combineResults(
   if (method && method !== 'admin') reasons.push(approvalAsk[method])
 
   let redact: RedactConfig | null = null
-  for (const { result } of results) {
+  for (const { result } of applied) {
     if (!result.redact) continue
     redact = redact
       ? {
@@ -291,7 +347,7 @@ export function combineResults(
   return {
     decision,
     checks,
-    riskScore: Math.max(0, ...results.map((r) => r.result.riskScore)),
+    riskScore: Math.max(0, ...applied.map((r) => r.result.riskScore)),
     reasons,
     approvalTimeoutSec: Math.max(0, ...pending.map((r) => r.result.approvalTimeoutSec)) || 300,
     approvalMethod: method,
@@ -537,6 +593,17 @@ const runners: { [T in CheckType]: Runner<T> } = {
       reason: 'Tool call not started by Claude Code (no matching hook record)',
     }
   },
+  limit: async (check, input, deps) => {
+    if (!check.limitId) return { outcome: 'skipped', branch: 'pass', reason: 'No limit selected' }
+    if (!deps.limit) return noSignal
+    const status = await deps.limit(check.limitId, input)
+    if (status.state === 'ok') return { ...passed, reason: status.reason || undefined }
+    return {
+      outcome: 'fail',
+      branch: status.state,
+      reason: status.reason,
+    }
+  },
   idle: (check, input) => {
     const minutes = input.signals?.userIdleMinutes
     if (minutes === undefined) return noSignal
@@ -552,29 +619,34 @@ async function runCheck(
 ): Promise<Outcome> {
   if (!node.enabled) return { outcome: 'skipped', reason: 'disabled', branch: 'pass' }
   const check = node.check
+  const stages = blocks[check.type].appliesTo
+  if (stages && !stages.includes(input.kind))
+    return { outcome: 'skipped', branch: 'pass', reason: `Not used on ${kindLabels[input.kind]}` }
   try {
     const run = runners[check.type] as Runner<CheckType>
     return await run(check, input, deps)
   } catch (err) {
-    const outputs = nodeOutputs(node)
     return {
       outcome: 'error',
-      branch: outputs.includes('error') ? 'error' : outputs.includes('fail') ? 'fail' : 'pass',
+      branch: 'pass',
       reason: `${check.type} failed: ${err instanceof Error ? err.message : String(err)}`,
     }
   }
 }
 
-function matches(node: MatchNode | TriggerNode, input: EvaluationInput): boolean {
-  const results = node.conditions.map((c) => conditionHolds(c, input))
-  return node.mode === 'all' ? results.every(Boolean) : results.some(Boolean)
-}
-
-/** Whether a request starts this graph. A start node without conditions takes every request. */
-export function triggerHolds(graph: PolicyGraph, input: EvaluationInput): boolean {
+/**
+ * Whether a workflow runs on any of these stages. Lets the gateway skip inspecting output nobody
+ * has a workflow for.
+ */
+export function triggerMayRun(graph: PolicyGraph, kinds: EventKind[]): boolean {
   const trigger = graph.nodes.find((n) => n.type === 'trigger')
   if (!trigger) return false
-  return trigger.conditions.length === 0 || matches(trigger, input)
+  return trigger.stages.length === 0 || trigger.stages.some((k) => kinds.includes(k))
+}
+
+/** Whether a request starts this graph: its stage is one the start node runs on. */
+export function triggerHolds(graph: PolicyGraph, input: EvaluationInput): boolean {
+  return triggerMayRun(graph, [input.kind])
 }
 
 export function conditionHolds(c: Condition, input: EvaluationInput): boolean {
@@ -583,6 +655,13 @@ export function conditionHolds(c: Condition, input: EvaluationInput): boolean {
       return c.values.includes(input.kind)
     case 'mcpServer':
       return input.mcpServerId != null && c.values.includes(input.mcpServerId)
+    case 'source':
+      return (
+        input.toolName != null &&
+        c.values.includes(
+          input.mcpServerId || input.toolName.startsWith('mcp__') ? 'mcp' : 'builtin',
+        )
+      )
     case 'tool':
       return input.toolName != null && c.values.some((p) => toolMatches(p, input.toolName!))
     case 'resource':

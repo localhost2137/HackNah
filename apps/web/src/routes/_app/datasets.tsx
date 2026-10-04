@@ -75,7 +75,7 @@ function DatasetsPage() {
     <>
       <PageHeader
         title="Datasets"
-        description="Labelled attack and benign requests. To act on them, add a Trained model step to a workflow, pick datasets there and train."
+        description="Labelled attack and benign requests for training. Add a Trained model step to a workflow and pick datasets there. To replay traffic against your workflows, use Attack analysis."
         actions={
           <>
             <input

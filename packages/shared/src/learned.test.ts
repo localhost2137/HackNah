@@ -98,7 +98,7 @@ describe('learned rules block', () => {
   const graph: PolicyGraph = {
     fallback: 'allow',
     nodes: [
-      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+      { id: 'start', type: 'trigger', position: at, stages: [] },
       {
         id: 'learned',
         type: 'check',

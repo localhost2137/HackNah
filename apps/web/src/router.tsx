@@ -1,10 +1,16 @@
-import { QueryClient } from '@tanstack/react-query'
+import { MutationCache, QueryClient } from '@tanstack/react-query'
 import { createRouter } from '@tanstack/react-router'
 import { setupRouterSsrQueryIntegration } from '@tanstack/react-router-ssr-query'
 import { routeTree } from './routeTree.gen'
 
 export function getRouter() {
+  const mutationCache = new MutationCache({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['attack-analysis-runs'] })
+    },
+  })
   const queryClient = new QueryClient({
+    mutationCache,
     defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: false } },
   })
   const router = createRouter({

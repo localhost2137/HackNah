@@ -133,11 +133,149 @@ export const getOverview = createServerFn({ method: 'GET' })
     }
   })
 
+const PERFORMANCE_SAMPLE = 5000
+
+/** Nearest-rank percentile of an ascending list; null when it is empty. */
+function percentile(sorted: number[], p: number): number | null {
+  if (sorted.length === 0) return null
+  return sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)]!
+}
+
+function latency(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b)
+  return { p50: percentile(sorted, 50), p95: percentile(sorted, 95) }
+}
+
+/**
+ * Spend and performance for the Overview. Spend sums the usage recorded on model requests;
+ * performance looks at the newest events in the range (at most 5000), since the per-workflow
+ * timings live in a JSON column.
+ */
+export const getUsage = createServerFn({ method: 'GET' })
+  .middleware([adminMiddleware])
+  .validator(z.object({ range: timeRange }))
+  .handler(async ({ data, context: { db, orgId } }) => {
+    const scope = and(
+      eq(event.orgId, orgId),
+      gte(event.createdAt, new Date(Date.now() - rangeMs[data.range])),
+    )
+    const cost = sql<number>`coalesce(sum(${event.costUsd}), 0)`.mapWith(Number)
+    const tokens =
+      sql<number>`coalesce(sum(coalesce(${event.inputTokens}, 0) + coalesce(${event.outputTokens}, 0) + coalesce(${event.cacheReadTokens}, 0) + coalesce(${event.cacheWriteTokens}, 0)), 0)`.mapWith(
+        Number,
+      )
+    const gpuMs = sql<number>`coalesce(sum(${event.gpuMs}), 0)`.mapWith(Number)
+    const requests = and(scope, eq(event.kind, 'model_request'))
+
+    const [totals, byUser, byModel, sample] = await Promise.all([
+      db
+        .select({
+          cost,
+          input: sql<number>`coalesce(sum(${event.inputTokens}), 0)`.mapWith(Number),
+          output: sql<number>`coalesce(sum(${event.outputTokens}), 0)`.mapWith(Number),
+          cacheRead: sql<number>`coalesce(sum(${event.cacheReadTokens}), 0)`.mapWith(Number),
+          cacheWrite: sql<number>`coalesce(sum(${event.cacheWriteTokens}), 0)`.mapWith(Number),
+          gpuMs,
+        })
+        .from(event)
+        .where(requests),
+      db
+        .select({ userId: event.userId, name: user.name, email: user.email, cost, tokens, gpuMs })
+        .from(event)
+        .leftJoin(user, eq(user.id, event.userId))
+        .where(requests)
+        .groupBy(event.userId, user.name, user.email)
+        .orderBy(desc(cost), desc(tokens))
+        .limit(6),
+      db
+        .select({ model: event.model, cost, tokens, gpuMs })
+        .from(event)
+        .where(requests)
+        .groupBy(event.model)
+        .orderBy(desc(cost), desc(tokens))
+        .limit(6),
+      db
+        .select({
+          kind: event.kind,
+          decision: event.decision,
+          overheadMs: event.overheadMs,
+          workflows: event.workflows,
+        })
+        .from(event)
+        .where(scope)
+        .orderBy(desc(event.seq))
+        .limit(PERFORMANCE_SAMPLE),
+    ])
+
+    const blockedDecisions = new Set<string>(BLOCKED_DECISIONS)
+    const stages = new Map<string, { n: number; blocked: number; overhead: number[] }>()
+    const workflows = new Map<
+      string,
+      { name: string; n: number; blocked: number; durations: number[] }
+    >()
+    const overhead: number[] = []
+    for (const e of sample) {
+      const stage = stages.get(e.kind) ?? { n: 0, blocked: 0, overhead: [] }
+      stage.n++
+      if (blockedDecisions.has(e.decision)) stage.blocked++
+      if (e.overheadMs != null) {
+        stage.overhead.push(e.overheadMs)
+        overhead.push(e.overheadMs)
+      }
+      stages.set(e.kind, stage)
+      for (const w of e.workflows) {
+        // The sample is newest first, so the first name seen is the current one.
+        const entry = workflows.get(w.id) ?? { name: w.name, n: 0, blocked: 0, durations: [] }
+        entry.n++
+        if (w.decision === 'block') entry.blocked++
+        if (w.durationMs != null) entry.durations.push(w.durationMs)
+        workflows.set(w.id, entry)
+      }
+    }
+
+    const t = totals[0]
+    return {
+      spend: {
+        cost: t?.cost ?? 0,
+        tokens: {
+          input: t?.input ?? 0,
+          output: t?.output ?? 0,
+          cacheRead: t?.cacheRead ?? 0,
+          cacheWrite: t?.cacheWrite ?? 0,
+        },
+        gpuMs: t?.gpuMs ?? 0,
+        byUser,
+        byModel,
+      },
+      performance: {
+        sampled: sample.length,
+        overhead: latency(overhead),
+        stages: [...stages].map(([kind, s]) => ({
+          kind: kind as (typeof sample)[number]['kind'],
+          n: s.n,
+          blocked: s.blocked,
+          ...latency(s.overhead),
+        })),
+        workflows: [...workflows]
+          .map(([id, w]) => ({
+            id,
+            name: w.name,
+            n: w.n,
+            blocked: w.blocked,
+            ...latency(w.durations),
+          }))
+          .sort((a, b) => (b.p95 ?? 0) - (a.p95 ?? 0)),
+      },
+    }
+  })
+
 export const eventsSearch = z.object({
   decision: decisionSchema.optional(),
   kind: eventKind.optional(),
   user: z.string().optional(),
   session: z.string().optional(),
+  /** Events a workflow took part in. */
+  workflow: z.string().optional(),
   q: z.string().optional(),
   range: timeRange.default('24h'),
   selected: z.string().optional(),
@@ -160,6 +298,9 @@ export const listEvents = createServerFn({ method: 'GET' })
       data.kind ? eq(event.kind, data.kind) : undefined,
       data.user ? eq(event.userId, data.user) : undefined,
       data.session ? eq(event.sessionId, data.session) : undefined,
+      data.workflow
+        ? sql`exists (select 1 from json_each(${event.workflows}) where json_extract(value, '$.id') = ${data.workflow})`
+        : undefined,
       data.cursor ? lt(event.seq, data.cursor) : undefined,
       data.q
         ? or(
@@ -181,6 +322,7 @@ export const listEvents = createServerFn({ method: 'GET' })
         latencyMs: event.latencyMs,
         inputTokens: event.inputTokens,
         outputTokens: event.outputTokens,
+        costUsd: event.costUsd,
         sessionId: event.sessionId,
         country: event.country,
         createdAt: event.createdAt,

@@ -614,8 +614,8 @@ function render(channel, form, content) {
       }
     case 'tool_result':
       return {
-        kind: 'model_request',
-        toolName: null,
+        kind: 'tool_result',
+        toolName: 'WebFetch',
         text: `Tool result (WebFetch https://docs.example.org/setup):\n${content}`,
       }
     case 'tool_arguments': {
@@ -630,7 +630,7 @@ function render(channel, form, content) {
       }
     }
     case 'model_output':
-      return { kind: 'model_response', toolName: null, text: content }
+      return { kind: 'model_output', toolName: null, text: content }
     case 'tool_description':
       return form === 'text'
         ? { kind: 'tool_definition', toolName: 'notes__add_note', text: content }

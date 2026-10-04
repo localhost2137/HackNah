@@ -158,7 +158,7 @@ export class PlatformClient {
    * @param {string} [o.method]
    * @param {string|Buffer} [o.body]
    * @param {object} [o.headers]
-   * @param {boolean|string} [o.presence]  add a Touch ID proof; a string is the prompt reason
+   * @param {boolean} [o.presence]  add a Touch ID proof (the signer writes the prompt from `body`)
    * @param {boolean} [o.auth]             send the access token (false for /token)
    * @param {object} [o.client]            Claude Code {name, version} for the client context
    * @param {object} [o.claims]            extra signed claims (e.g. hook correlation)
@@ -194,10 +194,7 @@ export class PlatformClient {
       const h = { ...headers, DPoP: proof, 'HY-Client-Context': ctx.header };
       if (zta) h['HY-Posture-ZTA'] = zta;
       if (accessToken) h.Authorization = `DPoP ${accessToken}`;
-      if (wantPresence) {
-        const reason = typeof presence === 'string' ? presence : 'confirm a sensitive action';
-        h['HY-Presence-Proof'] = await createPresenceProof(this.keys, claims, reason);
-      }
+      if (wantPresence) h['HY-Presence-Proof'] = await createPresenceProof(this.keys, claims, body);
       // Demo only: the mock honours this with MOCK_TRUST_IP_HEADER=1 (pretend to be elsewhere).
       if (config.simulateIp) h['X-Mock-Client-IP'] = config.simulateIp;
 
@@ -280,14 +277,13 @@ export class PlatformClient {
         });
       const canUnlock = config.presence && this.keys.hasPresence();
       const locked = (before.unlock_expires_at ?? 0) - REFRESH_SKEW_S < Date.now() / 1000;
-      const UNLOCK_REASON = 'unlock company tools for Claude Code';
 
       let res;
       try {
-        res = await post(canUnlock && locked ? UNLOCK_REASON : false);
+        res = await post(canUnlock && locked);
         if (res.status === 400 && canUnlock && !locked) {
           const err = await res.clone().json().catch(() => ({}));
-          if (err.error_description === 'unlock_required') res = await post(UNLOCK_REASON);
+          if (err.error_description === 'unlock_required') res = await post(true);
         }
       } catch (e) {
         if (e instanceof AuthRequiredError) throw e;

@@ -3,8 +3,8 @@ import type {
   Decision,
   EventKind,
   GroupPermissions,
+  LimitRule,
   PolicyGraph,
-  RateLimitRule,
   WorkflowRef,
 } from '@acl/shared'
 import { sql } from 'drizzle-orm'
@@ -263,7 +263,13 @@ export const event = sqliteTable(
     workflows: emptyList<WorkflowRef>(),
     inputTokens: integer(),
     outputTokens: integer(),
+    cacheReadTokens: integer(),
+    cacheWriteTokens: integer(),
+    costUsd: real(),
+    gpuMs: integer(),
     latencyMs: integer().notNull(),
+    /** Time spent in the control layer itself, without the upstream. */
+    overheadMs: integer(),
     upstreamStatus: integer(),
     ip: text(),
     country: text(),
@@ -349,20 +355,57 @@ export const workflowVersion = sqliteTable(
   (t) => [uniqueIndex('workflow_version_uq').on(t.workflowId, t.version)],
 )
 
+/** Limits page: request rates, concurrency and budgets. The table keeps its original name. */
 export const rateLimit = sqliteTable(
   'rate_limit',
   {
     id: text().primaryKey(),
     orgId: text().notNull(),
-    scope: text().$type<RateLimitRule['scope']>().notNull(),
+    name: text().notNull().default(''),
+    measure: text().$type<LimitRule['measure']>().notNull().default('requests'),
+    scope: text().$type<LimitRule['scope']>().notNull(),
     target: text().notNull(),
-    limit: integer().notNull(),
+    /** Requests, tokens, USD or GPU-seconds; USD limits are fractional. */
+    limit: real().notNull(),
     windowSec: integer().notNull(),
-    per: text().$type<RateLimitRule['per']>().notNull().default('user'),
+    per: text().$type<LimitRule['per']>().notNull().default('user'),
+    groupId: text(),
+    action: text().$type<LimitRule['action']>().notNull().default('block'),
+    warnAtPct: integer().notNull().default(80),
     enabled: bool().notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [index('rate_limit_org_idx').on(t.orgId)],
+)
+
+/** Model catalog: where each model is served, what it costs, and so what groups may pick. */
+export const model = sqliteTable(
+  'model',
+  {
+    id: text().primaryKey(),
+    orgId: text().notNull(),
+    pattern: text().notNull(),
+    label: text().notNull().default(''),
+    kind: text({ enum: ['external', 'local'] })
+      .notNull()
+      .default('external'),
+    apiFormat: text({ enum: ['anthropic', 'openai'] })
+      .notNull()
+      .default('anthropic'),
+    baseUrl: text().notNull().default(''),
+    upstreamModel: text().notNull().default(''),
+    /** Encrypted with ENCRYPTION_KEY; null uses the gateway's own upstream key. */
+    apiKeyEnc: text(),
+    inputUsdPerMTok: real().notNull().default(0),
+    outputUsdPerMTok: real().notNull().default(0),
+    cacheWriteUsdPerMTok: real().notNull().default(0),
+    cacheReadUsdPerMTok: real().notNull().default(0),
+    gpuUsdPerHour: real().notNull().default(0),
+    enabled: bool().notNull().default(true),
+    position: integer().notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('model_org_idx').on(t.orgId)],
 )
 
 // ---------------------------------------------------------------------------
@@ -506,4 +549,28 @@ export const auditLog = sqliteTable(
     createdAt: createdAt(),
   },
   (t) => [index('audit_org_created_idx').on(t.orgId, t.createdAt)],
+)
+
+/** Monotonic revision maintained by policy-table triggers; reverting a rule cannot revive runs. */
+export const analysisRevision = sqliteTable('analysis_revision', {
+  orgId: text().primaryKey(),
+  revision: integer().notNull().default(0),
+})
+
+/** Large evaluation payloads live in R2; D1 holds the searchable, revision-scoped index. */
+export const analysisRun = sqliteTable(
+  'analysis_run',
+  {
+    id: text().primaryKey(),
+    orgId: text().notNull(),
+    datasetId: text().notNull(),
+    revision: integer().notNull(),
+    catalogVersion: text().notNull(),
+    createdBy: text().notNull(),
+    createdAt: createdAt(),
+    total: integer().notNull(),
+    correct: integer().notNull(),
+    payloadKey: text().notNull(),
+  },
+  (t) => [index('analysis_run_scope_idx').on(t.orgId, t.revision, t.catalogVersion, t.createdAt)],
 )

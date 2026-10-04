@@ -1,11 +1,39 @@
 import type { PolicyGraph, RecordedResult, ReplayOutcome } from '@acl/shared'
-import { Badge, Button, Field, Select } from '@acl/ui'
-import { Link } from '@tanstack/react-router'
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  Field,
+  Select,
+  Stat,
+  Table,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+} from '@acl/ui'
+import { useNavigate } from '@tanstack/react-router'
 import { History, Square } from 'lucide-react'
 import { useRef, useState } from 'react'
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { FormError } from '#/components/auth-shell.tsx'
 import { pct, timeAgo } from '#/lib/format.ts'
-import { type AffectedRequest, replayShadow } from '#/server/fns/shadow.ts'
+import {
+  type AffectedRequest,
+  type ImpactTimelinePoint,
+  replayShadow,
+} from '#/server/fns/shadow.ts'
 import type { TimeRange } from '#/server/fns/traffic.ts'
 
 type Judge = 'recorded' | 'pass' | 'fail'
@@ -15,6 +43,7 @@ type Tally = {
   scanned: number
   verdicts: Record<string, number>
   transitions: Record<string, number>
+  timeline: Record<string, ImpactTimelinePoint>
   affected: AffectedRequest[]
 }
 
@@ -62,6 +91,22 @@ function sum(a: Record<string, number>, b: Record<string, number>) {
   return out
 }
 
+function sumTimeline(
+  a: Record<string, ImpactTimelinePoint>,
+  b: Record<string, ImpactTimelinePoint>,
+) {
+  const out = { ...a }
+  for (const [bucket, point] of Object.entries(b)) {
+    const previous = out[bucket] ?? { stricter: 0, looser: 0, unchanged: 0 }
+    out[bucket] = {
+      stricter: previous.stricter + point.stricter,
+      looser: previous.looser + point.looser,
+      unchanged: previous.unchanged + point.unchanged,
+    }
+  }
+  return out
+}
+
 const countOf = (counts: Record<string, number>, keys: string[]) =>
   keys.reduce((n, k) => n + (counts[k] ?? 0), 0)
 
@@ -76,7 +121,7 @@ function headline(t: Tally): string {
   const loosened = countOf(t.transitions, looserChanges)
   const alreadyFailed = countOf(t.verdicts, ['block>block', 'rate_limited>block', 'denied>block'])
 
-  const parts = [`Out of ${t.scanned.toLocaleString()} requests, this draft would`]
+  const parts = [`Out of ${t.scanned.toLocaleString()} requests, this version would`]
   parts.push(stricter.length ? `${stricter.join(', ')}.` : 'not block anything new.')
   if (loosened) parts.push(`${loosened} blocked or held requests would get through more easily.`)
   if (alreadyFailed)
@@ -89,7 +134,6 @@ export function ShadowImpact({ workflowId, graph }: { workflowId: string; graph:
   const [range, setRange] = useState<TimeRange>('7d')
   const [judge, setJudge] = useState<Judge>('recorded')
   const [tally, setTally] = useState<Tally | null>(null)
-  const [ranOn, setRanOn] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const stop = useRef(false)
@@ -98,8 +142,14 @@ export function ShadowImpact({ workflowId, graph }: { workflowId: string; graph:
     stop.current = false
     setRunning(true)
     setError(null)
-    setRanOn(JSON.stringify(graph))
-    let acc: Tally = { total: 0, scanned: 0, verdicts: {}, transitions: {}, affected: [] }
+    let acc: Tally = {
+      total: 0,
+      scanned: 0,
+      verdicts: {},
+      transitions: {},
+      timeline: {},
+      affected: [],
+    }
     setTally(acc)
     let cursor: number | undefined
     try {
@@ -112,6 +162,7 @@ export function ShadowImpact({ workflowId, graph }: { workflowId: string; graph:
           scanned: acc.scanned + r.scanned,
           verdicts: sum(acc.verdicts, r.verdicts),
           transitions: sum(acc.transitions, r.transitions),
+          timeline: sumTimeline(acc.timeline, r.timeline),
           affected: [...acc.affected, ...r.affected].slice(0, MAX_SHOWN),
         }
         setTally(acc)
@@ -128,28 +179,22 @@ export function ShadowImpact({ workflowId, graph }: { workflowId: string; graph:
   const looserCount = tally ? countOf(tally.transitions, looserChanges) : 0
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <p className="text-xs text-muted">
-        Replays this graph on past requests, including failed ones, without publishing it. Other
-        workflows keep the outcome they reached at the time.
-      </p>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Traffic from">
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-wrap items-end gap-3 px-4 py-3">
+        <Field label="Traffic from" className="w-44">
           <Select value={range} onChange={(e) => setRange(e.target.value as TimeRange)}>
             <option value="24h">Last 24 hours</option>
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
           </Select>
         </Field>
-        <Field label="Judge steps">
+        <Field label="Judge steps" className="w-44">
           <Select value={judge} onChange={(e) => setJudge(e.target.value as Judge)}>
             <option value="recorded">Score from the time</option>
             <option value="pass">Always pass</option>
             <option value="fail">Always fail</option>
           </Select>
         </Field>
-      </div>
-      <div className="flex items-center gap-2">
         {running ? (
           <Button
             onClick={() => {
@@ -164,79 +209,76 @@ export function ShadowImpact({ workflowId, graph }: { workflowId: string; graph:
           </Button>
         )}
         {tally && tally.total > 0 ? (
-          <span className="text-xs text-muted tabular-nums">
-            {tally.scanned.toLocaleString()} / {tally.total.toLocaleString()}
+          <span className="pb-2 text-xs text-muted tabular-nums">
+            {tally.scanned.toLocaleString()} / {tally.total.toLocaleString()} requests
           </span>
         ) : null}
-      </div>
-      {running && tally?.total ? (
-        <div className="h-1 overflow-hidden rounded bg-panel-2">
-          <div
-            className="h-full bg-accent transition-[width]"
-            style={{ width: `${(tally.scanned / tally.total) * 100}%` }}
-          />
-        </div>
-      ) : null}
+        {running && tally?.total ? (
+          <div className="h-1 basis-full overflow-hidden rounded bg-panel-2">
+            <div
+              className="h-full bg-accent transition-[width]"
+              style={{ width: `${(tally.scanned / tally.total) * 100}%` }}
+            />
+          </div>
+        ) : null}
+      </Card>
       <FormError message={error} />
 
       {tally && tally.scanned > 0 ? (
         <>
-          {ranOn !== JSON.stringify(graph) ? (
-            <p className="text-xs text-warn">The graph changed since this replay. Run it again.</p>
-          ) : null}
-          <p className="text-sm leading-relaxed">{headline(tally)}</p>
+          <Card className="px-4 py-3 text-base leading-relaxed">{headline(tally)}</Card>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Tile label="Replayed" value={tally.scanned} />
-            <Tile label="Unchanged" value={tally.scanned - stricterCount - looserCount} />
-            <Tile label="Stricter" value={stricterCount} tone="text-bad" />
-            <Tile label="Looser" value={looserCount} tone="text-info" />
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat label="Replayed" value={tally.scanned.toLocaleString()} />
+            <Stat
+              label="Unchanged"
+              value={(tally.scanned - stricterCount - looserCount).toLocaleString()}
+            />
+            <Stat label="Stricter" value={stricterCount.toLocaleString()} tone="bad" />
+            <Stat label="Looser" value={looserCount.toLocaleString()} />
           </div>
 
-          <VerdictMatrix verdicts={tally.verdicts} />
+          <Card>
+            <CardHeader
+              title="Impact over time"
+              description="How this workflow would affect requests by the time they were recorded"
+            />
+            <ImpactTimeline timeline={tally.timeline} range={range} />
+          </Card>
 
-          {stricterCount + looserCount > 0 ? (
-            <div className="flex flex-col">
-              <div className="pb-1 text-[11px] font-medium text-subtle">What users would see</div>
-              <ul className="flex flex-col gap-2.5">
-                {changes.map((k) => {
-                  const v = tally.transitions[k] ?? 0
-                  if (!v) return null
-                  const [from, to] = k.split('>') as [ReplayOutcome, ReplayOutcome]
-                  return (
-                    <li key={k}>
-                      <div className="flex items-center gap-1.5 text-xs">
-                        <Badge tone={outcomeTone[from]}>{outcomeLabel[from]}</Badge>
-                        <span className="text-subtle">→</span>
-                        <Badge tone={outcomeTone[to]}>{outcomeLabel[to]}</Badge>
-                        <span className="ml-auto tabular-nums">
-                          {v} · {pct(v, tally.scanned)}
-                        </span>
-                      </div>
-                      <div className="mt-1 h-1.5 overflow-hidden rounded bg-panel-2">
-                        <div
-                          className={looserChanges.includes(k) ? 'h-full bg-info' : 'h-full bg-bad'}
-                          style={{ width: `max(4px, ${(v / tally.scanned) * 100}%)` }}
-                        />
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          ) : null}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader
+                title="What this rule decides on every request"
+                description="Original result of each request, against what this version decides on its own"
+              />
+              <div className="p-4">
+                <VerdictMatrix verdicts={tally.verdicts} />
+              </div>
+            </Card>
+            <Card>
+              <CardHeader
+                title="What users would see"
+                description="Requests whose outcome changes if this version goes live"
+              />
+              <div className="p-4">
+                {stricterCount + looserCount > 0 ? (
+                  <Transitions transitions={tally.transitions} scanned={tally.scanned} />
+                ) : (
+                  <p className="text-xs text-muted">No request would end differently.</p>
+                )}
+              </div>
+            </Card>
+          </div>
 
           {tally.affected.length > 0 ? (
-            <div className="flex flex-col">
-              <div className="pb-1 text-[11px] font-medium text-subtle">
-                Requests this rule affects
-              </div>
-              <ul className="divide-y divide-line rounded-lg border border-line">
-                {tally.affected.map((r) => (
-                  <AffectedRow key={r.id} request={r} range={range} />
-                ))}
-              </ul>
-            </div>
+            <Card>
+              <CardHeader
+                title="Requests this rule affects"
+                description={`Newest first, up to ${MAX_SHOWN}. Click one to open it in Logs.`}
+              />
+              <AffectedTable rows={tally.affected} range={range} />
+            </Card>
           ) : null}
         </>
       ) : null}
@@ -244,82 +286,196 @@ export function ShadowImpact({ workflowId, graph }: { workflowId: string; graph:
   )
 }
 
-function AffectedRow({ request: r, range }: { request: AffectedRequest; range: TimeRange }) {
-  const changed = r.before !== r.after
+function ImpactTimeline({
+  timeline,
+  range,
+}: {
+  timeline: Record<string, ImpactTimelinePoint>
+  range: TimeRange
+}) {
+  const data = Object.entries(timeline)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([recordedAt, counts]) => ({ recordedAt, ...counts }))
+  const formatTime = (iso: string) =>
+    new Date(iso).toLocaleString(
+      'en-GB',
+      range === '24h' ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: 'short' },
+    )
+
   return (
-    <li>
-      <Link
-        to="/events"
-        search={{ selected: r.id, range }}
-        className="flex flex-col gap-1 px-3 py-2 text-xs hover:bg-panel-2"
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="truncate font-mono">{r.target}</span>
-          <span className="ml-auto shrink-0 text-subtle">{timeAgo(r.createdAt)}</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {changed ? (
-            <>
-              <Badge tone={outcomeTone[r.before]}>{outcomeLabel[r.before]}</Badge>
+    <div className="h-72 px-3 pt-5 pb-3">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke="var(--color-line)" vertical={false} />
+          <XAxis
+            dataKey="recordedAt"
+            tickFormatter={formatTime}
+            stroke="var(--color-subtle)"
+            fontSize={11}
+            tickLine={false}
+            axisLine={false}
+          />
+          <YAxis
+            stroke="var(--color-subtle)"
+            fontSize={11}
+            tickLine={false}
+            axisLine={false}
+            allowDecimals={false}
+            width={42}
+          />
+          <Tooltip
+            cursor={{ fill: 'var(--color-panel-2)', opacity: 0.35 }}
+            contentStyle={{
+              background: 'var(--color-panel)',
+              border: '1px solid var(--color-line-strong)',
+              borderRadius: 8,
+              boxShadow: '0 8px 24px rgb(0 0 0 / 0.25)',
+              fontSize: 12,
+            }}
+            labelFormatter={(value) => new Date(String(value)).toLocaleString()}
+            formatter={(value) => Number(value).toLocaleString()}
+          />
+          <Legend
+            iconType="circle"
+            iconSize={7}
+            wrapperStyle={{ color: 'var(--color-muted)', fontSize: 11 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="unchanged"
+            name="Unchanged"
+            stroke="var(--color-subtle)"
+            strokeWidth={1.5}
+            dot={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="stricter"
+            name="Stricter"
+            stroke="var(--color-bad)"
+            strokeWidth={2}
+            dot={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="looser"
+            name="Looser"
+            stroke="var(--color-info)"
+            strokeWidth={2}
+            dot={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function Transitions({
+  transitions,
+  scanned,
+}: {
+  transitions: Record<string, number>
+  scanned: number
+}) {
+  return (
+    <ul className="flex flex-col gap-3">
+      {changes.map((k) => {
+        const v = transitions[k] ?? 0
+        if (!v) return null
+        const [from, to] = k.split('>') as [ReplayOutcome, ReplayOutcome]
+        return (
+          <li key={k}>
+            <div className="flex items-center gap-1.5 text-xs">
+              <Badge tone={outcomeTone[from]}>{outcomeLabel[from]}</Badge>
               <span className="text-subtle">→</span>
-              <Badge tone={outcomeTone[r.after]}>{outcomeLabel[r.after]}</Badge>
-            </>
-          ) : (
-            <Badge>Already {recordedLabel[r.recorded]}</Badge>
-          )}
-          {r.userName ? <span className="truncate text-muted">{r.userName}</span> : null}
-        </div>
-        {r.reason ? <div className="truncate text-muted">{r.reason}</div> : null}
-      </Link>
-    </li>
+              <Badge tone={outcomeTone[to]}>{outcomeLabel[to]}</Badge>
+              <span className="ml-auto tabular-nums">
+                {v.toLocaleString()} · {pct(v, scanned)}
+              </span>
+            </div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded bg-panel-2">
+              <div
+                className={looserChanges.includes(k) ? 'h-full bg-info' : 'h-full bg-bad'}
+                style={{ width: `max(4px, ${(v / scanned) * 100}%)` }}
+              />
+            </div>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
 function VerdictMatrix({ verdicts }: { verdicts: Record<string, number> }) {
   const rows = recordedRows.filter((r) => shadowCols.some((c) => verdicts[`${r.key}>${c.key}`]))
   return (
-    <div className="flex flex-col">
-      <div className="pb-1 text-[11px] font-medium text-subtle">
-        What this rule decides on every request
-      </div>
-      <table className="w-full text-xs tabular-nums">
-        <thead>
-          <tr className="text-subtle">
-            <th className="py-1 text-left font-normal">Originally</th>
-            {shadowCols.map((c) => (
-              <th key={c.key} className="py-1 text-right font-normal">
-                {c.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {rows.map((r) => (
-            <tr key={r.key}>
-              <td className="py-1.5">{r.label}</td>
-              {shadowCols.map((c) => {
-                const v = verdicts[`${r.key}>${c.key}`] ?? 0
-                return (
-                  <td key={c.key} className={`py-1.5 text-right ${v ? c.tone : 'text-subtle'}`}>
-                    {v ? v.toLocaleString() : '–'}
-                  </td>
-                )
-              })}
-            </tr>
+    <table className="w-full text-xs tabular-nums">
+      <thead>
+        <tr className="text-subtle">
+          <th className="py-1 text-left font-normal">Originally</th>
+          {shadowCols.map((c) => (
+            <th key={c.key} className="py-1 text-right font-normal">
+              {c.label}
+            </th>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-line">
+        {rows.map((r) => (
+          <tr key={r.key}>
+            <td className="py-1.5">{r.label}</td>
+            {shadowCols.map((c) => {
+              const v = verdicts[`${r.key}>${c.key}`] ?? 0
+              return (
+                <td key={c.key} className={`py-1.5 text-right ${v ? c.tone : 'text-subtle'}`}>
+                  {v ? v.toLocaleString() : '–'}
+                </td>
+              )
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
-function Tile({ label, value, tone = 'text-fg' }: { label: string; value: number; tone?: string }) {
+function AffectedTable({ rows, range }: { rows: AffectedRequest[]; range: TimeRange }) {
+  const navigate = useNavigate()
   return (
-    <div className="rounded-lg border border-line px-3 py-2">
-      <div className="text-[11px] font-medium tracking-wide text-muted uppercase">{label}</div>
-      <div className={`mt-1 text-xl font-semibold tabular-nums ${tone}`}>
-        {value.toLocaleString()}
-      </div>
-    </div>
+    <Table>
+      <THead>
+        <tr>
+          <TH>Time</TH>
+          <TH>User</TH>
+          <TH>Request</TH>
+          <TH>Change</TH>
+          <TH>Reason</TH>
+        </tr>
+      </THead>
+      <TBody>
+        {rows.map((r) => (
+          <TR
+            key={r.id}
+            onClick={() => navigate({ to: '/events', search: { selected: r.id, range } })}
+          >
+            <TD className="text-xs text-muted">{timeAgo(r.createdAt)}</TD>
+            <TD className="text-xs">{r.userName ?? '—'}</TD>
+            <TD className="max-w-56 truncate font-mono text-xs">{r.target}</TD>
+            <TD>
+              {r.before !== r.after ? (
+                <span className="flex items-center gap-1.5">
+                  <Badge tone={outcomeTone[r.before]}>{outcomeLabel[r.before]}</Badge>
+                  <span className="text-subtle">→</span>
+                  <Badge tone={outcomeTone[r.after]}>{outcomeLabel[r.after]}</Badge>
+                </span>
+              ) : (
+                <Badge>Already {recordedLabel[r.recorded]}</Badge>
+              )}
+            </TD>
+            <TD className="max-w-80 truncate text-xs text-muted">{r.reason ?? ''}</TD>
+          </TR>
+        ))}
+      </TBody>
+    </Table>
   )
 }

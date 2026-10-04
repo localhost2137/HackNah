@@ -40,7 +40,7 @@
 }
 
 .workflow-canvas .react-flow__handle:hover {
-  box-shadow: 0 0 0 5px rgb(124 108 255 / 0.25);
+  box-shadow: 0 0 0 5px rgb(120 148 248 / 0.25);
 }
 
 .workflow-canvas .react-flow__edge.selected .react-flow__edge-path {

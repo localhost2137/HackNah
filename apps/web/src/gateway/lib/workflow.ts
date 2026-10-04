@@ -1,10 +1,10 @@
 import { type Db, rateLimit, workflow, workflowVersion } from '@acl/db'
-import { type ActiveWorkflow, defaultWorkflow, policyGraph, type RateLimitRule } from '@acl/shared'
+import { type ActiveWorkflow, defaultWorkflow, type LimitRule, policyGraph } from '@acl/shared'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { TtlCache } from './cache.ts'
 
 const workflowCache = new TtlCache<ActiveWorkflow[]>(10_000)
-const rateLimitCache = new TtlCache<RateLimitRule[]>(10_000)
+const limitCache = new TtlCache<LimitRule[]>(10_000)
 
 /** Every enabled workflow with a published version, in display order. */
 export function loadActiveWorkflows(db: Db, orgId: string): Promise<ActiveWorkflow[]> {
@@ -35,18 +35,24 @@ export function loadActiveWorkflows(db: Db, orgId: string): Promise<ActiveWorkfl
   })
 }
 
-export function loadRateLimits(db: Db, orgId: string): Promise<RateLimitRule[]> {
-  return rateLimitCache.get(orgId, async () => {
+/** Enabled rules from the Limits page. */
+export function loadLimits(db: Db, orgId: string): Promise<LimitRule[]> {
+  return limitCache.get(orgId, async () => {
     const rows = await db.query.rateLimit.findMany({
       where: and(eq(rateLimit.orgId, orgId), eq(rateLimit.enabled, true)),
     })
     return rows.map((r) => ({
       id: r.id,
+      name: r.name,
+      measure: r.measure,
       scope: r.scope,
       target: r.target,
       limit: r.limit,
       windowSec: r.windowSec,
       per: r.per,
+      groupId: r.groupId,
+      action: r.action,
+      warnAtPct: r.warnAtPct,
     }))
   })
 }

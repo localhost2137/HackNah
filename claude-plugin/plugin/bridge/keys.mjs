@@ -44,7 +44,7 @@ class SoftwareProvider {
     return false;
   }
 
-  async sign(name, data) {
+  async sign(name, data, _body) {
     return b64url(sign('sha256', data, { key: this.#keys[name].key, dsaEncoding: 'ieee-p1363' }));
   }
 }
@@ -108,13 +108,13 @@ class SecureEnclaveProvider {
     return Boolean(this.#jwks.presence);
   }
 
-  /** `reason` is shown in the Touch ID prompt for the presence key. */
-  sign(name, data, reason) {
+  /** `body` is the HTTP body the proof covers; the signer builds the Touch ID prompt from it. */
+  sign(name, data, body) {
     if (!this.#proc) return Promise.reject(new Error('se-signer not running'));
     const id = ++this.#seq;
     return new Promise((resolve, reject) => {
       this.#pending.set(id, { resolve, reject });
-      this.#proc.stdin.write(`${JSON.stringify({ id, key: name, data: b64url(data), reason })}\n`);
+      this.#proc.stdin.write(`${JSON.stringify({ id, key: name, data: b64url(data), body: body === undefined ? undefined : b64url(body) })}\n`);
     });
   }
 }

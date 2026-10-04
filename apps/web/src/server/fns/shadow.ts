@@ -37,6 +37,12 @@ export type AffectedRequest = {
   reason: string | null
 }
 
+export type ImpactTimelinePoint = {
+  stricter: number
+  looser: number
+  unchanged: number
+}
+
 /**
  * Replays one page of recorded traffic, newest first, through an unpublished graph. The browser
  * calls it again with `nextCursor` until the range is done.
@@ -101,6 +107,7 @@ export const replayShadow = createServerFn({ method: 'POST' })
 
     const verdicts: Record<string, number> = {}
     const transitions: Record<string, number> = {}
+    const timeline: Record<string, ImpactTimelinePoint> = {}
     const affected: AffectedRequest[] = []
 
     await Promise.all(
@@ -136,6 +143,17 @@ export const replayShadow = createServerFn({ method: 'POST' })
         verdicts[vKey] = (verdicts[vKey] ?? 0) + 1
         const tKey = `${verdict.before}>${verdict.after}`
         transitions[tKey] = (transitions[tKey] ?? 0) + 1
+        const bucket = timelineBucket(row.createdAt, data.range)
+        if (!timeline[bucket]) timeline[bucket] = { stricter: 0, looser: 0, unchanged: 0 }
+        const point = timeline[bucket]
+        const rank = { allow: 0, approval: 1, block: 2 } as const
+        const change =
+          rank[verdict.after] > rank[verdict.before]
+            ? 'stricter'
+            : rank[verdict.after] < rank[verdict.before]
+              ? 'looser'
+              : 'unchanged'
+        point[change]++
 
         const flagged = verdict.shadow === 'block' || verdict.shadow === 'approval'
         if ((verdict.before !== verdict.after || flagged) && affected.length < MAX_AFFECTED) {
@@ -160,10 +178,18 @@ export const replayShadow = createServerFn({ method: 'POST' })
       scanned: page.length,
       verdicts,
       transitions,
+      timeline,
       affected: affected.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
       nextCursor: rows.length > BATCH ? page.at(-1)?.seq : undefined,
     }
   })
+
+function timelineBucket(date: Date, range: z.infer<typeof timeRange>) {
+  const bucket = new Date(date)
+  bucket.setUTCMinutes(0, 0, 0)
+  if (range !== '24h') bucket.setUTCHours(0)
+  return bucket.toISOString()
+}
 
 async function readPayload(orgId: string, key: string | null) {
   if (!key?.startsWith(`${orgId}/`)) return null

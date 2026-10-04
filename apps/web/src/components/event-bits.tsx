@@ -1,7 +1,15 @@
 import type { CheckResult, Decision, EventKind, WorkflowRef } from '@acl/shared'
-import { approvalLabels, stepLabels } from '@acl/shared'
+import { approvalLabels, kindLabels, stepLabels } from '@acl/shared'
 import { Badge, cn } from '@acl/ui'
-import { Bot, Waypoints, Wrench } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import {
+  ArrowDownToLine,
+  Bot,
+  type LucideIcon,
+  MessageSquareText,
+  Users,
+  Wrench,
+} from 'lucide-react'
 import { Fragment } from 'react'
 import { decisionMeta, riskTone } from '#/lib/format.ts'
 
@@ -14,6 +22,14 @@ export function DecisionBadge({ decision }: { decision: Decision }) {
   )
 }
 
+export const kindIcons: Record<EventKind, LucideIcon> = {
+  model_request: Bot,
+  tool_call: Wrench,
+  tool_result: ArrowDownToLine,
+  model_output: MessageSquareText,
+  agent_message: Users,
+}
+
 export function KindLabel({
   kind,
   model,
@@ -23,13 +39,11 @@ export function KindLabel({
   model: string | null
   toolName: string | null
 }) {
-  const Icon = kind === 'tool_call' ? Wrench : kind === 'agent_message' ? Waypoints : Bot
+  const Icon = kindIcons[kind]
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5">
+    <span className="inline-flex min-w-0 items-center gap-1.5" title={kindLabels[kind]}>
       <Icon className="size-3.5 shrink-0 text-muted" />
-      <span className="truncate font-mono text-xs">
-        {kind === 'model_request' ? (model ?? 'model') : (toolName ?? 'agent message')}
-      </span>
+      <span className="truncate font-mono text-xs">{toolName ?? model ?? 'model'}</span>
     </span>
   )
 }
@@ -78,8 +92,13 @@ export function CheckList({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium">{stepLabels[c.type] ?? c.type}</span>
-                {c.type === 'match' ? (
-                  <Badge tone={c.branch === 'match' ? 'accent' : 'neutral'}>{c.branch}</Badge>
+                {/* `match` is the Route block of events recorded before condition blocks. */}
+                {c.type === 'condition' || c.type === 'match' ? (
+                  <Badge tone={c.branch === 'yes' || c.branch === 'match' ? 'accent' : 'neutral'}>
+                    {c.branch}
+                  </Badge>
+                ) : c.type === 'decision' && c.outcome === 'skipped' ? (
+                  <Badge tone="neutral">skip</Badge>
                 ) : c.type === 'decision' ? (
                   <Badge tone={c.action === 'block' ? 'bad' : c.action ? 'warn' : 'ok'}>
                     {c.action === 'require_approval' && c.method
@@ -106,6 +125,40 @@ export function CheckList({
         </Fragment>
       ))}
     </ol>
+  )
+}
+
+const workflowTone = { allow: 'ok', block: 'bad', pending: 'warn', skip: 'neutral' } as const
+
+/** Each workflow that ran, with what it alone decided and how long it took. */
+export function WorkflowRuns({ workflows }: { workflows: WorkflowRef[] }) {
+  if (workflows.length === 0) return <span className="text-xs text-muted">None matched</span>
+  return (
+    <ul className="flex flex-col gap-1">
+      {workflows.map((w) => (
+        <li key={w.id} className="flex items-center gap-2 text-xs">
+          <Link
+            to="/events"
+            search={{ workflow: w.id, range: '24h' }}
+            className="truncate hover:text-accent-strong"
+          >
+            {w.name} <span className="text-subtle">v{w.version}</span>
+          </Link>
+          {w.decision ? (
+            <Badge tone={workflowTone[w.decision]}>
+              {w.decision === 'pending'
+                ? 'approval'
+                : w.decision === 'skip'
+                  ? 'skipped'
+                  : w.decision}
+            </Badge>
+          ) : null}
+          {w.durationMs != null ? (
+            <span className="ml-auto font-mono text-[11px] text-subtle">{w.durationMs}ms</span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   )
 }
 

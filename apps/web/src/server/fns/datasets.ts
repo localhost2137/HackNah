@@ -14,7 +14,7 @@ import {
   MODEL_INDEX_KEY,
   modelKey,
   readModelIndex,
-} from '#/gateway/lib/models.ts'
+} from '#/gateway/lib/learned-models.ts'
 import { audit } from '../audit.ts'
 import { env } from '../env.ts'
 import { adminMiddleware } from '../middleware.ts'

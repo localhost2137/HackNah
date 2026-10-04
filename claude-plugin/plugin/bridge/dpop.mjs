@@ -11,9 +11,9 @@
 
 import { b64url, randomId, sha256b64url } from './util.mjs';
 
-async function jws(keys, keyName, header, claims, reason) {
+async function jws(keys, keyName, header, claims, body) {
   const input = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
-  const sig = await keys.sign(keyName, Buffer.from(input), reason);
+  const sig = await keys.sign(keyName, Buffer.from(input), body);
   return `${input}.${sig}`;
 }
 
@@ -43,7 +43,10 @@ export async function createProof(keys, { method, url, accessToken, body, nonce,
   return { proof, claims };
 }
 
-/** Presence proof: same claims, presence key. On macOS this triggers Touch ID with `reason`. */
-export function createPresenceProof(keys, claims, reason) {
-  return jws(keys, 'presence', { typ: 'hy-presence+jwt', alg: 'ES256', jwk: keys.publicJwk('presence') }, claims, reason);
+/**
+ * Presence proof: same claims, presence key. On macOS this triggers Touch ID; the signer
+ * writes the prompt from `body` (which must match the `bh` claim), not from our text.
+ */
+export function createPresenceProof(keys, claims, body) {
+  return jws(keys, 'presence', { typ: 'hy-presence+jwt', alg: 'ES256', jwk: keys.publicJwk('presence') }, claims, body);
 }
