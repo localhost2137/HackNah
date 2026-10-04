@@ -187,11 +187,11 @@ function WorkflowPage() {
         to="/workflows"
         className="mb-2 inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
       >
-        <ArrowLeft className="size-3.5" /> All workflows
+        <ArrowLeft className="size-3.5" /> All guardrails
       </Link>
       <PageHeader
         title={data.workflow.name}
-        description="Pick the stages this workflow runs on in its first step, ask about the request with condition blocks, then follow it from left to right to an allow, a block, an approval or Skip."
+        description="Pick the stages this guardrail runs on in its first step, ask about the request with condition blocks, then follow it from left to right to an allow, a block, an approval or Skip."
         actions={
           isAdmin ? (
             <>
@@ -280,7 +280,7 @@ function WorkflowPage() {
       <Dialog
         open={publishOpen}
         onOpenChange={setPublishOpen}
-        title="Publish workflow"
+        title="Publish guardrail"
         description="Gateways pick up the new version within about 10 seconds."
         footer={
           <>
@@ -859,14 +859,14 @@ function GraphHelp({ issues }: { issues: GraphIssue[] }) {
         automatically. Select a step or connection and press Delete to remove it.
       </p>
       <p>
-        The start step picks the stages the workflow runs on.{' '}
+        The start step picks the stages the guardrail runs on.{' '}
         <span className="text-fg">Conditions</span> ask one thing about the request (tool, model,
         server, tier, group, resource, device) and leave through{' '}
         <span className="text-fg">Yes</span> or <span className="text-fg">No</span>: link Yes to the
         next condition for AND, No for OR. <span className="text-fg">Checks</span> inspect the
         content, the device and the session. Every path should end in an outcome: allow, block, an
         approval by an admin, Touch ID, a browser sign-in or a confirmation, or Skip when the
-        workflow does not apply.
+        guardrail does not apply.
       </p>
       {issues.length > 0 ? (
         <ul className="flex flex-col gap-1">
@@ -901,7 +901,7 @@ function VersionList({
   if (versions.length === 0) {
     return (
       <p className="p-4 text-xs text-muted">
-        Nothing saved yet. This workflow doesn't run until a version is published.
+        Nothing saved yet. This guardrail doesn't run until a version is published.
       </p>
     )
   }

@@ -60,8 +60,8 @@ export function PolicyFileCard() {
       />
       <div className="flex flex-col gap-3 p-4 text-xs">
         <p className="text-muted">
-          Workflows, limits and the model catalog as one documented YAML file. Applying publishes a
-          new version of every workflow that changed; the gateway picks it up within seconds. Also
+          Guardrails, limits and the model catalog as one documented YAML file. Applying publishes a
+          new version of every guardrail that changed; the gateway picks it up within seconds. Also
           available as <code>pnpm policy:export</code> and <code>pnpm policy:apply</code>.
         </p>
         <Textarea

@@ -170,7 +170,7 @@ export function PerformancePanel({
           <Table>
             <THead>
               <tr>
-                <TH>Workflow</TH>
+                <TH>Guardrail</TH>
                 <TH className="text-right">Runs</TH>
                 <TH className="text-right">Blocked</TH>
                 <TH className="text-right">p50</TH>
@@ -199,7 +199,7 @@ export function PerformancePanel({
               ))}
               {workflows.length === 0 ? (
                 <TR>
-                  <TD className="text-xs text-muted">No workflow ran in this range</TD>
+                  <TD className="text-xs text-muted">No guardrail ran in this range</TD>
                 </TR>
               ) : null}
             </TBody>

@@ -349,7 +349,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
       {run ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-subtle">
           <span>
-            {run.workflows.length} workflow snapshots · Synthetic traffic ·{' '}
+            {run.workflows.length} guardrail snapshots · Synthetic traffic ·{' '}
             {run.groupNames.join(', ') || 'No groups'}
           </span>
           <button
@@ -486,7 +486,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
         description="Defaults are ready to run. Changes apply to your next analysis."
       >
         <p className="mb-5 text-xs leading-relaxed text-muted">
-          Each run copies your enabled, published workflows. Events use synthetic identities and
+          Each run copies your enabled, published guardrails. Events use synthetic identities and
           recorded device signals; no real user is impersonated.
         </p>
         <div className="grid gap-6">
@@ -495,7 +495,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
               Synthetic identities <Badge tone="info">36 test users</Badge>
             </div>
             <p className="mb-3 text-xs leading-relaxed text-muted">
-              All synthetic identities use the selected group memberships for workflow matching.
+              All synthetic identities use the selected group memberships for guardrail matching.
               Default groups are included. Each event carries its own device posture, model and
               session signals; identities never impersonate members.
             </p>
@@ -519,7 +519,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
               ))}
               {groups.data?.length === 0 ? (
                 <span className="text-xs text-muted">
-                  No groups configured; only workflows scoped to everyone can match.
+                  No groups configured; only guardrails scoped to everyone can match.
                 </span>
               ) : null}
             </fieldset>
@@ -583,7 +583,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
         {run ? (
           <div className="space-y-5 text-xs">
             <div>
-              <h3 className="mb-2 font-medium">Workflow snapshots</h3>
+              <h3 className="mb-2 font-medium">Guardrail snapshots</h3>
               {run.workflows.length ? (
                 run.workflows.map((w) => (
                   <div key={w.id} className="flex justify-between border-b border-line py-2">
@@ -593,13 +593,13 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
                 ))
               ) : (
                 <p className="text-warn">
-                  No published workflows. Traffic are allowed without checks.
+                  No published guardrails. Traffic is allowed without checks.
                 </p>
               )}
             </div>
             <p className="leading-relaxed text-muted">
               {run.results.filter((r) => r.result.workflows.length === 0).length} events matched no
-              workflow. LLM judges are not called; unavailable checks are inconclusive. This replay
+              guardrail. LLM judges are not called; unavailable checks are inconclusive. This replay
               evaluates policy decisions, not live model behavior, access grants or rate limits.
             </p>
             <div>

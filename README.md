@@ -112,7 +112,7 @@ Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Mod
   fingerprint is flagged as `mismatch`. The workflow's fingerprint node routes it to a block or an approval.
 - **Sessions.** Claude Code's session id is pinned to the first user and device that use it (`SessionDO`). The
   session also stores the resource scope picked with `/acl resources` and the redaction vault.
-- **Workflow.** Each workflow is a versioned policy graph (draft, then publish), edited with React Flow.
+- **Workflow ("Guardrail" in the dashboard).** Each workflow is a versioned policy graph (draft, then publish), edited with React Flow.
   Condition blocks ask one question each (*Tool is*, *Model is*, *MCP server is*, *User group is*, *Stage is*,
   ...) and leave through Yes or No; chaining Yes into the next condition makes AND, chaining No makes OR, and
   a block may have several incoming connections. Check nodes (fingerprint, keywords, judge, redact) branch on

@@ -108,7 +108,7 @@ function DatasetsPage() {
         id: info.id,
         name: d.name,
         description: d.slug.startsWith('mixed-')
-          ? 'Half attacks of every kind, half normal requests. Rerun it after changing a workflow.'
+          ? 'Half attacks of every kind, half normal requests. Rerun it after changing a guardrail.'
           : info.description,
         kind: d.slug.startsWith('mixed-')
           ? 'Mixed'
@@ -145,7 +145,7 @@ function DatasetsPage() {
     <>
       <PageHeader
         title="Attack analysis"
-        description="Datasets of attack and normal requests to test your workflows against. Run one to see what your rules block, miss or block by mistake. Labelled datasets can also train a model in a Trained model step."
+        description="Datasets of attack and normal requests to test your guardrails against. Run one to see what your rules block, miss or block by mistake. Labelled datasets can also train a model in a Trained model step."
         actions={
           <>
             <input
@@ -317,7 +317,7 @@ function DatasetSheet({ dataset, onClose }: { dataset: DatasetSummary; onClose: 
         </div>
         <p className="text-xs text-muted">
           {dataset.attacks > 0
-            ? 'Run it from the list to see how your workflows do on it. To block requests like these, add a Trained model step to a workflow and tick this dataset there.'
+            ? 'Run it from the list to see how your guardrails do on it. To block requests like these, add a Trained model step to a guardrail and tick this dataset there.'
             : 'This dataset has no attack rows. Its rows serve as benign examples when models are trained on other datasets.'}
         </p>
         <div>

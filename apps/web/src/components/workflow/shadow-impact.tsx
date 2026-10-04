@@ -73,7 +73,7 @@ const looserChanges: Transition[] = ['block>approval', 'block>allow', 'approval>
 const recordedRows: { key: RecordedResult; label: string }[] = [
   { key: 'allow', label: 'Allowed' },
   { key: 'approval', label: 'Needed approval' },
-  { key: 'block', label: 'Blocked by a workflow' },
+  { key: 'block', label: 'Blocked by a guardrail' },
   { key: 'rate_limited', label: 'Rate limited' },
   { key: 'denied', label: 'Denied by access' },
 ]
@@ -241,7 +241,7 @@ export function ShadowImpact({ workflowId, graph }: { workflowId: string; graph:
           <Card>
             <CardHeader
               title="Impact over time"
-              description="How this workflow would affect requests by the time they were recorded"
+              description="How this guardrail would affect requests by the time they were recorded"
             />
             <ImpactTimeline timeline={tally.timeline} range={range} />
           </Card>

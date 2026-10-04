@@ -128,8 +128,8 @@ export function FieldForm({
                 label={field.label}
                 hint={
                   limits.length
-                    ? 'Only limits set to "let the workflow decide" are listed.'
-                    : 'Add a limit set to "let the workflow decide" on the Limits page first.'
+                    ? 'Only limits set to "let the guardrail decide" are listed.'
+                    : 'Add a limit set to "let the guardrail decide" on the Limits page first.'
                 }
               >
                 <Select value={String(current ?? '')} onChange={(e) => set(e.target.value)}>

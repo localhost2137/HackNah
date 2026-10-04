@@ -48,7 +48,7 @@ function ImpactPage() {
       </Link>
       <PageHeader
         title={`Impact of ${data.workflow.name}`}
-        description="Replays a saved version on past requests, including failed ones, without publishing it. Other workflows keep the outcome they reached at the time."
+        description="Replays a saved version on past requests, including failed ones, without publishing it. Other guardrails keep the outcome they reached at the time."
         actions={
           choices.length > 0 ? (
             <Select

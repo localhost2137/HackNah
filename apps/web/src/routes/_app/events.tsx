@@ -301,7 +301,7 @@ function EventsPage() {
         ) : null}
         {search.workflow ? (
           <FilterChip
-            label={`Workflow ${search.workflow}`}
+            label={`Guardrail ${search.workflow}`}
             onClear={() => setSearch({ workflow: undefined })}
           />
         ) : null}
@@ -440,7 +440,7 @@ function EventDrawer({ id, onClose }: { id: string | undefined; onClose: () => v
               }
             />
             <div className="col-span-2">
-              <dt className="text-[11px] text-subtle">Workflows</dt>
+              <dt className="text-[11px] text-subtle">Guardrails</dt>
               <dd className="mt-1">
                 <WorkflowRuns workflows={data.workflows} />
               </dd>

@@ -84,7 +84,7 @@ function scopesFor(measure: LimitMeasure): LimitScope[] {
 const actionLabels: Record<LimitRule['action'], string> = {
   block: 'Block',
   warn: 'Warn only',
-  workflow: 'Workflow decides',
+  workflow: 'Guardrail decides',
 }
 
 function LimitsPage() {
@@ -144,7 +144,7 @@ function LimitsPage() {
     <>
       <PageHeader
         title="Limits"
-        description="Request rates, concurrency and budgets in USD, tokens or GPU time, per user, per group or for the whole organization. Checked at the gateway before the workflows run; spend is added once the model answers."
+        description="Request rates, concurrency and budgets in USD, tokens or GPU time, per user, per group or for the whole organization. Checked at the gateway before the guardrails run; spend is added once the model answers."
         actions={
           isAdmin ? (
             <Button
@@ -437,7 +437,7 @@ function LimitsPage() {
                 >
                   <option value="block">Block the request</option>
                   <option value="warn">Allow, flag in the log</option>
-                  <option value="workflow">Let the workflow decide</option>
+                  <option value="workflow">Let the guardrail decide</option>
                 </Select>
               </Field>
               <Field label="Near limit at (%)">
@@ -452,7 +452,7 @@ function LimitsPage() {
             </div>
             {draft.action === 'workflow' ? (
               <p className="text-xs text-muted">
-                Add a Usage limit block to a workflow and pick this limit. It leaves through Under
+                Add a Usage limit block to a guardrail and pick this limit. It leaves through Under
                 limit, Near limit or Over limit, so you can route an over-budget request to an
                 approval instead of a hard block.
               </p>

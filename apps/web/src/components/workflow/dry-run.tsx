@@ -387,7 +387,7 @@ export function DryRun({
                 {result.approvalMethod
                   ? `needs ${approvalLabels[result.approvalMethod]}`
                   : result.decision === 'skip'
-                    ? 'skipped: workflow does not apply'
+                    ? 'skipped: guardrail does not apply'
                     : result.decision}
               </Badge>
             )}
@@ -406,8 +406,8 @@ export function DryRun({
       </div>
       {result === 'not_triggered' ? (
         <p className="text-xs text-muted">
-          This request doesn't match the start conditions, so this workflow doesn't run. It's
-          allowed unless another workflow catches it.
+          This request doesn't match the start conditions, so this guardrail doesn't run. It's
+          allowed unless another guardrail catches it.
         </p>
       ) : result ? (
         <CheckList checks={result.checks} />

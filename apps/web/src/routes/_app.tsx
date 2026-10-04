@@ -47,7 +47,7 @@ const nav: { title?: string; items: NavItem[] }[] = [
   {
     title: 'Policy',
     items: [
-      { to: '/workflows', label: 'Workflows', icon: ListChecks },
+      { to: '/workflows', label: 'Guardrails', icon: ListChecks },
       { to: '/limits', label: 'Limits', icon: Gauge },
       { to: '/models', label: 'Models', icon: Cpu },
       { to: '/datasets', label: 'Attack analysis', icon: FlaskConical },

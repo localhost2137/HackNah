@@ -352,10 +352,10 @@ const specs: BlockSpec[] = [
     nodeType: 'trigger',
     group: 'Conditions',
     label: 'Start',
-    description: 'Picks which stages run this workflow.',
+    description: 'Picks which stages run this guardrail.',
     source: 'The request',
     details:
-      'Picks the stages this workflow runs on. None ticked: every stage (model input, tool calls, tool results, model output and agent messages). Ask about tools, models or groups with condition blocks after it; a request that ends in Skip, or starts no workflow, is allowed.',
+      'Picks the stages this guardrail runs on. None ticked: every stage (model input, tool calls, tool results, model output and agent messages). Ask about tools, models or groups with condition blocks after it; a request that ends in Skip, or starts no workflow, is allowed.',
     inputs: [],
     outputs: [
       {
@@ -619,7 +619,7 @@ const specs: BlockSpec[] = [
     description: 'Asks a model to rate the risk from 0 to 1.',
     source: 'The model endpoint you set',
     details:
-      'Sends the input to a model on OpenRouter, or to any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM), and asks for a risk score between 0 and 1. When the judge is down or times out, the workflow fallback decides.',
+      'Sends the input to a model on OpenRouter, or to any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM), and asks for a risk score between 0 and 1. When the judge is down or times out, the guardrail fallback decides.',
     inputs: ['content', 'tool'],
     outputs: [
       pass('Low risk', ['redact', 'allow', 'untrusted_content']),
@@ -793,7 +793,7 @@ const specs: BlockSpec[] = [
     description: 'Checks spend or usage against a limit.',
     source: 'A rule from the Limits page',
     details:
-      'Reads a rule from the Limits page set to "let the workflow decide": spend in USD, tokens, GPU time or requests for the user, their group or the org. Under the warning level the request passes; past it, it leaves through Near limit; past the limit, through Over limit.',
+      'Reads a rule from the Limits page set to "let the guardrail decide": spend in USD, tokens, GPU time or requests for the user, their group or the org. Under the warning level the request passes; past it, it leaves through Near limit; past the limit, through Over limit.',
     inputs: ['usage', 'identity'],
     appliesTo: ['model_request', 'tool_call', 'agent_message'],
     outputs: [
@@ -877,10 +877,10 @@ const specs: BlockSpec[] = [
     nodeType: 'decision',
     group: 'Outcome',
     label: 'Skip',
-    description: 'Ends this workflow with no decision.',
+    description: 'Ends this guardrail with no decision.',
     source: '—',
     details:
-      'End this workflow without a decision. It does not count towards the outcome, as if it had not started; other workflows still decide.',
+      'End this guardrail without a decision. It does not count towards the outcome, as if it had not started; other guardrails still decide.',
     inputs: [],
     outputs: [],
     through: null,
@@ -892,7 +892,7 @@ const specs: BlockSpec[] = [
       timeoutSec: 300,
       reason: '',
     }),
-    summary: () => 'This workflow does not apply',
+    summary: () => 'This guardrail does not apply',
   },
 ]
 

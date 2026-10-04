@@ -127,12 +127,12 @@ function WorkflowsPage() {
   return (
     <>
       <PageHeader
-        title="Workflows"
-        description="Every enabled workflow that runs on the request's stage, and whose groups include the user, runs. The strictest outcome wins: block, then approval, then allow; a workflow that ends in Skip does not count."
+        title="Guardrails"
+        description="Every enabled guardrail that runs on the request's stage, and whose groups include the user, runs. The strictest outcome wins: block, then approval, then allow; a guardrail that ends in Skip does not count."
         actions={
           isAdmin ? (
             <Button variant="primary" onClick={() => setCreating({ name: '', copyOf: '' })}>
-              <Plus /> New workflow
+              <Plus /> New guardrail
             </Button>
           ) : null
         }
@@ -141,23 +141,23 @@ function WorkflowsPage() {
         <div className="mb-3 flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
           <span>
-            No live workflow covers every request for every member. A request that starts no
-            workflow is allowed without any checks, including the device fingerprint.
+            No live guardrail covers every request for every member. A request that starts no
+            guardrail is allowed without any checks, including the device fingerprint.
           </span>
         </div>
       ) : null}
       <Card>
         {list.length === 0 ? (
           <EmptyState
-            title="No workflows"
-            description="Without a workflow every request is allowed. Create one to check tool calls or prompts."
+            title="No guardrails"
+            description="Without a guardrail every request is allowed. Create one to check tool calls or prompts."
           />
         ) : (
           <Table>
             <THead>
               <tr>
                 {isAdmin ? <TH className="w-16" /> : null}
-                <TH>Workflow</TH>
+                <TH>Guardrail</TH>
                 <TH>Runs on</TH>
                 <TH>Runs for</TH>
                 <TH>Version</TH>
@@ -269,7 +269,7 @@ function WorkflowsPage() {
       <Dialog
         open={creating !== null}
         onOpenChange={(o) => !o && setCreating(null)}
-        title="New workflow"
+        title="New guardrail"
         description="It starts as a draft and doesn't run until you publish it."
         footer={
           <>
@@ -318,7 +318,7 @@ function WorkflowsPage() {
       <Sheet
         open={settings !== null}
         onOpenChange={(o) => !o && setSettings(null)}
-        title="Workflow settings"
+        title="Guardrail settings"
         footer={
           <>
             <Button
@@ -371,7 +371,7 @@ function WorkflowsPage() {
             </Field>
             <Field
               label="Runs for"
-              hint="Leave every group unticked to run for all members. Which requests start it is set on the first step of the workflow."
+              hint="Leave every group unticked to run for all members. Which requests start it is set on the first step of the guardrail."
             >
               {groupList.length === 0 ? (
                 <p className="text-xs text-subtle">No groups defined yet.</p>

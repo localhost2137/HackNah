@@ -373,7 +373,7 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
 
   const triggers = graph.nodes.filter((n) => n.type === 'trigger')
   if (triggers.length !== 1) {
-    issues.push({ level: 'error', message: 'The workflow needs exactly one start node' })
+    issues.push({ level: 'error', message: 'The guardrail needs exactly one start node' })
   }
 
   const out = new Map<string, string[]>()
@@ -417,7 +417,7 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
     return cyclic
   }
   if (graph.nodes.some((n) => visit(n.id))) {
-    issues.push({ level: 'error', message: 'The workflow contains a loop' })
+    issues.push({ level: 'error', message: 'The guardrail contains a loop' })
   }
 
   const reachable = new Set<string>()

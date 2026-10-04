@@ -207,7 +207,7 @@ describe('validateGraph', () => {
     const messages = validateGraph(wf)
       .filter((i) => i.level === 'error')
       .map((i) => i.message)
-    expect(messages).toContain('The workflow contains a loop')
+    expect(messages).toContain('The guardrail contains a loop')
     expect(messages).toContain('Unknown output "nope"')
     expect(messages).toContain('An output can only connect once')
   })

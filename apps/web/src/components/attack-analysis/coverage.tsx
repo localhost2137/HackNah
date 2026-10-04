@@ -91,7 +91,7 @@ export function CoverageCharts({ run }: { run: AnalysisRun }) {
       </Card>
       <Card>
         <CardHeader
-          title="Workflow coverage"
+          title="Guardrail coverage"
           description="Which policies matched the dataset’s requests."
         />
         <div className="p-5">
@@ -113,7 +113,7 @@ export function CoverageCharts({ run }: { run: AnalysisRun }) {
           <p
             className={`mb-5 text-xs ${covered < run.results.length ? 'text-warn' : 'text-subtle'}`}
           >
-            {run.results.length - covered} events matched no workflow and were allowed without
+            {run.results.length - covered} events matched no guardrail and were allowed without
             checks.
           </p>
           <div className="space-y-3">
@@ -137,8 +137,8 @@ export function CoverageCharts({ run }: { run: AnalysisRun }) {
             ))}
           </div>
           <p className="mt-4 text-[10px] text-subtle">
-            {workflows.length > 6 ? 'Top 6 workflows shown. ' : ''}An event can match multiple
-            workflows. Coverage does not imply detection.
+            {workflows.length > 6 ? 'Top 6 guardrails shown. ' : ''}An event can match multiple
+            guardrails. Coverage does not imply detection.
           </p>
         </div>
       </Card>

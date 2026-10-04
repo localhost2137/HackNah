@@ -270,7 +270,7 @@ export async function publishDraftService({
   const parsed = policyGraph.safeParse(draft.definition)
   if (!parsed.success) throw new Error('The draft is not a valid workflow')
   const error = validateGraph(parsed.data).find((i) => i.level === 'error')
-  if (error) throw new Error(`Fix the workflow before publishing: ${error.message}`)
+  if (error) throw new Error(`Fix the guardrail before publishing: ${error.message}`)
   const [row] = await db
     .update(workflowVersion)
     .set({ status: 'published', note: data.note ?? null, createdBy: me.id })
