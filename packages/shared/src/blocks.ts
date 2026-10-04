@@ -440,6 +440,36 @@ const specs: BlockSpec[] = [
     summary: (c) =>
       `${c.minSeverity}+ · ${c.categories.length ? `${c.categories.length} categories` : 'all categories'}`,
   }),
+  checkBlock('learned', {
+    group: 'Content',
+    label: 'Learned rules',
+    description:
+      'Scores the request with the models trained on the Datasets page. A model flags requests that look like the attacks in its dataset; it is fast, and it only knows what it was trained on.',
+    inputs: ['content'],
+    outputs: [
+      pass('Passed', ['judge', 'redact', 'allow']),
+      {
+        id: 'fail',
+        label: 'Similar to known attacks',
+        tone: 'bad',
+        next: ['block', 'approve_admin', 'judge'],
+      },
+    ],
+    fields: [
+      {
+        kind: 'number',
+        key: 'threshold',
+        label: 'Flag at score ≥',
+        hint: 'Lower catches more and blocks more benign requests.',
+        min: 0.05,
+        max: 0.99,
+        step: 0.05,
+      },
+    ],
+    defaults: { type: 'learned', threshold: 0.5, models: [] },
+    summary: (c) =>
+      `${c.models.length ? `${c.models.length} models` : 'all trained models'} · score ≥ ${c.threshold}`,
+  }),
   checkBlock('judge', {
     group: 'Content',
     label: 'Judge model',

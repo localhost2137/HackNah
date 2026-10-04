@@ -1,4 +1,5 @@
 import type { ApprovalMethod, CheckResult, EventKind, WorkflowRef } from './events.ts'
+import { type ScoringModel, scoreModel } from './learned.ts'
 import {
   baselineSignatures,
   matchSignatures,
@@ -80,6 +81,8 @@ export type EngineDeps = {
   judge?: (check: JudgeCheck, input: EvaluationInput) => Promise<JudgeVerdict>
   /** Signatures for the `signatures` block; the built-in baseline when absent. */
   signatures?: Signature[]
+  /** Trained models for the `learned` block. */
+  models?: ScoringModel[]
   now?: () => number
 }
 
@@ -396,6 +399,27 @@ const runners: { [T in CheckType]: Runner<T> } = {
       branch: 'fail',
       score: severityRisk[hit.severity],
       reason: `${hit.title}${origin ? ` (${origin})` : ''} [${hit.id}]`,
+    }
+  },
+  learned: (check, input, deps) => {
+    const models = (deps.models ?? []).filter(
+      (m) => check.models.length === 0 || check.models.includes(m.id),
+    )
+    if (models.length === 0)
+      return { outcome: 'skipped', branch: 'pass', reason: 'No trained models' }
+    let top = { score: 0, name: '' }
+    for (const text of textVariants(input.text)) {
+      for (const model of models) {
+        const score = scoreModel(model, text)
+        if (score > top.score) top = { score, name: model.name }
+      }
+    }
+    if (top.score < check.threshold) return { outcome: 'pass', branch: 'pass', score: top.score }
+    return {
+      outcome: 'fail',
+      branch: 'fail',
+      score: top.score,
+      reason: `Similar to attacks in ${top.name} (score ${top.score.toFixed(2)})`,
     }
   },
   arguments: (check, input) => {

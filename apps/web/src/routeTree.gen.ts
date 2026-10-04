@@ -17,6 +17,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
+import { Route as AppDatasetsRouteImport } from './routes/_app/datasets'
 import { Route as AppDevicesRouteImport } from './routes/_app/devices'
 import { Route as AppEventsRouteImport } from './routes/_app/events'
 import { Route as AppIntegrationsRouteImport } from './routes/_app/integrations'
@@ -72,6 +73,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppApprovalsRoute = AppApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDatasetsRoute = AppDatasetsRouteImport.update({
+  id: '/datasets',
+  path: '/datasets',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDevicesRoute = AppDevicesRouteImport.update({
@@ -168,6 +174,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/approvals': typeof AppApprovalsRoute
+  '/datasets': typeof AppDatasetsRoute
   '/devices': typeof AppDevicesRoute
   '/events': typeof AppEventsRoute
   '/integrations': typeof AppIntegrationsRoute
@@ -193,6 +200,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/approvals': typeof AppApprovalsRoute
+  '/datasets': typeof AppDatasetsRoute
   '/devices': typeof AppDevicesRoute
   '/events': typeof AppEventsRoute
   '/integrations': typeof AppIntegrationsRoute
@@ -221,6 +229,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/_app/approvals': typeof AppApprovalsRoute
+  '/_app/datasets': typeof AppDatasetsRoute
   '/_app/devices': typeof AppDevicesRoute
   '/_app/events': typeof AppEventsRoute
   '/_app/integrations': typeof AppIntegrationsRoute
@@ -250,6 +259,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/approvals'
+    | '/datasets'
     | '/devices'
     | '/events'
     | '/integrations'
@@ -275,6 +285,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/approvals'
+    | '/datasets'
     | '/devices'
     | '/events'
     | '/integrations'
@@ -302,6 +313,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/_app/approvals'
+    | '/_app/datasets'
     | '/_app/devices'
     | '/_app/events'
     | '/_app/integrations'
@@ -391,6 +403,13 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/approvals'
       preLoaderRoute: typeof AppApprovalsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/datasets': {
+      id: '/_app/datasets'
+      path: '/datasets'
+      fullPath: '/datasets'
+      preLoaderRoute: typeof AppDatasetsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/devices': {
@@ -517,6 +536,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
+  AppDatasetsRoute: typeof AppDatasetsRoute
   AppDevicesRoute: typeof AppDevicesRoute
   AppEventsRoute: typeof AppEventsRoute
   AppIntegrationsRoute: typeof AppIntegrationsRoute
@@ -535,6 +555,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppApprovalsRoute: AppApprovalsRoute,
+  AppDatasetsRoute: AppDatasetsRoute,
   AppDevicesRoute: AppDevicesRoute,
   AppEventsRoute: AppEventsRoute,
   AppIntegrationsRoute: AppIntegrationsRoute,
@@ -568,3 +589,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

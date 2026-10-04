@@ -42,6 +42,15 @@ export const signaturesCheck = z.object({
   categories: z.array(signatureCategory).default([]),
 })
 
+/** Models trained on labelled datasets: flags requests that look like those attacks. */
+export const learnedCheck = z.object({
+  type: z.literal('learned'),
+  /** Score in [0, 1] at or above which the check fails. */
+  threshold: z.number().min(0.05).max(0.99).default(0.5),
+  /** Model ids to use. Empty means every enabled model. */
+  models: z.array(z.string()).default([]),
+})
+
 export const argumentRule = z.object({
   /** Glob on the tool name; MCP tools match with or without the server prefix. */
   tool: z.string().min(1).default('*'),
@@ -99,6 +108,7 @@ export const checkConfig = z.discriminatedUnion('type', [
   judgeCheck,
   redactCheck,
   signaturesCheck,
+  learnedCheck,
   argumentsCheck,
   untrustedContentCheck,
   toolPinningCheck,

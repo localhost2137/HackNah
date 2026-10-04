@@ -13,6 +13,7 @@
     "test": "turbo run test",
     "test:controls": "node dataset/build.mjs && node scripts/controls.ts",
     "feed": "node scripts/signature-feeder.mjs",
+    "datasets:upload": "node scripts/datasets-upload.mjs",
     "lint": "biome check .",
     "format": "biome check --write .",
     "db:generate": "pnpm --filter @acl/db generate",

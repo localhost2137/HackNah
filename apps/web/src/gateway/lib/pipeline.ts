@@ -14,6 +14,7 @@ import { eq } from 'drizzle-orm'
 import type { Principal } from '../context.ts'
 import { approvalsStub } from '../do/approvals.ts'
 import { effectivePermissions, permissionDenial, userGroupIds } from './access.ts'
+import { loadModels } from './models.ts'
 import { loadSignatures } from './signatures.ts'
 import { loadActiveWorkflows } from './workflow.ts'
 
@@ -74,17 +75,17 @@ export async function runPipeline(
       redact: null,
     }
   }
-  const usesSignatures = workflows.some((w) =>
-    w.definition.nodes.some(
-      (n) => n.type === 'check' && n.enabled && n.check.type === 'signatures',
-    ),
-  )
+  const uses = (type: string) =>
+    workflows.some((w) =>
+      w.definition.nodes.some((n) => n.type === 'check' && n.enabled && n.check.type === type),
+    )
   const result = await evaluateWorkflows(
     workflows,
     { ...input, groupIds, deviceStatus: principal.deviceStatus },
     {
       judge: (check, i) => callJudge(check, i, { apiKey: judgeApiKey(env, check.endpoint) }),
-      signatures: usesSignatures ? (await loadSignatures(env)).signatures : undefined,
+      signatures: uses('signatures') ? (await loadSignatures(env)).signatures : undefined,
+      models: uses('learned') ? await loadModels(env) : undefined,
     },
   )
   const base = {
