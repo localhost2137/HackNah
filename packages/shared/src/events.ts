@@ -90,7 +90,15 @@ export const gatewayEvent = z.object({
   workflows: z.array(workflowRef),
   inputTokens: z.number().nullable(),
   outputTokens: z.number().nullable(),
+  cacheReadTokens: z.number().nullable().optional(),
+  cacheWriteTokens: z.number().nullable().optional(),
+  /** What the upstream call cost, from the model catalog's prices. */
+  costUsd: z.number().nullable().optional(),
+  /** Inference time of a local model. */
+  gpuMs: z.number().nullable().optional(),
   latencyMs: z.number(),
+  /** Time spent in the control layer itself, without the upstream. */
+  overheadMs: z.number().nullable().optional(),
   upstreamStatus: z.number().nullable(),
   ip: z.string().nullable(),
   country: z.string().nullable(),

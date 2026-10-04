@@ -73,7 +73,12 @@ export type EvaluationInput = {
   signals?: RequestSignals
 }
 
-export type JudgeVerdict = { score: number; reason: string }
+export type JudgeVerdict = {
+  score: number
+  reason: string
+  /** Tokens the judge call used, when the endpoint reports them. */
+  usage?: { inputTokens: number; outputTokens: number }
+}
 
 /** Where the user stands against one limit. */
 export type LimitStatus = { state: 'ok' | 'warn' | 'over'; reason: string }
@@ -566,6 +571,18 @@ async function runCheck(
 function matches(node: MatchNode | TriggerNode, input: EvaluationInput): boolean {
   const results = node.conditions.map((c) => conditionHolds(c, input))
   return node.mode === 'all' ? results.every(Boolean) : results.some(Boolean)
+}
+
+/**
+ * Whether a workflow could start on any of these stages, judging by its start node's Stage
+ * conditions alone. Lets the gateway skip inspecting output nobody has a workflow for.
+ */
+export function triggerMayRun(graph: PolicyGraph, kinds: EventKind[]): boolean {
+  const trigger = graph.nodes.find((n) => n.type === 'trigger')
+  if (!trigger) return false
+  const stages = trigger.conditions.filter((c) => c.field === 'kind')
+  if (stages.length === 0 || trigger.mode === 'any') return true
+  return stages.every((c) => c.values.some((v) => kinds.includes(v as EventKind)))
 }
 
 /** Whether a request starts this graph. A start node without conditions takes every request. */

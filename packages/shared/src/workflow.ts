@@ -402,13 +402,3 @@ export const starterWorkflow: PolicyGraph = {
   ],
   edges: [{ id: 'e1', source: 'start', sourceHandle: 'next', target: 'allow' }],
 }
-export const rateLimitRule = z.object({
-  id: z.string(),
-  scope: z.enum(['mcp', 'tool', 'resource']),
-  /** MCP server id, `<server>__<tool>` name, or resource id. `*` matches any target in scope. */
-  target: z.string().min(1),
-  limit: z.number().int().min(1),
-  windowSec: z.number().int().min(1).max(86_400),
-  per: z.enum(['user', 'org']).default('user'),
-})
-export type RateLimitRule = z.infer<typeof rateLimitRule>

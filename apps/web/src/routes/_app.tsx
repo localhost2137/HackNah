@@ -3,6 +3,7 @@ import { createFileRoute, Link, Outlet, redirect, useNavigate } from '@tanstack/
 import {
   Activity,
   Boxes,
+  Cpu,
   Gauge,
   KeyRound,
   LayoutDashboard,
@@ -46,7 +47,8 @@ const nav: { title?: string; items: NavItem[] }[] = [
     title: 'Policy',
     items: [
       { to: '/workflows', label: 'Workflows', icon: ListChecks },
-      { to: '/rate-limits', label: 'Rate limits', icon: Gauge },
+      { to: '/limits', label: 'Limits', icon: Gauge },
+      { to: '/models', label: 'Models', icon: Cpu },
     ],
   },
   {

@@ -1,4 +1,4 @@
-type ContentBlock =
+export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_result'; content?: string | ContentBlock[] }
   | { type: 'tool_use'; name: string; input: unknown }
@@ -34,6 +34,78 @@ export function extractTurnText(body: MessagesRequest): string {
   return last.content.map(blockText).filter(Boolean).join('\n')
 }
 
+/** Claude Code tools that hand a task to a subagent; their calls and results are agent messages. */
+export const AGENT_TOOLS = ['Task', 'Agent']
+
+export type TurnToolResult = {
+  toolUseId: string
+  /** Name of the tool that produced it, from the matching `tool_use`; null if not found. */
+  toolName: string | null
+  text: string
+}
+
+/**
+ * The newest user turn split by message type: what goes to the model as input (text blocks) and
+ * each tool result on its own, named after the tool call it answers.
+ */
+export function splitTurn(body: MessagesRequest): { input: string; toolResults: TurnToolResult[] } {
+  const messages = body.messages ?? []
+  const last = messages.at(-1)
+  if (last?.role !== 'user') return { input: '', toolResults: [] }
+  if (typeof last.content === 'string') return { input: last.content, toolResults: [] }
+  const names = new Map<string, string>()
+  const previous = messages.at(-2)
+  if (previous?.role === 'assistant' && Array.isArray(previous.content)) {
+    for (const block of previous.content) {
+      const b = block as { type: string; id?: unknown; name?: unknown }
+      if (b.type === 'tool_use' && typeof b.id === 'string' && typeof b.name === 'string')
+        names.set(b.id, b.name)
+    }
+  }
+  const input: string[] = []
+  const toolResults: TurnToolResult[] = []
+  for (const block of last.content) {
+    if (block.type === 'tool_result') {
+      const id = String((block as { tool_use_id?: unknown }).tool_use_id ?? '')
+      toolResults.push({ toolUseId: id, toolName: names.get(id) ?? null, text: blockText(block) })
+    } else {
+      const text = blockText(block)
+      if (text) input.push(text)
+    }
+  }
+  return { input: input.join('\n'), toolResults }
+}
+
+/** Replaces the content of one tool result in the newest user turn. */
+export function replaceToolResult(
+  body: MessagesRequest,
+  toolUseId: string,
+  map: (block: ContentBlock) => ContentBlock,
+): MessagesRequest {
+  const messages = body.messages ?? []
+  const last = messages.at(-1)
+  if (!last || last.role !== 'user' || typeof last.content === 'string') return body
+  const content = last.content.map((block) =>
+    block.type === 'tool_result' && (block as { tool_use_id?: unknown }).tool_use_id === toolUseId
+      ? map(block)
+      : block,
+  )
+  return { ...body, messages: [...messages.slice(0, -1), { ...last, content }] }
+}
+
+/** Applies `fn` to the text of one content block (text, or a tool result's content). */
+export function mapBlockText(block: ContentBlock, fn: (text: string) => string): ContentBlock {
+  if (block.type === 'text' && typeof block.text === 'string')
+    return { ...block, text: fn(block.text) }
+  if (block.type === 'tool_result') {
+    const content = (block as { content?: string | ContentBlock[] }).content
+    if (typeof content === 'string') return { ...block, content: fn(content) }
+    if (Array.isArray(content))
+      return { ...block, content: content.map((b) => mapBlockText(b, fn)) }
+  }
+  return block
+}
+
 /** Claude Code encodes the session in `metadata.user_id` as `..._session_<uuid>`. */
 export function sessionFromMetadata(body: MessagesRequest): string | null {
   const userId = body.metadata?.user_id
@@ -66,16 +138,41 @@ export function mapRequestText(
   }
 }
 
-export type Usage = { inputTokens: number | null; outputTokens: number | null }
+export type TokenUsage = {
+  inputTokens: number | null
+  outputTokens: number | null
+  cacheWriteTokens: number | null
+  cacheReadTokens: number | null
+}
 
-/** Parses token usage out of a streamed (SSE) or plain JSON Messages response. */
-export function parseUsage(raw: string, streamed: boolean): Usage {
-  const usage: Usage = { inputTokens: null, outputTokens: null }
+type RawUsage = {
+  input_tokens?: number
+  output_tokens?: number
+  cache_creation_input_tokens?: number
+  cache_read_input_tokens?: number
+}
+
+export function emptyUsage(): TokenUsage {
+  return { inputTokens: null, outputTokens: null, cacheWriteTokens: null, cacheReadTokens: null }
+}
+
+/** Folds a `usage` object into `into`; later events carry running totals, so values replace. */
+export function mergeUsage(into: TokenUsage, raw: RawUsage | undefined): TokenUsage {
+  if (!raw) return into
+  return {
+    inputTokens: raw.input_tokens ?? into.inputTokens,
+    outputTokens: raw.output_tokens ?? into.outputTokens,
+    cacheWriteTokens: raw.cache_creation_input_tokens ?? into.cacheWriteTokens,
+    cacheReadTokens: raw.cache_read_input_tokens ?? into.cacheReadTokens,
+  }
+}
+
+/** Parses token usage, cache reads and writes included, from an SSE or plain JSON response. */
+export function parseUsage(raw: string, streamed: boolean): TokenUsage {
+  let usage = emptyUsage()
   if (!streamed) {
     try {
-      const json = JSON.parse(raw) as { usage?: { input_tokens?: number; output_tokens?: number } }
-      usage.inputTokens = json.usage?.input_tokens ?? null
-      usage.outputTokens = json.usage?.output_tokens ?? null
+      usage = mergeUsage(usage, (JSON.parse(raw) as { usage?: RawUsage }).usage)
     } catch {}
     return usage
   }
@@ -84,15 +181,11 @@ export function parseUsage(raw: string, streamed: boolean): Usage {
     try {
       const data = JSON.parse(line.slice(5).trim()) as {
         type?: string
-        message?: { usage?: { input_tokens?: number; output_tokens?: number } }
-        usage?: { output_tokens?: number }
+        message?: { usage?: RawUsage }
+        usage?: RawUsage
       }
-      if (data.type === 'message_start') {
-        usage.inputTokens = data.message?.usage?.input_tokens ?? usage.inputTokens
-        usage.outputTokens = data.message?.usage?.output_tokens ?? usage.outputTokens
-      } else if (data.type === 'message_delta') {
-        usage.outputTokens = data.usage?.output_tokens ?? usage.outputTokens
-      }
+      if (data.type === 'message_start') usage = mergeUsage(usage, data.message?.usage)
+      else if (data.type === 'message_delta') usage = mergeUsage(usage, data.usage)
     } catch {}
   }
   return usage

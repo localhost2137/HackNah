@@ -20,7 +20,8 @@ import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
 import { Route as AppDevicesRouteImport } from './routes/_app/devices'
 import { Route as AppEventsRouteImport } from './routes/_app/events'
 import { Route as AppIntegrationsRouteImport } from './routes/_app/integrations'
-import { Route as AppRateLimitsRouteImport } from './routes/_app/rate-limits'
+import { Route as AppLimitsRouteImport } from './routes/_app/limits'
+import { Route as AppModelsRouteImport } from './routes/_app/models'
 import { Route as AppSessionsRouteImport } from './routes/_app/sessions'
 import { Route as ApiLiveRouteImport } from './routes/api/live'
 import { Route as AppAccessGroupsRouteImport } from './routes/_app/access/groups'
@@ -90,9 +91,14 @@ const AppIntegrationsRoute = AppIntegrationsRouteImport.update({
   path: '/integrations',
   getParentRoute: () => AppRoute,
 } as any)
-const AppRateLimitsRoute = AppRateLimitsRouteImport.update({
-  id: '/rate-limits',
-  path: '/rate-limits',
+const AppLimitsRoute = AppLimitsRouteImport.update({
+  id: '/limits',
+  path: '/limits',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppModelsRoute = AppModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSessionsRoute = AppSessionsRouteImport.update({
@@ -178,7 +184,8 @@ export interface FileRoutesByFullPath {
   '/devices': typeof AppDevicesRoute
   '/events': typeof AppEventsRoute
   '/integrations': typeof AppIntegrationsRoute
-  '/rate-limits': typeof AppRateLimitsRoute
+  '/limits': typeof AppLimitsRoute
+  '/models': typeof AppModelsRoute
   '/sessions': typeof AppSessionsRoute
   '/api/live': typeof ApiLiveRoute
   '/access/groups': typeof AppAccessGroupsRoute
@@ -204,7 +211,8 @@ export interface FileRoutesByTo {
   '/devices': typeof AppDevicesRoute
   '/events': typeof AppEventsRoute
   '/integrations': typeof AppIntegrationsRoute
-  '/rate-limits': typeof AppRateLimitsRoute
+  '/limits': typeof AppLimitsRoute
+  '/models': typeof AppModelsRoute
   '/sessions': typeof AppSessionsRoute
   '/api/live': typeof ApiLiveRoute
   '/': typeof AppIndexRoute
@@ -233,7 +241,8 @@ export interface FileRoutesById {
   '/_app/devices': typeof AppDevicesRoute
   '/_app/events': typeof AppEventsRoute
   '/_app/integrations': typeof AppIntegrationsRoute
-  '/_app/rate-limits': typeof AppRateLimitsRoute
+  '/_app/limits': typeof AppLimitsRoute
+  '/_app/models': typeof AppModelsRoute
   '/_app/sessions': typeof AppSessionsRoute
   '/api/live': typeof ApiLiveRoute
   '/_app/': typeof AppIndexRoute
@@ -263,7 +272,8 @@ export interface FileRouteTypes {
     | '/devices'
     | '/events'
     | '/integrations'
-    | '/rate-limits'
+    | '/limits'
+    | '/models'
     | '/sessions'
     | '/api/live'
     | '/access/groups'
@@ -289,7 +299,8 @@ export interface FileRouteTypes {
     | '/devices'
     | '/events'
     | '/integrations'
-    | '/rate-limits'
+    | '/limits'
+    | '/models'
     | '/sessions'
     | '/api/live'
     | '/'
@@ -317,7 +328,8 @@ export interface FileRouteTypes {
     | '/_app/devices'
     | '/_app/events'
     | '/_app/integrations'
-    | '/_app/rate-limits'
+    | '/_app/limits'
+    | '/_app/models'
     | '/_app/sessions'
     | '/api/live'
     | '/_app/'
@@ -427,11 +439,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIntegrationsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/rate-limits': {
-      id: '/_app/rate-limits'
-      path: '/rate-limits'
-      fullPath: '/rate-limits'
-      preLoaderRoute: typeof AppRateLimitsRouteImport
+    '/_app/limits': {
+      id: '/_app/limits'
+      path: '/limits'
+      fullPath: '/limits'
+      preLoaderRoute: typeof AppLimitsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/models': {
+      id: '/_app/models'
+      path: '/models'
+      fullPath: '/models'
+      preLoaderRoute: typeof AppModelsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/sessions': {
@@ -540,7 +559,8 @@ interface AppRouteChildren {
   AppDevicesRoute: typeof AppDevicesRoute
   AppEventsRoute: typeof AppEventsRoute
   AppIntegrationsRoute: typeof AppIntegrationsRoute
-  AppRateLimitsRoute: typeof AppRateLimitsRoute
+  AppLimitsRoute: typeof AppLimitsRoute
+  AppModelsRoute: typeof AppModelsRoute
   AppSessionsRoute: typeof AppSessionsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAccessGroupsRoute: typeof AppAccessGroupsRoute
@@ -559,7 +579,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppDevicesRoute: AppDevicesRoute,
   AppEventsRoute: AppEventsRoute,
   AppIntegrationsRoute: AppIntegrationsRoute,
-  AppRateLimitsRoute: AppRateLimitsRoute,
+  AppLimitsRoute: AppLimitsRoute,
+  AppModelsRoute: AppModelsRoute,
   AppSessionsRoute: AppSessionsRoute,
   AppIndexRoute: AppIndexRoute,
   AppAccessGroupsRoute: AppAccessGroupsRoute,

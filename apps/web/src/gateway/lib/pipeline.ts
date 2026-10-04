@@ -6,15 +6,21 @@ import {
   type Decision,
   type EvaluationInput,
   evaluateWorkflows,
+  findModel,
+  type JudgeCheck,
+  type LimitStatus,
   type RedactConfig,
   randomId,
+  usageAmounts,
   type WorkflowRef,
 } from '@acl/shared'
 import { eq } from 'drizzle-orm'
 import type { Principal } from '../context.ts'
 import { approvalsStub } from '../do/approvals.ts'
 import { effectivePermissions, permissionDenial, userGroupIds } from './access.ts'
-import { loadActiveWorkflows } from './workflow.ts'
+import { checkLimits, recordUsage } from './limits.ts'
+import { loadModels } from './models.ts'
+import { loadActiveWorkflows, loadLimits } from './workflow.ts'
 
 export type PipelineResult = {
   decision: Extract<Decision, 'allow' | 'block' | 'approved' | 'declined'>
@@ -45,7 +51,13 @@ export async function runPipeline(
   db: Db,
   principal: Principal,
   input: Omit<EvaluationInput, 'deviceStatus' | 'groupIds'>,
-  meta: { eventId: string; sessionId: string | null; summary: string },
+  meta: {
+    eventId: string
+    sessionId: string | null
+    summary: string
+    /** Where the request stands against its limits, for the Usage limit block. */
+    limits?: Map<string, LimitStatus>
+  },
 ): Promise<PipelineResult> {
   const [workflows, groupIds, permissions] = await Promise.all([
     loadActiveWorkflows(db, principal.orgId),
@@ -76,7 +88,14 @@ export async function runPipeline(
   const result = await evaluateWorkflows(
     workflows,
     { ...input, groupIds, deviceStatus: principal.deviceStatus },
-    { judge: (check, i) => callJudge(check, i, { apiKey: judgeApiKey(env, check.endpoint) }) },
+    {
+      judge: (check, i) => guardedJudge(env, db, principal, groupIds, check, i),
+      limit: async (limitId) =>
+        meta.limits?.get(limitId) ?? {
+          state: 'ok',
+          reason: 'This limit does not cover this request',
+        },
+    },
   )
   const base = {
     checks: result.checks,
@@ -142,6 +161,39 @@ export async function runPipeline(
     decision: status === 'approved' ? 'approved' : 'declined',
     reasons: status === 'expired' ? [...result.reasons, 'Approval timed out'] : result.reasons,
   }
+}
+
+/**
+ * Calls the judge as part of the control layer's own budget: limits on guardrails can cap how
+ * much the judges cost, and a judge past its limit fails, so the workflow fallback decides.
+ */
+export async function guardedJudge(
+  env: Env,
+  db: Db,
+  principal: Principal,
+  groupIds: string[],
+  check: JudgeCheck,
+  input: EvaluationInput,
+) {
+  const [rules, catalog] = await Promise.all([
+    loadLimits(db, principal.orgId),
+    loadModels(db, principal.orgId),
+  ])
+  const target = { scope: 'guardrails' as const, model: check.model }
+  const who = { orgId: principal.orgId, userId: principal.userId, groupIds }
+  const limits = await checkLimits(env, rules, target, who)
+  if (limits.blocked) throw new Error(limits.blocked.reason)
+  const started = Date.now()
+  const verdict = await callJudge(check, input, { apiKey: judgeApiKey(env, check.endpoint) })
+  const usage = {
+    inputTokens: verdict.usage?.inputTokens ?? 0,
+    outputTokens: verdict.usage?.outputTokens ?? 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    inferenceMs: Date.now() - started,
+  }
+  await recordUsage(env, rules, target, who, usageAmounts(findModel(catalog, check.model), usage))
+  return verdict
 }
 
 export function denialMessage(result: PipelineResult): string {

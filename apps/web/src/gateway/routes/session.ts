@@ -1,13 +1,16 @@
-import { type GatewayEvent, randomId } from '@acl/shared'
+import { AGENT_TOOLS, type EventKind, type GatewayEvent, randomId } from '@acl/shared'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { type AppEnv, clientInfo } from '../context.ts'
 import { sessionStub } from '../do/session.ts'
-import { accessibleResources } from '../lib/access.ts'
+import { accessibleResources, userGroupIds } from '../lib/access.ts'
 import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
+import { checkLimits } from '../lib/limits.ts'
 import { runPipeline } from '../lib/pipeline.ts'
 import { resolveSession } from '../lib/session.ts'
+import { recallVerdict, rememberVerdict } from '../lib/verdicts.ts'
+import { loadLimits } from '../lib/workflow.ts'
 
 /** Tools exposed by our own MCP aggregator are checked there, not in the hook. */
 const AGGREGATOR_TOOL_PREFIX = 'mcp__acl__'
@@ -65,55 +68,97 @@ export const pluginApi = new Hono<AppEnv>()
     if ('error' in session) return c.json(hookDecision('deny', session.error))
 
     const principal = c.get('principal')
+    const db = c.get('db')
+    const { tool_name: toolName, tool_input: toolInput } = body.data
+    const deny = (reasons: string[]) =>
+      c.json(hookDecision('deny', `AI Control Layer: ${reasons.join('; ') || 'blocked'}`))
+
+    // The output guard usually checked this exact call already, while the model wrote it.
+    const cached = await recallVerdict(c.env, principal.orgId, session.id, toolName, toolInput)
+    if (cached)
+      return cached.decision === 'allow' ? c.json(hookDecision('allow')) : deny(cached.reasons)
+
     const eventId = randomId('evt')
-    const args = JSON.stringify(body.data.tool_input ?? {})
-    const result = await runPipeline(
-      c.env,
-      c.get('db'),
-      principal,
-      {
-        kind: 'tool_call',
-        text: args,
-        toolName: body.data.tool_name,
-        resourceIds: session.state?.resourceIds ?? [],
-        toolArguments: body.data.tool_input,
-      },
-      { eventId, sessionId: session.id, summary: `${body.data.tool_name}: ${args.slice(0, 200)}` },
-    )
+    const args = JSON.stringify(toolInput ?? {})
+    const kind: EventKind = AGENT_TOOLS.includes(toolName) ? 'agent_message' : 'tool_call'
+    const resourceIds = session.state?.resourceIds ?? []
     const event: GatewayEvent = {
       id: eventId,
       orgId: principal.orgId,
       userId: principal.userId,
       deviceId: principal.deviceId,
       sessionId: session.id,
-      kind: 'tool_call',
+      kind,
       model: null,
       mcpServerId: null,
-      toolName: body.data.tool_name,
-      resourceIds: session.state?.resourceIds ?? [],
-      decision: result.decision,
-      checks: result.checks,
-      riskScore: result.riskScore,
-      workflows: result.workflows,
+      toolName,
+      resourceIds,
+      decision: 'allow',
+      checks: [],
+      riskScore: 0,
+      workflows: [],
       inputTokens: null,
       outputTokens: null,
-      latencyMs: Date.now() - started,
+      latencyMs: 0,
       upstreamStatus: null,
       ...clientInfo(c),
       payloadKey: null,
       createdAt: new Date(started).toISOString(),
     }
+    const record = () => {
+      event.latencyMs = Date.now() - started
+      event.overheadMs = event.latencyMs
+      c.executionCtx.waitUntil(
+        recordEvent(c.env, event, {
+          input: { text: args, toolName, toolArguments: toolInput },
+        }),
+      )
+    }
+
+    // The hook never sees the call finish, so only request limits apply here, not concurrency.
+    const limits = await checkLimits(
+      c.env,
+      await loadLimits(db, principal.orgId),
+      { scope: 'tool', toolName, mcpServerId: null, resourceIds },
+      {
+        orgId: principal.orgId,
+        userId: principal.userId,
+        groupIds: await userGroupIds(db, principal),
+      },
+    )
+    event.checks = limits.checks
+    if (limits.blocked) {
+      event.decision = 'rate_limited'
+      record()
+      return deny([limits.blocked.reason])
+    }
+
+    const result = await runPipeline(
+      c.env,
+      db,
+      principal,
+      { kind, text: args, toolName, resourceIds, toolArguments: toolInput },
+      {
+        eventId,
+        sessionId: session.id,
+        summary: `${toolName}: ${args.slice(0, 200)}`,
+        limits: limits.states,
+      },
+    )
+    event.decision = result.decision
+    event.checks = [...limits.checks, ...result.checks]
+    event.riskScore = result.riskScore
+    event.workflows = result.workflows
+    record()
+    const allowed = result.decision === 'allow' || result.decision === 'approved'
     c.executionCtx.waitUntil(
-      recordEvent(c.env, event, {
-        input: { text: args, toolName: body.data.tool_name, toolArguments: body.data.tool_input },
+      rememberVerdict(c.env, principal.orgId, session.id, toolName, toolInput, {
+        decision: allowed ? 'allow' : 'block',
+        reasons: result.reasons,
+        eventId,
       }),
     )
-    const allowed = result.decision === 'allow' || result.decision === 'approved'
-    return c.json(
-      allowed
-        ? hookDecision('allow')
-        : hookDecision('deny', `AI Control Layer: ${result.reasons.join('; ') || 'blocked'}`),
-    )
+    return allowed ? c.json(hookDecision('allow')) : deny(result.reasons)
   })
 
 /**

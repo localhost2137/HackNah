@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateGraph, evaluateWorkflows, matchKeywords, selectWorkflows } from './engine.ts'
+import {
+  evaluateGraph,
+  evaluateWorkflows,
+  matchKeywords,
+  selectWorkflows,
+  triggerMayRun,
+} from './engine.ts'
 import {
   defaultWorkflow,
   type PolicyGraph,
@@ -310,6 +316,16 @@ describe('evaluateWorkflows', () => {
     )
     expect(r.workflows.map((w) => `${w.id}:${w.decision}`)).toEqual(['allow:allow', 'block:block'])
     expect(r.workflows.every((w) => typeof w.durationMs === 'number')).toBe(true)
+  })
+
+  it('knows which stages a workflow could start on', () => {
+    const outputs = graph(
+      { conditions: [{ field: 'kind', values: ['model_output'] }] },
+      decision('a', 'allow'),
+    )
+    expect(triggerMayRun(outputs, ['model_output', 'tool_call'])).toBe(true)
+    expect(triggerMayRun(outputs, ['tool_call'])).toBe(false)
+    expect(triggerMayRun(graph({}, decision('a', 'allow')), ['tool_call'])).toBe(true)
   })
 
   it('a workflow without trigger conditions runs on every stage', () => {

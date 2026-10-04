@@ -3,6 +3,7 @@ import {
   type BlockSpec,
   blockOutput,
   type EvaluationResult,
+  formatAmount,
   type GraphIssue,
   nodeOutputs,
   type PolicyEdge,
@@ -10,6 +11,7 @@ import {
   type PolicyNode,
   policyGraph,
   validateGraph,
+  windowLabel,
 } from '@acl/shared'
 import { Badge, Button, Card, Dialog, Field, Input, PageHeader, Select } from '@acl/ui'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -44,6 +46,7 @@ import { recommendSteps, type Suggestion } from '#/components/workflow/recommend
 import { timeAgo } from '#/lib/format.ts'
 import { listGroups, listResources } from '#/server/fns/access.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
+import { listLimits } from '#/server/fns/limits.ts'
 import { discardDraft, getWorkflow, publishDraft, saveDraft } from '#/server/fns/workflow.ts'
 
 const workflowQuery = (workflowId: string) =>
@@ -54,6 +57,7 @@ const workflowQuery = (workflowId: string) =>
 const serversQuery = queryOptions({ queryKey: ['mcp-servers'], queryFn: () => listMcpServers() })
 const resourcesQuery = queryOptions({ queryKey: ['resources'], queryFn: () => listResources() })
 const groupsQuery = queryOptions({ queryKey: ['groups'], queryFn: () => listGroups() })
+const limitsQuery = queryOptions({ queryKey: ['limits'], queryFn: () => listLimits() })
 
 export const Route = createFileRoute('/_app/workflows/$workflowId')({
   loader: ({ context, params }) =>
@@ -100,6 +104,7 @@ function WorkflowPage() {
   const { data: servers } = useQuery(serversQuery)
   const { data: resources } = useQuery(resourcesQuery)
   const { data: groups } = useQuery(groupsQuery)
+  const { data: limits } = useQuery(limitsQuery)
   const [graph, setGraph] = useState<PolicyGraph | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [note, setNote] = useState('')
@@ -124,8 +129,14 @@ function WorkflowPage() {
         label: r.serverName ? `${r.serverName} · ${r.name}` : r.name,
       })),
       groups: (groups ?? []).map((g) => ({ value: g.id, label: g.name })),
+      limits: (limits ?? [])
+        .filter((l) => l.action === 'workflow')
+        .map((l) => ({
+          value: l.id,
+          label: l.name || `${formatAmount(l.measure, l.limit)} per ${windowLabel(l.windowSec)}`,
+        })),
     }),
-    [servers, resources, groups],
+    [servers, resources, groups, limits],
   )
 
   const refresh = () =>

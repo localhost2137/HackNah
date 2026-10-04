@@ -13,24 +13,32 @@ const DROP_RESPONSE_HEADERS = new Set([
   'set-cookie',
 ])
 
+export type UpstreamTarget = { baseUrl: string; apiKey: string | null }
+
 export function upstreamRequest(
   env: Env,
+  target: UpstreamTarget,
   incoming: Request,
   path: string,
   body?: BodyInit | null,
 ): Request {
   const url = new URL(incoming.url)
-  const target = new URL(path + url.search, env.UPSTREAM_BASE_URL)
+  const base = target.baseUrl.endsWith('/') ? target.baseUrl : `${target.baseUrl}/`
+  const destination = new URL(path.replace(/^\//, '') + url.search, base)
   const headers = new Headers()
   for (const name of FORWARD_REQUEST_HEADERS) {
     const value = incoming.headers.get(name)
     if (value) headers.set(name, value)
   }
   if (!headers.has('anthropic-version')) headers.set('anthropic-version', '2023-06-01')
-  headers.set('authorization', `Bearer ${env.OPENROUTER_API_KEY}`)
+  if (target.apiKey) {
+    // Anthropic's own API takes x-api-key; OpenRouter and compatible servers take a bearer token.
+    if (destination.hostname === 'api.anthropic.com') headers.set('x-api-key', target.apiKey)
+    else headers.set('authorization', `Bearer ${target.apiKey}`)
+  }
   headers.set('http-referer', env.PUBLIC_URL)
   headers.set('x-title', 'AI Control Layer')
-  return new Request(target, {
+  return new Request(destination, {
     method: incoming.method,
     headers,
     body: body === undefined ? incoming.body : body,
