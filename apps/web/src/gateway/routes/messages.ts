@@ -47,6 +47,7 @@ import {
 } from '../lib/output-guard.ts'
 import { denialMessage, guardedJudge, type PipelineResult, runPipeline } from '../lib/pipeline.ts'
 import { type ResolvedSession, resolveSession } from '../lib/session.ts'
+import { resolveTrace } from '../lib/trace.ts'
 import {
   clientResponseHeaders,
   readCapped,
@@ -66,6 +67,7 @@ type Ctx = {
   groupIds: string[]
   resourceIds: string[]
   model: string
+  traceId: string
 }
 
 /**
@@ -112,6 +114,7 @@ export const messages = new Hono<AppEnv>()
       groupIds,
       resourceIds: session.state?.resourceIds ?? [],
       model,
+      traceId: await resolveTrace(c, session.id, body),
     }
     const turn = splitTurn(body)
     const event = newEvent(ctx, 'model_request', randomId('evt'), started)
@@ -406,6 +409,7 @@ function newEvent(ctx: Ctx, kind: EventKind, id: string, started: number): Gatew
     userId: principal.userId,
     deviceId: principal.deviceId,
     sessionId: session.id,
+    traceId: ctx.traceId,
     kind,
     model: ctx.model || null,
     mcpServerId: null,

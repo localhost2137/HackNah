@@ -3,12 +3,15 @@ import {
   type BlockOutput,
   blockId,
   blockOf,
+  blockOutput,
+  type CheckResult,
   type GraphIssue,
+  type PolicyEdge,
   type PolicyNode,
   type Tone,
 } from '@acl/shared'
 import { cn } from '@acl/ui'
-import { Handle, type Node, type NodeProps, Position } from '@xyflow/react'
+import { type Edge, Handle, MarkerType, type Node, type NodeProps, Position } from '@xyflow/react'
 import {
   Activity,
   Ban,
@@ -47,14 +50,21 @@ import {
   Wrench,
 } from 'lucide-react'
 import { type PointerEvent, useEffect, useRef } from 'react'
+import { CheckBadge } from '#/components/event-bits.tsx'
 import { createGlassOptics, GLASS_OVERSCAN, GLASS_RADIUS } from './glass-optics.ts'
 
 export type FlowNodeData = {
   onAdd?: (handle: string, anchor: { x: number; y: number }) => void
   node: PolicyNode
   issues: GraphIssue[]
-  /** Set while a dry run is shown: whether the request went through this node. */
+  /** Set while a dry run or an event's path is shown: whether the request went through this node. */
   onPath: boolean | null
+  /** Path view: what the event recorded at this node, and its position on the path. */
+  step?: { check: CheckResult; order: number }
+  /** Path view: the path ended here. */
+  end?: boolean
+  /** Path view: the path left this node for the guardrail's fallback. */
+  fallback?: CheckResult
 }
 export type FlowNode = Node<FlowNodeData>
 
@@ -64,6 +74,32 @@ export const toneColor: Record<Tone, string> = {
   warn: '#f1c553',
   neutral: '#929daf',
   accent: '#9aafff',
+}
+
+/** An edge as the canvas draws it. `onPath` is null when no path is shown. */
+export function flowEdge(
+  edge: PolicyEdge,
+  source: PolicyNode | undefined,
+  onPath: boolean | null,
+): Edge & { pathOptions: { borderRadius: number; offset: number } } {
+  const tone = source ? blockOutput(source, edge.sourceHandle)?.tone : undefined
+  const color = toneColor[tone ?? 'neutral']
+  return {
+    id: edge.id,
+    source: edge.source,
+    sourceHandle: edge.sourceHandle,
+    target: edge.target,
+    animated: onPath === true,
+    type: 'smoothstep',
+    markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20, color },
+    interactionWidth: 24,
+    pathOptions: { borderRadius: 18, offset: 30 },
+    style: {
+      stroke: tone ? color : 'var(--color-line-strong)',
+      strokeWidth: onPath ? 3.5 : 2.5,
+      opacity: onPath === false ? 0.25 : 1,
+    },
+  }
 }
 
 export const blockIcons: Record<BlockId, LucideIcon> = {
@@ -121,8 +157,16 @@ function titleTone(node: PolicyNode): string {
   }
 }
 
+/** The node a path ended on stands out in the colour of what it decided. */
+function endRing(node: PolicyNode, fallback: CheckResult | undefined): string {
+  if (fallback || node.type !== 'decision') return 'ring-4 ring-warn/70'
+  if (node.action === 'allow') return 'ring-4 ring-ok/70'
+  if (node.action === 'block') return 'ring-4 ring-bad/70'
+  return node.action === 'skip' ? 'ring-4 ring-muted/60' : 'ring-4 ring-warn/70'
+}
+
 function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
-  const { node, issues, onPath } = data
+  const { node, issues, onPath, step, end, fallback } = data
   const pointerStart = useRef({ x: 0, y: 0 })
   const lens = useRef<HTMLDivElement | null>(null)
   const clearLens = () => {
@@ -193,10 +237,11 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
   return (
     <div
       className={cn(
-        'w-60 rounded-xl border bg-panel text-left shadow-xl transition-opacity',
+        'relative w-60 rounded-xl border bg-panel text-left shadow-xl transition-opacity',
         selected ? 'border-accent' : hasError ? 'border-bad' : 'border-line-strong',
         onPath === false && 'opacity-35',
-        onPath === true && 'ring-2 ring-accent/60',
+        onPath === true && !end && 'ring-2 ring-accent/60',
+        end && endRing(node, fallback),
         node.type === 'check' && !node.enabled && 'border-dashed',
       )}
       title={issues.map((i) => i.message).join('\n') || undefined}
@@ -204,11 +249,40 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
       {node.type !== 'trigger' ? (
         <Handle type="target" position={Position.Left} className="!bg-muted" />
       ) : null}
+      {step || fallback ? (
+        // Sits on the top border, so a path does not change the node's size or the layout.
+        <div className="absolute -top-3 right-3 flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-1.5 py-0.5 text-[11px] shadow-md">
+          {step ? (
+            <>
+              <span className="font-mono text-subtle">{step.order}</span>
+              <CheckBadge check={step.check} />
+              {step.check.score != null ? (
+                <span className="font-mono text-muted">risk {step.check.score.toFixed(2)}</span>
+              ) : null}
+              <span className="font-mono text-subtle">{step.check.durationMs}ms</span>
+            </>
+          ) : null}
+          {fallback ? (
+            <span className="text-warn">
+              fallback: {fallback.action === 'block' ? 'block' : 'allow'}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex items-start gap-3 px-4 py-4">
         <Icon className={cn('mt-0.5 size-5 shrink-0', tone)} />
         <div className="min-w-0 flex-1">
           <div className="text-[15px] font-semibold leading-snug">{title}</div>
-          <div className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">{subtitle}</div>
+          <div
+            className={cn(
+              'mt-1 line-clamp-2 text-[12px] leading-relaxed',
+              step?.check.reason ? 'text-fg' : 'text-muted',
+            )}
+            title={step?.check.reason}
+          >
+            {/* On a path, what the step found replaces its description. */}
+            {step?.check.reason ?? subtitle}
+          </div>
           {node.type === 'check' ? (
             <div className="mt-1 truncate text-[11px] text-subtle">From: {block.source}</div>
           ) : null}
@@ -222,7 +296,14 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
       {outputs.length > 0 ? (
         <div className="border-t border-line bg-panel-2/60 py-2 rounded-b-xl">
           {outputs.map(({ id: h, label, tone: outputTone }) => (
-            <div key={h} className="relative px-4 py-1.5 text-right text-[12px] font-medium">
+            <div
+              key={h}
+              className={cn(
+                'relative px-4 py-1.5 text-right text-[12px] font-medium',
+                // On a path, the outputs the request did not leave through fade.
+                step && step.check.branch !== h && 'opacity-40',
+              )}
+            >
               <span style={{ color: toneColor[outputTone] }}>{label}</span>
               <Handle
                 id={h}

@@ -1,4 +1,5 @@
 import { createDb } from '@acl/db'
+import { HEADER_TRACE_ID } from '@acl/shared'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { AppEnv } from './context.ts'
@@ -25,6 +26,8 @@ export const gatewayApp = new Hono<AppEnv>()
   .use('*', async (c, next) => {
     c.set('db', createDb(c.env.DB))
     await next()
+    const traceId = c.get('traceId')
+    if (traceId) c.res.headers.set(HEADER_TRACE_ID, traceId)
   })
   // The plugin protocol on every response: a fresh DPoP nonce, and for a request that carried a
   // proof, a signature over the status and body, bound to that proof. Streams are relayed as

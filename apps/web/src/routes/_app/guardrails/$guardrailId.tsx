@@ -1,7 +1,6 @@
 import {
   type BlockGroup,
   type BlockSpec,
-  blockOutput,
   type EvaluationResult,
   formatAmount,
   type GraphIssue,
@@ -24,7 +23,6 @@ import {
   Controls,
   type Edge,
   type EdgeChange,
-  MarkerType,
   MiniMap,
   type NodeChange,
   ReactFlow,
@@ -38,8 +36,8 @@ import { DryRun } from '#/components/guardrail/dry-run.tsx'
 import {
   blockIcons,
   type FlowNode,
+  flowEdge,
   nodeTypes,
-  toneColor,
 } from '#/components/guardrail/graph-nodes.tsx'
 import { Inspector, type PickerOptions } from '#/components/guardrail/inspector.tsx'
 import { recommendSteps, type Suggestion } from '#/components/guardrail/recommendations.ts'
@@ -425,34 +423,14 @@ function Editor({
   }))
 
   const nodesById = new Map(graph.nodes.map((n) => [n.id, n]))
-  const edges: Edge[] = graph.edges.map((e) => {
-    const onPath = path?.edges.has(`${e.source}:${e.sourceHandle}`)
-    const source = nodesById.get(e.source)
-    const tone = source ? blockOutput(source, e.sourceHandle)?.tone : undefined
-    const color = toneColor[tone ?? 'neutral']
-    return {
-      id: e.id,
-      source: e.source,
-      sourceHandle: e.sourceHandle,
-      target: e.target,
-      selected: selectedEdges.has(e.id),
-      animated: onPath === true,
-      type: 'smoothstep',
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        width: 20,
-        height: 20,
-        color,
-      },
-      interactionWidth: 24,
-      pathOptions: { borderRadius: 18, offset: 30 },
-      style: {
-        stroke: tone ? color : 'var(--color-line-strong)',
-        strokeWidth: onPath ? 3.5 : 2.5,
-        opacity: path && !onPath ? 0.25 : 1,
-      },
-    }
-  })
+  const edges: Edge[] = graph.edges.map((e) => ({
+    ...flowEdge(
+      e,
+      nodesById.get(e.source),
+      path ? path.edges.has(`${e.source}:${e.sourceHandle}`) : null,
+    ),
+    selected: selectedEdges.has(e.id),
+  }))
 
   const onNodesChange = (changes: NodeChange<FlowNode>[]) => {
     const next = applyNodeChanges(changes, nodes)

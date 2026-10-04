@@ -359,6 +359,12 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
   const pick = (list) => list[Math.floor(random() * list.length)]
   const between = (min, max) => Math.round(min + random() * (max - min))
   let count = 0
+  let traces = 0
+  // Same shape as the gateway's ids. Its own generator, so the traffic itself stays as it was.
+  const traceRandom = rng(20261005)
+  const hex = (n, width) => n.toString(16).padStart(width, '0')
+  const word = () => hex(Math.floor(traceRandom() * 2 ** 32), 8)
+  const nextTrace = () => `trc_${word()}${word()}${hex(traces++, 4)}`
   const totals = { events: 0, blocked: 0, sessions: 0 }
 
   async function emit(session, at, kind, text, extra = {}) {
@@ -388,6 +394,7 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
       user_id: session.person.id,
       ...(session.person.name ? { device_id: `${session.person.id}-device` } : {}),
       session_id: session.id,
+      trace_id: session.traceId,
       kind,
       ...(kind === 'tool_call' || kind === 'tool_result' ? { tool_name: extra.toolName } : {}),
       ...(extra.server ? { mcp_server_id: extra.server } : {}),
@@ -440,6 +447,7 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
       context: between(18_000, 60_000),
       deviceStatus: 'trusted',
       signals: healthy,
+      traceId: nextTrace(),
       ...overrides,
     }
     session.model ??= MODELS[0]
@@ -452,6 +460,7 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
       if (move.agent) {
         if (!(await step('agent_message', move.agent))) return
       } else if (move.ask) {
+        session.traceId = nextTrace()
         if (!(await step('model_request', move.ask))) return
       } else if (move.say) {
         if (!(await step('model_output', move.say))) return

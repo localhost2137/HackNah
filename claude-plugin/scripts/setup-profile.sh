@@ -69,6 +69,9 @@ s.apiKeyHelper = `node "${bridge}" llm-key`;
 s.env = {
   ...(s.env ?? {}),
   ANTHROPIC_BASE_URL: `http://127.0.0.1:${process.env.HY_LLM_PORT}`,
+  // Sends a prompt id with each model request, so the gateway groups a prompt's requests
+  // (subagents included) into one trace.
+  CLAUDE_CODE_GATEWAY_HINT_HEADERS: '1',
   HY_DATA_DIR: process.env.HY_DATA_DIR,
   HY_PLATFORM_URL: process.env.HY_PLATFORM_URL,
   HY_LLM_PORT: process.env.HY_LLM_PORT,

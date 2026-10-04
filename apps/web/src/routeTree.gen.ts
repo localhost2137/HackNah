@@ -32,6 +32,7 @@ import { Route as AppAccessMembersRouteImport } from './routes/_app/access/membe
 import { Route as AppAccessResourcesRouteImport } from './routes/_app/access/resources'
 import { Route as AppAttackAnalysisIndexRouteImport } from './routes/_app/attack-analysis/index'
 import { Route as AppAttackAnalysisDatasetIdRouteImport } from './routes/_app/attack-analysis/$datasetId'
+import { Route as AppEventsEventIdRouteImport } from './routes/_app/events_.$eventId'
 import { Route as AppGuardrailsIndexRouteImport } from './routes/_app/guardrails/index'
 import { Route as AppGuardrailsGuardrailIdRouteImport } from './routes/_app/guardrails/$guardrailId'
 import { Route as AppIntegrationsServerIdRouteImport } from './routes/_app/integrations_.$serverId'
@@ -158,6 +159,11 @@ const AppAttackAnalysisDatasetIdRoute =
     path: '/$datasetId',
     getParentRoute: () => AppAttackAnalysisRoute,
   } as any)
+const AppEventsEventIdRoute = AppEventsEventIdRouteImport.update({
+  id: '/events_/$eventId',
+  path: '/events/$eventId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGuardrailsIndexRoute = AppGuardrailsIndexRouteImport.update({
   id: '/guardrails/',
   path: '/guardrails/',
@@ -234,6 +240,7 @@ export interface FileRoutesByFullPath {
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
   '/attack-analysis/$datasetId': typeof AppAttackAnalysisDatasetIdRoute
+  '/events/$eventId': typeof AppEventsEventIdRoute
   '/guardrails/$guardrailId': typeof AppGuardrailsGuardrailIdRoute
   '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
@@ -267,6 +274,7 @@ export interface FileRoutesByTo {
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
   '/attack-analysis/$datasetId': typeof AppAttackAnalysisDatasetIdRoute
+  '/events/$eventId': typeof AppEventsEventIdRoute
   '/guardrails/$guardrailId': typeof AppGuardrailsGuardrailIdRoute
   '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
@@ -303,6 +311,7 @@ export interface FileRoutesById {
   '/_app/access/members': typeof AppAccessMembersRoute
   '/_app/access/resources': typeof AppAccessResourcesRoute
   '/_app/attack-analysis/$datasetId': typeof AppAttackAnalysisDatasetIdRoute
+  '/_app/events_/$eventId': typeof AppEventsEventIdRoute
   '/_app/guardrails/$guardrailId': typeof AppGuardrailsGuardrailIdRoute
   '/_app/integrations_/$serverId': typeof AppIntegrationsServerIdRoute
   '/_app/settings/connect': typeof AppSettingsConnectRoute
@@ -339,6 +348,7 @@ export interface FileRouteTypes {
     | '/access/members'
     | '/access/resources'
     | '/attack-analysis/$datasetId'
+    | '/events/$eventId'
     | '/guardrails/$guardrailId'
     | '/integrations/$serverId'
     | '/settings/connect'
@@ -372,6 +382,7 @@ export interface FileRouteTypes {
     | '/access/members'
     | '/access/resources'
     | '/attack-analysis/$datasetId'
+    | '/events/$eventId'
     | '/guardrails/$guardrailId'
     | '/integrations/$serverId'
     | '/settings/connect'
@@ -407,6 +418,7 @@ export interface FileRouteTypes {
     | '/_app/access/members'
     | '/_app/access/resources'
     | '/_app/attack-analysis/$datasetId'
+    | '/_app/events_/$eventId'
     | '/_app/guardrails/$guardrailId'
     | '/_app/integrations_/$serverId'
     | '/_app/settings/connect'
@@ -597,6 +609,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAttackAnalysisDatasetIdRouteImport
       parentRoute: typeof AppAttackAnalysisRoute
     }
+    '/_app/events_/$eventId': {
+      id: '/_app/events_/$eventId'
+      path: '/events/$eventId'
+      fullPath: '/events/$eventId'
+      preLoaderRoute: typeof AppEventsEventIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/guardrails/': {
       id: '/_app/guardrails/'
       path: '/guardrails'
@@ -697,6 +716,7 @@ interface AppRouteChildren {
   AppAccessGroupsRoute: typeof AppAccessGroupsRoute
   AppAccessMembersRoute: typeof AppAccessMembersRoute
   AppAccessResourcesRoute: typeof AppAccessResourcesRoute
+  AppEventsEventIdRoute: typeof AppEventsEventIdRoute
   AppGuardrailsGuardrailIdRoute: typeof AppGuardrailsGuardrailIdRoute
   AppIntegrationsServerIdRoute: typeof AppIntegrationsServerIdRoute
   AppSettingsConnectRoute: typeof AppSettingsConnectRoute
@@ -720,6 +740,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessGroupsRoute: AppAccessGroupsRoute,
   AppAccessMembersRoute: AppAccessMembersRoute,
   AppAccessResourcesRoute: AppAccessResourcesRoute,
+  AppEventsEventIdRoute: AppEventsEventIdRoute,
   AppGuardrailsGuardrailIdRoute: AppGuardrailsGuardrailIdRoute,
   AppIntegrationsServerIdRoute: AppIntegrationsServerIdRoute,
   AppSettingsConnectRoute: AppSettingsConnectRoute,

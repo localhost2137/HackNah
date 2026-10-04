@@ -1,16 +1,18 @@
 import type { CheckResult, Decision, EventKind, GuardrailRef } from '@acl/shared'
-import { approvalLabels, kindLabels, stepLabels } from '@acl/shared'
+import { approvalLabels, kindLabels, shortTraceId, stepLabels } from '@acl/shared'
 import { Badge, cn } from '@acl/ui'
 import { Link } from '@tanstack/react-router'
 import {
   ArrowDownToLine,
   Bot,
+  Check,
+  Copy,
   type LucideIcon,
   MessageSquareText,
   Users,
   Wrench,
 } from 'lucide-react'
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { decisionMeta, riskTone } from '#/lib/format.ts'
 
 export function DecisionBadge({ decision }: { decision: Decision }) {
@@ -68,6 +70,31 @@ export function RiskMeter({ score }: { score: number }) {
 
 const outcomeTone = { pass: 'ok', fail: 'bad', error: 'warn', skipped: 'neutral' } as const
 
+/** How one step ended: the answer of a condition, the action of a decision, the output of a check. */
+export function CheckBadge({ check: c }: { check: CheckResult }) {
+  // `match` is the Route block of events recorded before condition blocks.
+  if (c.type === 'condition' || c.type === 'match')
+    return (
+      <Badge tone={c.branch === 'yes' || c.branch === 'match' ? 'accent' : 'neutral'}>
+        {c.branch}
+      </Badge>
+    )
+  if (c.type === 'decision' && c.outcome === 'skipped') return <Badge tone="neutral">skip</Badge>
+  if (c.type === 'decision')
+    return (
+      <Badge tone={c.action === 'block' ? 'bad' : c.action ? 'warn' : 'ok'}>
+        {c.action === 'require_approval' && c.method
+          ? approvalLabels[c.method]
+          : (c.action?.replace('_', ' ') ?? 'allow')}
+      </Badge>
+    )
+  return (
+    <Badge tone={outcomeTone[c.outcome]}>
+      {c.branch && c.branch !== c.outcome ? c.branch : c.outcome}
+    </Badge>
+  )
+}
+
 export function CheckList({
   checks,
   guardrails = [],
@@ -94,24 +121,7 @@ export function CheckList({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium">{stepLabels[c.type] ?? c.type}</span>
-                {/* `match` is the Route block of events recorded before condition blocks. */}
-                {c.type === 'condition' || c.type === 'match' ? (
-                  <Badge tone={c.branch === 'yes' || c.branch === 'match' ? 'accent' : 'neutral'}>
-                    {c.branch}
-                  </Badge>
-                ) : c.type === 'decision' && c.outcome === 'skipped' ? (
-                  <Badge tone="neutral">skip</Badge>
-                ) : c.type === 'decision' ? (
-                  <Badge tone={c.action === 'block' ? 'bad' : c.action ? 'warn' : 'ok'}>
-                    {c.action === 'require_approval' && c.method
-                      ? approvalLabels[c.method]
-                      : (c.action?.replace('_', ' ') ?? 'allow')}
-                  </Badge>
-                ) : (
-                  <Badge tone={outcomeTone[c.outcome]}>
-                    {c.branch && c.branch !== c.outcome ? c.branch : c.outcome}
-                  </Badge>
-                )}
+                <CheckBadge check={c} />
                 {c.score != null ? (
                   <span className="font-mono text-[11px] text-muted">
                     risk {c.score.toFixed(2)}
@@ -161,6 +171,47 @@ export function GuardrailRuns({ guardrails }: { guardrails: GuardrailRef[] }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+export function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+  const Icon = copied ? Check : Copy
+  return (
+    <button
+      type="button"
+      className="rounded p-0.5 text-subtle hover:text-fg"
+      title={label}
+      aria-label={label}
+      onClick={(e) => {
+        e.stopPropagation()
+        void navigator.clipboard.writeText(value).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        })
+      }}
+    >
+      <Icon className="size-3" />
+    </button>
+  )
+}
+
+/** A trace id in short form: click to list the trace's events in Logs, or copy the full id. */
+export function TraceId({ traceId }: { traceId: string | null | undefined }) {
+  if (!traceId) return <span className="text-xs text-subtle">—</span>
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Link
+        to="/events"
+        search={{ trace: traceId, range: '30d' }}
+        className="font-mono text-xs text-muted hover:text-accent-strong"
+        title={`Show the events of trace ${traceId}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {shortTraceId(traceId)}
+      </Link>
+      <CopyButton value={traceId} label="Copy trace id" />
+    </span>
   )
 }
 

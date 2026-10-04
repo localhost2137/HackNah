@@ -1,7 +1,21 @@
-import { ccSession, device, event, user } from '@acl/db'
-import { decision as decisionSchema, eventKind, eventPayload } from '@acl/shared'
+import { ccSession, device, event, guardrail, guardrailVersion, user } from '@acl/db'
+import { decision as decisionSchema, eventKind, eventPayload, policyGraph } from '@acl/shared'
 import { createServerFn } from '@tanstack/react-start'
-import { and, count, desc, eq, gte, inArray, like, lt, or, type SQL, sql, sum } from 'drizzle-orm'
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  like,
+  lt,
+  max,
+  or,
+  type SQL,
+  sql,
+  sum,
+} from 'drizzle-orm'
 import { z } from 'zod'
 import { env } from '../env.ts'
 import { adminMiddleware } from '../middleware.ts'
@@ -274,6 +288,8 @@ export const eventsSearch = z.object({
   kind: eventKind.optional(),
   user: z.string().optional(),
   session: z.string().optional(),
+  /** Events of one user turn. */
+  trace: z.string().optional(),
   /** Events a guardrail took part in. */
   guardrail: z.string().optional(),
   q: z.string().optional(),
@@ -298,6 +314,7 @@ export const listEvents = createServerFn({ method: 'GET' })
       data.kind ? eq(event.kind, data.kind) : undefined,
       data.user ? eq(event.userId, data.user) : undefined,
       data.session ? eq(event.sessionId, data.session) : undefined,
+      data.trace ? eq(event.traceId, data.trace) : undefined,
       data.guardrail
         ? sql`exists (select 1 from json_each(${event.guardrails}) where json_extract(value, '$.id') = ${data.guardrail})`
         : undefined,
@@ -307,6 +324,7 @@ export const listEvents = createServerFn({ method: 'GET' })
             like(event.toolName, `%${data.q}%`),
             like(event.model, `%${data.q}%`),
             eq(event.id, data.q),
+            like(event.traceId, `%${data.q}%`),
           )
         : undefined,
     ]
@@ -324,6 +342,7 @@ export const listEvents = createServerFn({ method: 'GET' })
         outputTokens: event.outputTokens,
         costUsd: event.costUsd,
         sessionId: event.sessionId,
+        traceId: event.traceId,
         country: event.country,
         createdAt: event.createdAt,
         userId: event.userId,
@@ -371,6 +390,121 @@ export const getEvent = createServerFn({ method: 'GET' })
       userEmail: row.userEmail,
       deviceLabel: row.deviceLabel,
       payload,
+    }
+  })
+
+const TRACE_EVENTS = 500
+
+/**
+ * What the path view draws for one event: the event with its checks, the graph of each guardrail
+ * version that ran on it (null when that version is gone or no longer parses), and the events of
+ * its trace in order.
+ */
+export const getEventPath = createServerFn({ method: 'GET' })
+  .middleware([adminMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ data, context: { db, orgId } }) => {
+    const [row] = await db
+      .select({
+        id: event.id,
+        kind: event.kind,
+        model: event.model,
+        toolName: event.toolName,
+        decision: event.decision,
+        riskScore: event.riskScore,
+        checks: event.checks,
+        guardrails: event.guardrails,
+        sessionId: event.sessionId,
+        traceId: event.traceId,
+        latencyMs: event.latencyMs,
+        createdAt: event.createdAt,
+        userId: event.userId,
+        userName: user.name,
+        userEmail: user.email,
+      })
+      .from(event)
+      .leftJoin(user, eq(user.id, event.userId))
+      .where(and(eq(event.orgId, orgId), eq(event.id, data.id)))
+      .limit(1)
+    if (!row) return null
+
+    const ids = [...new Set(row.guardrails.map((g) => g.id))]
+    const [versions, published, existing, trace] = await Promise.all([
+      ids.length
+        ? db
+            .select({
+              guardrailId: guardrailVersion.guardrailId,
+              version: guardrailVersion.version,
+              definition: guardrailVersion.definition,
+            })
+            .from(guardrailVersion)
+            .where(
+              and(
+                eq(guardrailVersion.orgId, orgId),
+                or(
+                  ...row.guardrails.map((g) =>
+                    and(
+                      eq(guardrailVersion.guardrailId, g.id),
+                      eq(guardrailVersion.version, g.version),
+                    ),
+                  ),
+                ),
+              ),
+            )
+        : [],
+      ids.length
+        ? db
+            .select({
+              guardrailId: guardrailVersion.guardrailId,
+              version: max(guardrailVersion.version),
+            })
+            .from(guardrailVersion)
+            .where(
+              and(
+                eq(guardrailVersion.orgId, orgId),
+                eq(guardrailVersion.status, 'published'),
+                inArray(guardrailVersion.guardrailId, ids),
+              ),
+            )
+            .groupBy(guardrailVersion.guardrailId)
+        : [],
+      ids.length
+        ? db
+            .select({ id: guardrail.id })
+            .from(guardrail)
+            .where(and(eq(guardrail.orgId, orgId), inArray(guardrail.id, ids)))
+        : [],
+      row.traceId
+        ? db
+            .select({
+              id: event.id,
+              kind: event.kind,
+              model: event.model,
+              toolName: event.toolName,
+              decision: event.decision,
+              createdAt: event.createdAt,
+            })
+            .from(event)
+            .where(and(eq(event.orgId, orgId), eq(event.traceId, row.traceId)))
+            .orderBy(event.createdAt, event.seq)
+            .limit(TRACE_EVENTS)
+        : [],
+    ])
+
+    return {
+      event: row,
+      graphs: row.guardrails.map((g) => {
+        const stored = versions.find((v) => v.guardrailId === g.id && v.version === g.version)
+        return {
+          guardrailId: g.id,
+          version: g.version,
+          graph: stored ? (policyGraph.safeParse(stored.definition).data ?? null) : null,
+          /** False once the guardrail itself was deleted. */
+          exists: existing.some((e) => e.id === g.id),
+          publishedVersion: published.find((p) => p.guardrailId === g.id)?.version ?? null,
+        }
+      }),
+      trace: trace.length ? trace : [row],
     }
   })
 

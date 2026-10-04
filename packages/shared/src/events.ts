@@ -78,6 +78,8 @@ export const gatewayEvent = z.object({
   userId: z.string(),
   deviceId: z.string().nullable(),
   sessionId: z.string().nullable(),
+  /** The user turn this request belongs to; see `traceIdFor`. */
+  traceId: z.string().nullable().optional(),
   kind: eventKind,
   model: z.string().nullable(),
   mcpServerId: z.string().nullable(),

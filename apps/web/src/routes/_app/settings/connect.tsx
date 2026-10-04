@@ -81,7 +81,10 @@ function ConnectPage() {
                 <Command
                   text={`{
   "apiKeyHelper": "node \\"<plugin folder>/bridge/main.mjs\\" llm-key",
-  "env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:47821" }
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:47821",
+    "CLAUDE_CODE_GATEWAY_HINT_HEADERS": "1"
+  }
 }`}
                 />
               </div>

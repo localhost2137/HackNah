@@ -22,6 +22,8 @@ export type AppEnv = {
     principal: Principal
     /** Set when the request was authenticated with a DPoP proof (the hy-guard plugin). */
     plugin: PluginRequest | undefined
+    /** Set once a model request has a trace; returned to the client as a header. */
+    traceId?: string
   }
 }
 
