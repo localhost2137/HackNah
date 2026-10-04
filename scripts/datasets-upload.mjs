@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Puts the datasets in dataset/ into the gateway's payload bucket, where the dashboard's
-// Datasets page lists them and trains models on them.
+// Attack analysis page lists them and the Trained model step learns from them.
 //
 //   node scripts/datasets-upload.mjs            local bucket (the one `pnpm dev` uses)
 //   node scripts/datasets-upload.mjs --remote   the deployed bucket

@@ -86,7 +86,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
   const persisted = useAnalysisRuns(viewer.user.id)
   const allRuns = persisted.runs
   const runs = allRuns.filter((r) => r.datasetId === datasetId)
-  // A labelled dataset comes from the Datasets page; its rows are fetched before they can be shown.
+  // A labelled dataset comes from the bucket; its rows are fetched before they can be shown.
   const labelled = isLabelled(datasetId)
   const slug = labelledSlug(datasetId)
   const catalog = useQuery({ ...datasetsQuery, enabled: labelled })
@@ -218,7 +218,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
         className="mb-5 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg"
       >
         <ArrowLeft className="size-3.5" />
-        Datasets
+        Attack analysis
       </Link>
       <PageHeader
         title={dataset.name}

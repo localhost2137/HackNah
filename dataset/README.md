@@ -61,7 +61,7 @@ The suite calls the same `evaluateGraph()` the gateway calls, with the sample po
 authentication, limits, streaming or the approval queue. `pnpm test:gateway` does: it runs the real
 gateway against a scripted model and checks what the client receives.
 
-The dashboard's Datasets page is the third way to use these rows: it replays any dataset against
+The dashboard's Attack analysis page is the third way to use these rows: it replays any dataset against
 the workflows you have published and shows what was blocked, missed or blocked by mistake.
 `pnpm datasets:upload` loads this folder into it and also builds two kinds of derived set:
 

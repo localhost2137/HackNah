@@ -142,8 +142,8 @@ function DatasetsPage() {
   return (
     <>
       <PageHeader
-        title="Datasets"
-        description="Attack and normal requests to test your workflows against. Run one to see what your rules block, miss or block by mistake. Labelled datasets can also train a model in a Trained model step."
+        title="Attack analysis"
+        description="Datasets of attack and normal requests to test your workflows against. Run one to see what your rules block, miss or block by mistake. Labelled datasets can also train a model in a Trained model step."
         actions={
           <>
             <input

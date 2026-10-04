@@ -37,9 +37,9 @@ The product name is **Hack?Nah!** (`hack-nah` in package/MCP identifiers). Exist
 resource names, API paths, headers, package scopes and the separate `hy-guard` client identifiers remain
 compatible, so the rename does not create new infrastructure or disconnect installed clients.
 
-## Datasets and attack analysis
+## Attack analysis
 
-Open **Datasets**, pick a dataset, and run it against the current published workflows. One page lists
+Open **Attack analysis**, pick a dataset, and run it against the current published workflows. One page lists
 every kind:
 
 - **Mixed check** (200, 500 or 1,000 rows): half attacks of every kind, half normal requests. The quick

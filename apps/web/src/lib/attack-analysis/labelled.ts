@@ -5,7 +5,7 @@ import { trafficSchedule } from './timeline.ts'
 import type { TrafficEvent } from './traffic.ts'
 
 /**
- * Labelled datasets (the rows on the Datasets page) as replayable traffic. Their ids carry a
+ * Labelled datasets (the rows on the Attack analysis page) as replayable traffic. Their ids carry a
  * prefix so they never collide with the built-in synthetic datasets.
  */
 const PREFIX = 'ds-'

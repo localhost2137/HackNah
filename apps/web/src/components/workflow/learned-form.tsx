@@ -109,7 +109,7 @@ export function LearnedForm({
     return (
       <p className="text-xs text-muted">
         No datasets with attacks yet. Run <span className="font-mono">pnpm datasets:upload</span> or
-        upload one on the Datasets page.
+        upload one on the Attack analysis page.
       </p>
     )
 

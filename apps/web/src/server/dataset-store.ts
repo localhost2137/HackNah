@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { DATASET_INDEX_KEY, datasetKey } from '#/gateway/lib/learned-models.ts'
 
 /**
- * The labelled datasets in the payload bucket. The Datasets page lists them, the Trained model
+ * The labelled datasets in the payload bucket. The Attack analysis page lists them, the Trained model
  * step learns from them and Attack analysis replays them against the published workflows.
  */
 
