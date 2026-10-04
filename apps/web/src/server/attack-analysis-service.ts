@@ -13,9 +13,16 @@ import { and, asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { catalogVersion } from '#/lib/attack-analysis/catalog.ts'
 import { datasets } from '#/lib/attack-analysis/datasets.ts'
+import {
+  isLabelled,
+  labelledInfo,
+  labelledSlug,
+  labelledTraffic,
+} from '#/lib/attack-analysis/labelled.ts'
 import { type Persona, replayTraffic } from '#/lib/attack-analysis/replay.ts'
 import type { AnalysisRun, RunSummary } from '#/lib/attack-analysis/run-types.ts'
-import { datasetTraffic } from '#/lib/attack-analysis/traffic.ts'
+import { datasetTraffic, type TrafficEvent } from '#/lib/attack-analysis/traffic.ts'
+import { readDatasetIndex, readRows } from './dataset-store.ts'
 
 async function revisionOf(db: Db, orgId: string) {
   return (
@@ -104,6 +111,19 @@ export async function getAnalysisRunService({
   return run
 }
 
+/** The events to replay: a built-in synthetic dataset, or the rows of a labelled one. */
+async function trafficFor(
+  env: Pick<Env, 'PAYLOADS'>,
+  datasetId: string,
+): Promise<TrafficEvent[] | null> {
+  if (!isLabelled(datasetId))
+    return datasets.some((d) => d.id === datasetId) ? datasetTraffic(datasetId) : null
+  const slug = labelledSlug(datasetId)
+  const summary = (await readDatasetIndex(env)).find((d) => d.slug === slug)
+  if (!summary) return null
+  return labelledTraffic(labelledInfo(summary), await readRows(env, slug))
+}
+
 export async function runAnalysisService({
   data,
   context: { db, env, orgId, user },
@@ -111,8 +131,8 @@ export async function runAnalysisService({
   data: z.infer<typeof runAnalysisInput>
   context: PlatformContext
 }): Promise<string> {
-  if (!datasets.some((dataset) => dataset.id === data.datasetId))
-    throw new Error('Dataset not found')
+  const traffic = await trafficFor(env, data.datasetId)
+  if (!traffic) throw new Error('Dataset not found')
   const revision = await revisionOf(db, orgId)
   const [rules, versions, groups, servers, resources] = await Promise.all([
     db.query.workflow.findMany({
@@ -168,7 +188,7 @@ export async function runAnalysisService({
       : []
   })
   if ((await revisionOf(db, orgId)) !== revision) throw changed()
-  const results = await replayTraffic(datasetTraffic(data.datasetId), workflows, persona)
+  const results = await replayTraffic(traffic, workflows, persona)
   if ((await revisionOf(db, orgId)) !== revision) throw changed()
   const id = randomId('arun')
   const at = new Date()

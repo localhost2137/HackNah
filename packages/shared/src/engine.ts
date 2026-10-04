@@ -390,6 +390,19 @@ const noSignal: Outcome = {
   reason: 'No signal from this client',
 }
 const notAToolCall: Outcome = { outcome: 'skipped', branch: 'pass', reason: 'Not a tool call' }
+
+const STAGE_SKIP = 'Not used on '
+
+/**
+ * Whether a skipped check left the request unmeasured. A check that is disabled, or that does
+ * not apply to the stage or kind of request, was skipped by design; one that had no signal, no
+ * model or no limit to read could not do its job.
+ */
+export function skipLeavesGap(check: { outcome: string; reason?: string }): boolean {
+  if (check.outcome !== 'skipped') return false
+  const reason = check.reason ?? ''
+  return !(reason === 'disabled' || reason === notAToolCall.reason || reason.startsWith(STAGE_SKIP))
+}
 const passed: Outcome = { outcome: 'pass', branch: 'pass' }
 
 const osPostureNames: Record<OsPostureKey, string> = {
@@ -621,7 +634,11 @@ async function runCheck(
   const check = node.check
   const stages = blocks[check.type].appliesTo
   if (stages && !stages.includes(input.kind))
-    return { outcome: 'skipped', branch: 'pass', reason: `Not used on ${kindLabels[input.kind]}` }
+    return {
+      outcome: 'skipped',
+      branch: 'pass',
+      reason: `${STAGE_SKIP}${kindLabels[input.kind]}`,
+    }
   try {
     const run = runners[check.type] as Runner<CheckType>
     return await run(check, input, deps)

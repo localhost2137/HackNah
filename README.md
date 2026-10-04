@@ -37,12 +37,23 @@ The product name is **Hack?Nah!** (`hack-nah` in package/MCP identifiers). Exist
 resource names, API paths, headers, package scopes and the separate `hy-guard` client identifiers remain
 compatible, so the rename does not create new infrastructure or disconnect installed clients.
 
-## Attack analysis
+## Datasets and attack analysis
 
-Open **Attack analysis**, choose a synthetic traffic dataset, and run it against the current published
-workflows. Results and policy snapshots are saved server-side (D1 index, R2 payloads), with the latest
-ten valid runs available per dataset across browser sessions. Synthetic identities use the selected
-group context; no production requests are sent. Missing judge or limit evaluation is inconclusive.
+Open **Datasets**, pick a dataset, and run it against the current published workflows. One page lists
+every kind:
+
+- **Mixed check** (200, 500 or 1,000 rows): half attacks of every kind, half normal requests. The quick
+  one to rerun after changing a workflow.
+- **Normal requests**: benign rows only, so anything blocked is a false positive.
+- **Synthetic**: generated traffic for prompt injection, tool poisoning, definition drift and argument
+  exfiltration, with device and session signals varied.
+- **Labelled**: public datasets and this project's own cases, with their sources (see `dataset/`).
+  Run `pnpm datasets:upload` to load them, including the mixed and normal sets built from them.
+
+Results and policy snapshots are saved server-side (D1 index, R2 payloads), with the latest ten valid
+runs available per dataset across browser sessions. Synthetic identities use the selected group context;
+no production requests are sent. A missing judge, model or limit evaluation is inconclusive; a check
+that is not used on a row's stage is not.
 
 Migration `0010_analysis_runs.sql` adds a per-organization rule revision. Workflow edits and publishing,
 access rules, limits, model catalog changes and relevant integration changes invalidate all saved runs

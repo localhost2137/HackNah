@@ -5,7 +5,6 @@ import {
   Boxes,
   Cpu,
   Database,
-  FlaskConical,
   Gauge,
   KeyRound,
   LayoutDashboard,
@@ -49,7 +48,6 @@ const nav: { title?: string; items: NavItem[] }[] = [
     title: 'Policy',
     items: [
       { to: '/workflows', label: 'Workflows', icon: ListChecks },
-      { to: '/attack-analysis', label: 'Attack analysis', icon: FlaskConical },
       { to: '/limits', label: 'Limits', icon: Gauge },
       { to: '/models', label: 'Models', icon: Cpu },
       { to: '/datasets', label: 'Datasets', icon: Database },

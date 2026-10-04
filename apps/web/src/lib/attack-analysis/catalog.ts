@@ -19,7 +19,8 @@ const research = {
   title: 'MCP threat modeling · March 2026',
   url: 'https://arxiv.org/abs/2603.22489',
 }
-const base: EvaluationInput = {
+/** A request from a healthy, trusted device: the starting point for every replayed event. */
+export const base: EvaluationInput = {
   kind: 'tool_call',
   text: '',
   toolName: 'send_email',

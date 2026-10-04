@@ -16,73 +16,29 @@ import {
   readModelIndex,
 } from '#/gateway/lib/learned-models.ts'
 import { audit } from '../audit.ts'
+import {
+  type DatasetRow,
+  type DatasetSummary,
+  readDatasetIndex,
+  readRows,
+} from '../dataset-store.ts'
+
+export type { DatasetRow, DatasetSummary }
+
 import { env } from '../env.ts'
 import { adminMiddleware } from '../middleware.ts'
-
-const datasetSummary = z.object({
-  slug: z.string(),
-  name: z.string(),
-  url: z.string().default(''),
-  license: z.string().default(''),
-  rows: z.number().int(),
-  attacks: z.number().int(),
-  benign: z.number().int(),
-  byAttack: z.record(z.string(), z.number()),
-  byChannel: z.record(z.string(), z.number()),
-  /** Uploaded in the dashboard rather than shipped with the repository. */
-  custom: z.boolean().default(false),
-})
-export type DatasetSummary = z.infer<typeof datasetSummary>
-
-export type DatasetRow = { text: string; attack: string; channel: string; label: string }
-
-const MAX_TEXT = 4000
-
-async function readDatasetIndex(): Promise<DatasetSummary[]> {
-  const object = await env.PAYLOADS.get(DATASET_INDEX_KEY)
-  if (!object) return []
-  const parsed = z.array(datasetSummary).safeParse(await object.json().catch(() => null))
-  return parsed.success ? parsed.data : []
-}
-
-async function readRows(slug: string): Promise<DatasetRow[]> {
-  const object = await env.PAYLOADS.get(datasetKey(slug))
-  if (!object) return []
-  const rows: DatasetRow[] = []
-  for (const line of (await object.text()).split('\n')) {
-    if (!line) continue
-    try {
-      const c = JSON.parse(line) as {
-        attack?: string
-        channel?: string
-        label?: string
-        input?: { text?: string }
-      }
-      if (typeof c.input?.text !== 'string') continue
-      rows.push({
-        text: c.input.text.slice(0, MAX_TEXT),
-        attack: c.attack ?? 'benign',
-        channel: c.channel ?? 'user_input',
-        label: c.label ?? '',
-      })
-    } catch {
-      // A broken line is skipped; the rest of the dataset still loads.
-    }
-  }
-  return rows
-}
 
 export const listDatasets = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
   .handler(async () => ({
-    datasets: await readDatasetIndex(),
+    datasets: await readDatasetIndex(env),
     models: await readModelIndex(env),
   }))
 
 export const getDatasetRows = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
   .validator(z.object({ slug: z.string().max(120) }))
-  .handler(({ data }) => readRows(data.slug))
+  .handler(({ data }) => readRows(env, data.slug))
 
 /**
  * Benign requests from the datasets that are not selected, evenly sampled. Attacks alone cannot
@@ -94,13 +50,14 @@ export const getBenignPool = createServerFn({ method: 'GET' })
     z.object({ exclude: z.array(z.string().max(120)).max(50), limit: z.number().int().max(8000) }),
   )
   .handler(async ({ data }) => {
-    const sources = (await readDatasetIndex()).filter(
-      (d) => !data.exclude.includes(d.slug) && d.benign > 0,
+    const sources = (await readDatasetIndex(env)).filter(
+      // "Normal requests" is itself a mix of the other datasets' benign rows.
+      (d) => !data.exclude.includes(d.slug) && d.benign > 0 && d.slug !== 'normal-requests',
     )
     const total = sources.reduce((sum, d) => sum + d.benign, 0)
     const texts: string[] = []
     for (const source of sources) {
-      const benign = (await readRows(source.slug)).filter((r) => r.attack === 'benign')
+      const benign = (await readRows(env, source.slug)).filter((r) => r.attack === 'benign')
       const share = Math.max(1, Math.round((source.benign / Math.max(total, 1)) * data.limit))
       const step = Math.max(1, Math.floor(benign.length / share))
       for (let i = 0; i < benign.length && texts.length < data.limit; i += step)
@@ -198,7 +155,7 @@ export const uploadDataset = createServerFn({ method: 'POST' })
     await env.PAYLOADS.put(datasetKey(slug), `${lines.join('\n')}\n`)
     await env.PAYLOADS.put(
       DATASET_INDEX_KEY,
-      JSON.stringify([...(await readDatasetIndex()), summary]),
+      JSON.stringify([...(await readDatasetIndex(env)), summary]),
     )
     await audit(db, {
       orgId,

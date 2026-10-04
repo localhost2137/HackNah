@@ -3,6 +3,7 @@ import {
   type CombinedResult,
   type EvaluationInput,
   evaluateWorkflows,
+  skipLeavesGap,
 } from '@acl/shared'
 import type { TrafficTemplate } from './catalog.ts'
 
@@ -50,10 +51,9 @@ export async function replayTraffic(
         }
         // No judge stub: an unavailable judge must never be reported as a measured detection.
         const result = await evaluateWorkflows(workflows, input)
+        // A check skipped because it does not apply to the stage is not a missing measurement.
         const incomplete = result.checks.some(
-          (check) =>
-            check.outcome === 'error' ||
-            (check.outcome === 'skipped' && check.reason !== 'disabled'),
+          (check) => check.outcome === 'error' || skipLeavesGap(check),
         )
         const actual: Actual = incomplete
           ? 'inconclusive'

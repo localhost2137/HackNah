@@ -31,9 +31,17 @@ import { AnalysisResults } from '#/components/attack-analysis/results.tsx'
 import { TrafficChart } from '#/components/attack-analysis/traffic-chart.tsx'
 import { CheckList, JsonBlock } from '#/components/event-bits.tsx'
 import { datasets, trafficWindow } from '#/lib/attack-analysis/datasets.ts'
+import {
+  type DatasetInfo,
+  isLabelled,
+  labelledInfo,
+  labelledSlug,
+  labelledTraffic,
+} from '#/lib/attack-analysis/labelled.ts'
 import type { Actual, Outcome } from '#/lib/attack-analysis/replay.ts'
 import { type AnalysisRun, useAnalysisRun, useAnalysisRuns } from '#/lib/attack-analysis/runs.ts'
 import { datasetTraffic } from '#/lib/attack-analysis/traffic.ts'
+import { datasetRowsQuery, datasetsQuery } from '#/lib/datasets.ts'
 import { listGroups, listResources } from '#/server/fns/access.ts'
 import { runAnalysis } from '#/server/fns/attack-analysis.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
@@ -41,7 +49,8 @@ import { listWorkflows } from '#/server/fns/workflow.ts'
 
 export const Route = createFileRoute('/_app/attack-analysis/$datasetId')({
   beforeLoad: ({ params }) => {
-    if (!datasets.some((d) => d.id === params.datasetId)) throw notFound()
+    if (!isLabelled(params.datasetId) && !datasets.some((d) => d.id === params.datasetId))
+      throw notFound()
   },
   component: DatasetRoute,
 })
@@ -77,8 +86,35 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
   const persisted = useAnalysisRuns(viewer.user.id)
   const allRuns = persisted.runs
   const runs = allRuns.filter((r) => r.datasetId === datasetId)
-  const dataset = datasets.find((d) => d.id === datasetId)!
-  const traffic = useMemo(() => datasetTraffic(datasetId), [datasetId])
+  // A labelled dataset comes from the Datasets page; its rows are fetched before they can be shown.
+  const labelled = isLabelled(datasetId)
+  const slug = labelledSlug(datasetId)
+  const catalog = useQuery({ ...datasetsQuery, enabled: labelled })
+  const labelledRows = useQuery({ ...datasetRowsQuery(slug), enabled: labelled })
+  const labelledSummary = catalog.data?.datasets.find((d) => d.slug === slug)
+  const dataset: DatasetInfo = labelled
+    ? labelledSummary
+      ? labelledInfo(labelledSummary)
+      : {
+          id: datasetId,
+          name: slug,
+          description: catalog.isPending ? 'Loading…' : 'This dataset is no longer available.',
+          tag: 'Labelled',
+          eventCount: 0,
+          templatePrefix: '',
+          seed: 0,
+          labelled: true,
+        }
+    : datasets.find((d) => d.id === datasetId)!
+  const traffic = useMemo(
+    () =>
+      labelled
+        ? labelledSummary && labelledRows.data
+          ? labelledTraffic(labelledInfo(labelledSummary), labelledRows.data)
+          : []
+        : datasetTraffic(datasetId),
+    [labelled, labelledSummary, labelledRows.data, datasetId],
+  )
   const groups = useQuery({ queryKey: ['groups'], queryFn: () => listGroups() })
   const servers = useQuery({ queryKey: ['mcp-servers'], queryFn: () => listMcpServers() })
   const resources = useQuery({ queryKey: ['resources'], queryFn: () => listResources() })
@@ -178,11 +214,11 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
   return (
     <>
       <Link
-        to="/attack-analysis"
+        to="/datasets"
         className="mb-5 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg"
       >
         <ArrowLeft className="size-3.5" />
-        All datasets
+        Datasets
       </Link>
       <PageHeader
         title={dataset.name}
@@ -236,8 +272,10 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
         </p>
       ) : null}
       <p className="mb-4 text-[11px] text-subtle">
-        Synthetic traffic window: {trafficWindow.start.slice(0, 10)} · UTC. Seed {dataset.seed}; the
-        same events are used on every replay.
+        {dataset.labelled
+          ? 'Labelled rows from the dataset, spread over one synthetic day. '
+          : `Synthetic traffic window: ${trafficWindow.start.slice(0, 10)} · UTC. Seed ${dataset.seed}. `}
+        The same events are used on every replay.
       </p>
       <TrafficChart traffic={traffic} results={run?.results} />
       <Card className="mt-4 overflow-hidden" aria-busy={busy}>
@@ -584,7 +622,11 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
         open={Boolean(entry)}
         onOpenChange={(open) => !open && setSelected(null)}
         title={entry ? `${entry.input.toolName ?? entry.input.model}` : 'Event'}
-        description={entry ? `${entry.id} · Synthetic adaptation · ${entry.family}` : undefined}
+        description={
+          entry
+            ? `${entry.id} · ${dataset.labelled ? 'Labelled row' : 'Synthetic adaptation'} · ${entry.family}`
+            : undefined
+        }
         wide
       >
         {entry ? (
