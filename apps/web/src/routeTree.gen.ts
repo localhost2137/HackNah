@@ -33,6 +33,7 @@ import { Route as AppWorkflowsIndexRouteImport } from './routes/_app/workflows/i
 import { Route as AppWorkflowsWorkflowIdRouteImport } from './routes/_app/workflows/$workflowId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiOauthCallbackRouteImport } from './routes/api/oauth/callback'
+import { Route as AppWorkflowsWorkflowIdImpactRouteImport } from './routes/_app/workflows/$workflowId_.impact'
 import { Route as ApiOauthStartServerIdRouteImport } from './routes/api/oauth/start.$serverId'
 
 const AppRoute = AppRouteImport.update({
@@ -154,6 +155,12 @@ const ApiOauthCallbackRoute = ApiOauthCallbackRouteImport.update({
   path: '/api/oauth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppWorkflowsWorkflowIdImpactRoute =
+  AppWorkflowsWorkflowIdImpactRouteImport.update({
+    id: '/workflows/$workflowId_/impact',
+    path: '/workflows/$workflowId/impact',
+    getParentRoute: () => AppRoute,
+  } as any)
 const ApiOauthStartServerIdRoute = ApiOauthStartServerIdRouteImport.update({
   id: '/api/oauth/start/$serverId',
   path: '/api/oauth/start/$serverId',
@@ -184,6 +191,7 @@ export interface FileRoutesByFullPath {
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/workflows/': typeof AppWorkflowsIndexRoute
+  '/workflows/$workflowId/impact': typeof AppWorkflowsWorkflowIdImpactRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRoutesByTo {
@@ -210,6 +218,7 @@ export interface FileRoutesByTo {
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/settings': typeof AppSettingsIndexRoute
   '/workflows': typeof AppWorkflowsIndexRoute
+  '/workflows/$workflowId/impact': typeof AppWorkflowsWorkflowIdImpactRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRoutesById {
@@ -238,6 +247,7 @@ export interface FileRoutesById {
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/workflows/': typeof AppWorkflowsIndexRoute
+  '/_app/workflows/$workflowId_/impact': typeof AppWorkflowsWorkflowIdImpactRoute
   '/api/oauth/start/$serverId': typeof ApiOauthStartServerIdRoute
 }
 export interface FileRouteTypes {
@@ -266,6 +276,7 @@ export interface FileRouteTypes {
     | '/api/oauth/callback'
     | '/settings/'
     | '/workflows/'
+    | '/workflows/$workflowId/impact'
     | '/api/oauth/start/$serverId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -292,6 +303,7 @@ export interface FileRouteTypes {
     | '/api/oauth/callback'
     | '/settings'
     | '/workflows'
+    | '/workflows/$workflowId/impact'
     | '/api/oauth/start/$serverId'
   id:
     | '__root__'
@@ -319,6 +331,7 @@ export interface FileRouteTypes {
     | '/api/oauth/callback'
     | '/_app/settings/'
     | '/_app/workflows/'
+    | '/_app/workflows/$workflowId_/impact'
     | '/api/oauth/start/$serverId'
   fileRoutesById: FileRoutesById
 }
@@ -505,6 +518,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/workflows/$workflowId_/impact': {
+      id: '/_app/workflows/$workflowId_/impact'
+      path: '/workflows/$workflowId/impact'
+      fullPath: '/workflows/$workflowId/impact'
+      preLoaderRoute: typeof AppWorkflowsWorkflowIdImpactRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/api/oauth/start/$serverId': {
       id: '/api/oauth/start/$serverId'
       path: '/api/oauth/start/$serverId'
@@ -531,6 +551,7 @@ interface AppRouteChildren {
   AppWorkflowsWorkflowIdRoute: typeof AppWorkflowsWorkflowIdRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
   AppWorkflowsIndexRoute: typeof AppWorkflowsIndexRoute
+  AppWorkflowsWorkflowIdImpactRoute: typeof AppWorkflowsWorkflowIdImpactRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -549,6 +570,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppWorkflowsWorkflowIdRoute: AppWorkflowsWorkflowIdRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
   AppWorkflowsIndexRoute: AppWorkflowsIndexRoute,
+  AppWorkflowsWorkflowIdImpactRoute: AppWorkflowsWorkflowIdImpactRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

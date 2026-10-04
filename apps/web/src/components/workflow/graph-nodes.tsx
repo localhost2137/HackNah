@@ -46,11 +46,11 @@ export type FlowNodeData = {
 export type FlowNode = Node<FlowNodeData>
 
 export const toneColor: Record<Tone, string> = {
-  ok: '#2fd18b',
-  bad: '#ff5c72',
-  warn: '#f5b84a',
-  neutral: '#8b91a5',
-  accent: '#9a8dff',
+  ok: '#4fd1a1',
+  bad: '#ef7088',
+  warn: '#f1c553',
+  neutral: '#929daf',
+  accent: '#9aafff',
 }
 
 export const blockIcons: Record<BlockId, LucideIcon> = {

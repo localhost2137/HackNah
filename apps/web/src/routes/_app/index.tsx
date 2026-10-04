@@ -82,25 +82,25 @@ function Overview() {
               <AreaChart data={data.series} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
                 <defs>
                   <linearGradient id="allowed" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#7c6cff" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#7c6cff" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#7894f8" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#7894f8" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="blocked" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#ff5c72" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#ff5c72" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#ef7088" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#ef7088" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="#232735" vertical={false} />
+                <CartesianGrid stroke="#202d40" vertical={false} />
                 <XAxis
                   dataKey="bucket"
                   tickFormatter={fmtTick}
-                  stroke="#5d6377"
+                  stroke="#667286"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
-                  stroke="#5d6377"
+                  stroke="#667286"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
@@ -109,24 +109,25 @@ function Overview() {
                 />
                 <Tooltip
                   contentStyle={{
-                    background: '#11131a',
-                    border: '1px solid #2f3445',
-                    borderRadius: 6,
+                    background: '#0e1827',
+                    border: '1px solid #2a3950',
+                    borderRadius: 8,
                     fontSize: 12,
+                    boxShadow: '0 8px 24px rgb(0 0 0 / 0.25)',
                   }}
                   labelFormatter={(l) => new Date(String(l)).toLocaleString()}
                 />
                 <Area
                   type="monotone"
                   dataKey="allowed"
-                  stroke="#7c6cff"
+                  stroke="#7894f8"
                   fill="url(#allowed)"
                   strokeWidth={1.5}
                 />
                 <Area
                   type="monotone"
                   dataKey="blocked"
-                  stroke="#ff5c72"
+                  stroke="#ef7088"
                   fill="url(#blocked)"
                   strokeWidth={1.5}
                 />

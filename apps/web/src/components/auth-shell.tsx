@@ -12,7 +12,7 @@ export function AuthShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,rgb(124_108_255/0.12),transparent_60%)] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,rgb(120_148_248/0.12),transparent_60%)] px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center gap-2 text-fg">
           <span className="flex size-7 items-center justify-center rounded-md bg-accent text-white">

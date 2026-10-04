@@ -1,5 +1,5 @@
 /*
- * Dark, dense console theme. Import after `@import "tailwindcss"` in the app stylesheet.
+ * Dark navy workspace theme. Import after `@import "tailwindcss"` in the app stylesheet.
  */
 @source "./";
 
@@ -7,27 +7,27 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-bg: #0a0b10;
-  --color-panel: #11131a;
-  --color-panel-2: #171a23;
-  --color-line: #232735;
-  --color-line-strong: #2f3445;
-  --color-fg: #e6e8ef;
-  --color-muted: #8b91a5;
-  --color-subtle: #5d6377;
+  --color-bg: #08111f;
+  --color-panel: #0e1827;
+  --color-panel-2: #152139;
+  --color-line: #202d40;
+  --color-line-strong: #2a3950;
+  --color-fg: #e8edf7;
+  --color-muted: #929daf;
+  --color-subtle: #667286;
 
-  --color-accent: #7c6cff;
-  --color-accent-strong: #9a8dff;
-  --color-accent-soft: rgb(124 108 255 / 0.14);
+  --color-accent: #7894f8;
+  --color-accent-strong: #9aafff;
+  --color-accent-soft: rgb(120 148 248 / 0.15);
 
-  --color-ok: #2fd18b;
-  --color-ok-soft: rgb(47 209 139 / 0.12);
-  --color-warn: #f5b84a;
-  --color-warn-soft: rgb(245 184 74 / 0.12);
-  --color-bad: #ff5c72;
-  --color-bad-soft: rgb(255 92 114 / 0.12);
-  --color-info: #4aa8ff;
-  --color-info-soft: rgb(74 168 255 / 0.12);
+  --color-ok: #4fd1a1;
+  --color-ok-soft: rgb(79 209 161 / 0.12);
+  --color-warn: #f1c553;
+  --color-warn-soft: rgb(241 197 83 / 0.12);
+  --color-bad: #ef7088;
+  --color-bad-soft: rgb(239 112 136 / 0.12);
+  --color-info: #49b9e8;
+  --color-info-soft: rgb(73 185 232 / 0.12);
 }
 
 @layer base {
@@ -38,11 +38,19 @@
     background: var(--color-bg);
     color: var(--color-fg);
     font-size: 13px;
+    letter-spacing: -0.006em;
   }
   ::selection {
     background: var(--color-accent-soft);
   }
   * {
     border-color: var(--color-line);
+  }
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
   }
 }

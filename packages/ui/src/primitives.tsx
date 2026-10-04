@@ -3,12 +3,12 @@ import type * as React from 'react'
 import { cn } from './cn.ts'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-1.5 rounded-md text-[13px] font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 [&_svg]:size-3.5 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-1.5 rounded-md text-[13px] font-medium whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 [&_svg]:size-3.5 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        primary: 'bg-accent text-white hover:bg-accent-strong',
-        secondary: 'border border-line-strong bg-panel-2 text-fg hover:bg-line',
+        primary: 'bg-accent text-white shadow-sm shadow-accent/10 hover:bg-accent-strong',
+        secondary: 'border border-line-strong bg-panel text-fg shadow-sm hover:bg-panel-2',
         ghost: 'text-muted hover:bg-panel-2 hover:text-fg',
         danger: 'bg-bad/90 text-white hover:bg-bad',
         success: 'bg-ok/90 text-black hover:bg-ok',
@@ -32,7 +32,7 @@ export function Button({ className, variant, size, type = 'button', ...props }: 
 }
 
 const fieldClass =
-  'w-full rounded-md border border-line-strong bg-panel px-2.5 text-[13px] text-fg placeholder:text-subtle focus:border-accent focus:outline-none disabled:opacity-60'
+  'w-full rounded-md border border-line-strong bg-bg/35 px-2.5 text-[13px] text-fg shadow-inner shadow-black/5 placeholder:text-subtle focus:border-accent focus:ring-2 focus:ring-accent/10 focus:outline-none disabled:opacity-60'
 
 export function Input({ className, ...props }: React.ComponentProps<'input'>) {
   return <input className={cn(fieldClass, 'h-8', className)} {...props} />
@@ -140,7 +140,15 @@ export function Badge({
 }
 
 export function Card({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div className={cn('rounded-lg border border-line bg-panel', className)} {...props} />
+  return (
+    <div
+      className={cn(
+        'rounded-lg border border-line-strong/70 bg-panel shadow-[0_1px_2px_rgb(0_0_0/0.12)]',
+        className,
+      )}
+      {...props}
+    />
+  )
 }
 
 export function CardHeader({
@@ -157,13 +165,13 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        'flex items-start justify-between gap-4 border-b border-line px-4 py-3',
+        'flex items-start justify-between gap-4 border-b border-line px-5 py-4',
         className,
       )}
     >
       <div className="min-w-0">
-        <h3 className="text-[13px] font-semibold text-fg">{title}</h3>
-        {description ? <p className="mt-0.5 text-xs text-muted">{description}</p> : null}
+        <h3 className="text-sm font-semibold tracking-tight text-fg">{title}</h3>
+        {description ? <p className="mt-1 text-xs text-muted">{description}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </div>
@@ -183,10 +191,12 @@ export function Stat({
 }) {
   const toneClass = { neutral: 'text-fg', ok: 'text-ok', warn: 'text-warn', bad: 'text-bad' }[tone]
   return (
-    <Card className="px-4 py-3">
-      <div className="text-[11px] font-medium tracking-wide text-muted uppercase">{label}</div>
-      <div className={cn('mt-1.5 text-2xl font-semibold tabular-nums', toneClass)}>{value}</div>
-      {delta ? <div className="mt-1 text-xs text-subtle">{delta}</div> : null}
+    <Card className="px-5 py-4">
+      <div className="text-[11px] font-medium text-muted">{label}</div>
+      <div className={cn('mt-2 text-2xl font-semibold tracking-tight tabular-nums', toneClass)}>
+        {value}
+      </div>
+      {delta ? <div className="mt-1.5 text-xs text-subtle">{delta}</div> : null}
     </Card>
   )
 }
@@ -219,10 +229,10 @@ export function PageHeader({
   actions?: React.ReactNode
 }) {
   return (
-    <div className="flex items-end justify-between gap-4 pb-5">
+    <div className="flex items-end justify-between gap-4 pb-6">
       <div>
-        <h1 className="text-lg font-semibold tracking-tight text-fg">{title}</h1>
-        {description ? <p className="mt-1 text-[13px] text-muted">{description}</p> : null}
+        <h1 className="text-xl font-semibold tracking-tight text-fg">{title}</h1>
+        {description ? <p className="mt-1.5 text-[13px] text-muted">{description}</p> : null}
       </div>
       {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
     </div>

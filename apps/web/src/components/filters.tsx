@@ -11,7 +11,7 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void
 }) {
   return (
-    <div className="inline-flex h-8 items-center rounded-md border border-line bg-panel p-0.5">
+    <div className="inline-flex h-8 items-center rounded-md border border-line-strong bg-panel p-0.5 shadow-sm">
       {options.map((o) => (
         <button
           key={o.value}
@@ -19,7 +19,9 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className={cn(
             'h-full rounded px-2.5 text-xs font-medium transition-colors',
-            value === o.value ? 'bg-panel-2 text-fg shadow-sm' : 'text-muted hover:text-fg',
+            value === o.value
+              ? 'bg-accent-soft text-accent-strong shadow-sm'
+              : 'text-muted hover:text-fg',
           )}
         >
           {o.label}

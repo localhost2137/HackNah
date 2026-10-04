@@ -29,7 +29,7 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from '@xyflow/react'
-import { ArrowLeft, Maximize2, Plus, X } from 'lucide-react'
+import { ArrowLeft, History, Maximize2, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
 import { DryRun } from '#/components/workflow/dry-run.tsx'
@@ -41,7 +41,6 @@ import {
 } from '#/components/workflow/graph-nodes.tsx'
 import { Inspector, type PickerOptions } from '#/components/workflow/inspector.tsx'
 import { recommendSteps, type Suggestion } from '#/components/workflow/recommendations.ts'
-import { ShadowImpact } from '#/components/workflow/shadow-impact.tsx'
 import { timeAgo } from '#/lib/format.ts'
 import { listGroups, listResources } from '#/server/fns/access.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
@@ -156,6 +155,18 @@ function WorkflowPage() {
       await refresh()
     },
   })
+  const navigate = Route.useNavigate()
+  const openImpact = async () => {
+    const version =
+      dirty && graph
+        ? (await save.mutateAsync(graph)).version
+        : (data?.draft?.version ?? data?.published?.version)
+    await navigate({
+      to: '/workflows/$workflowId/impact',
+      params: { workflowId },
+      search: { version },
+    })
+  }
 
   if (!data || !graph) return null
 
@@ -182,6 +193,9 @@ function WorkflowPage() {
                   Discard draft
                 </Button>
               ) : null}
+              <Button onClick={openImpact} disabled={!parsed?.success || save.isPending}>
+                <History className="size-4" /> Impact
+              </Button>
               <Button
                 onClick={() => save.mutate(graph)}
                 disabled={!dirty || !parsed?.success || save.isPending}
@@ -239,7 +253,6 @@ function WorkflowPage() {
       {mounted ? (
         <ReactFlowProvider>
           <Editor
-            workflowId={workflowId}
             graph={graph}
             setGraph={setGraph}
             issues={issues}
@@ -285,23 +298,20 @@ function WorkflowPage() {
 }
 
 type Version = Awaited<ReturnType<typeof getWorkflow>>['versions'][number]
-type Tab = 'inspect' | 'test' | 'impact' | 'history'
+type Tab = 'inspect' | 'test' | 'history'
 
 const tabLabels: Record<Tab, string> = {
   inspect: 'Details',
   test: 'Test request',
-  impact: 'Impact',
   history: 'History',
 }
 const tabTitles: Record<Tab, string> = {
   inspect: 'Step settings',
   test: 'Try an example request',
-  impact: 'Impact on past traffic',
   history: 'Saved versions',
 }
 
 function Editor({
-  workflowId,
   graph,
   setGraph,
   issues,
@@ -310,7 +320,6 @@ function Editor({
   versions,
   publishedId,
 }: {
-  workflowId: string
   graph: PolicyGraph
   setGraph: (g: PolicyGraph) => void
   issues: GraphIssue[]
@@ -627,7 +636,7 @@ function Editor({
           <Button variant="ghost" onClick={() => flow.fitView({ padding: 0.12, duration: 250 })}>
             <Maximize2 className="size-4" /> Fit chart
           </Button>
-          {(['inspect', 'test', 'impact', 'history'] as const).map((t) => (
+          {(['inspect', 'test', 'history'] as const).map((t) => (
             <Button
               key={t}
               variant={panelOpen && tab === t ? 'primary' : 'ghost'}
@@ -729,14 +738,14 @@ function Editor({
             maxZoom={1.8}
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={24} size={1} color="#343b50" />
+            <Background gap={24} size={1} color="#2a3950" />
             <Controls showInteractive={false} />
             {graph.nodes.length > 10 ? (
               <MiniMap
                 pannable
                 zoomable
-                nodeColor="#69728b"
-                maskColor="rgba(10,11,16,0.65)"
+                nodeColor="#667286"
+                maskColor="rgba(8,17,31,0.65)"
                 style={{ width: 140, height: 85 }}
               />
             ) : null}
@@ -773,8 +782,6 @@ function Editor({
                 )
               ) : tab === 'test' ? (
                 <DryRun graph={graph} options={options} onResult={setRun} />
-              ) : tab === 'impact' ? (
-                <ShadowImpact workflowId={workflowId} graph={graph} />
               ) : (
                 <VersionList
                   versions={versions}
