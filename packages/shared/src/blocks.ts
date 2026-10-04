@@ -369,7 +369,7 @@ const specs: BlockSpec[] = [
       'Scans the prompt or tool arguments for patterns. Any match leaves through Failed.',
     inputs: ['content'],
     outputs: [
-      pass('Passed', ['judge', 'redact', 'untrusted_content', 'allow']),
+      pass('Passed', ['signatures', 'judge', 'redact', 'allow']),
       { id: 'fail', label: 'Failed', tone: 'bad', next: ['block', 'approve_admin', 'judge'] },
     ],
     fields: [
@@ -392,6 +392,50 @@ const specs: BlockSpec[] = [
     ],
     defaults: { type: 'keywords', patterns: [], mode: 'substring', caseSensitive: false },
     summary: (c) => `${c.patterns.length} patterns`,
+  }),
+  checkBlock('signatures', {
+    group: 'Content',
+    label: 'Known attack signatures',
+    description:
+      'Matches the request against signatures of attacks that already happened: code execution, unsafe deserialization, malicious packages and model-repository exploits, tool poisoning. Uses the built-in baseline plus the external signature feed, and sees through base64 and Unicode tricks.',
+    inputs: ['content'],
+    outputs: [
+      pass('Passed', ['judge', 'redact', 'untrusted_content', 'allow']),
+      { id: 'fail', label: 'Known attack', tone: 'bad', next: ['block', 'approve_admin'] },
+    ],
+    fields: [
+      {
+        kind: 'select',
+        key: 'minSeverity',
+        label: 'Strictness',
+        hint: 'Signatures below this severity are ignored.',
+        options: [
+          { value: 'low', label: 'Low and above (strictest)' },
+          { value: 'medium', label: 'Medium and above' },
+          { value: 'high', label: 'High and above' },
+          { value: 'critical', label: 'Critical only' },
+        ],
+      },
+      {
+        kind: 'multi',
+        key: 'categories',
+        label: 'Categories',
+        hint: 'Leave all unchecked to match every category.',
+        options: [
+          { value: 'code_execution', label: 'Code execution' },
+          { value: 'deserialization', label: 'Unsafe deserialization' },
+          { value: 'supply_chain', label: 'Supply chain and model repositories' },
+          { value: 'destructive_command', label: 'Destructive commands' },
+          { value: 'exfiltration', label: 'Exfiltration' },
+          { value: 'prompt_injection', label: 'Prompt injection' },
+          { value: 'tool_poisoning', label: 'Tool poisoning' },
+          { value: 'agent_tampering', label: 'Agent tampering' },
+        ],
+      },
+    ],
+    defaults: { type: 'signatures', minSeverity: 'medium', categories: [] },
+    summary: (c) =>
+      `${c.minSeverity}+ · ${c.categories.length ? `${c.categories.length} categories` : 'all categories'}`,
   }),
   checkBlock('judge', {
     group: 'Content',

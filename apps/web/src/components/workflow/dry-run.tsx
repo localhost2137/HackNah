@@ -141,7 +141,7 @@ export function DryRun({
         text: form.text,
         toolName: toolCall ? form.toolName : null,
         mcpServerId: toolCall ? form.mcpServerId || null : null,
-        model: toolCall ? null : form.model,
+        model: form.kind === 'model_request' ? form.model : null,
         deviceStatus: form.deviceStatus,
         groupIds: form.groupIds,
         resourceIds: form.resourceIds,
@@ -167,6 +167,7 @@ export function DryRun({
           <Select value={form.kind} onChange={(e) => set('kind', e.target.value as Form['kind'])}>
             <option value="tool_call">Tool call</option>
             <option value="model_request">Prompt</option>
+            <option value="agent_message">Agent message</option>
           </Select>
         </Field>
         <Field label="Device">
@@ -204,13 +205,21 @@ export function DryRun({
               </Field>
             ) : null}
           </>
-        ) : (
+        ) : form.kind === 'agent_message' ? null : (
           <Field label="Model" className="col-span-2">
             <Input value={form.model} onChange={(e) => set('model', e.target.value)} />
           </Field>
         )}
       </div>
-      <Field label={form.kind === 'tool_call' ? 'Arguments' : 'Prompt'}>
+      <Field
+        label={
+          form.kind === 'tool_call'
+            ? 'Arguments'
+            : form.kind === 'agent_message'
+              ? 'Message'
+              : 'Prompt'
+        }
+      >
         <Textarea
           rows={3}
           className="font-mono text-[11px]"

@@ -1,0 +1,11 @@
+{
+  "name": "acl-classifier",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.7.0"
+  }
+}

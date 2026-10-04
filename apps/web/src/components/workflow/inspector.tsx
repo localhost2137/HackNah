@@ -23,6 +23,7 @@ const fields: { value: Condition['field']; label: string }[] = [
 const kinds: Option[] = [
   { value: 'model_request', label: 'Prompts' },
   { value: 'tool_call', label: 'Tool calls' },
+  { value: 'agent_message', label: 'Agent-to-agent messages' },
 ]
 
 const deviceStatuses: Option[] = [

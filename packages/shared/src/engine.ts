@@ -1,5 +1,12 @@
 import type { ApprovalMethod, CheckResult, EventKind } from './events.ts'
 import {
+  baselineSignatures,
+  matchSignatures,
+  type Signature,
+  severityRisk,
+  textVariants,
+} from './signatures.ts'
+import {
   type CheckConfig,
   type CheckNode,
   type CheckType,
@@ -70,6 +77,8 @@ export type JudgeVerdict = { score: number; reason: string }
 
 export type EngineDeps = {
   judge?: (check: JudgeCheck, input: EvaluationInput) => Promise<JudgeVerdict>
+  /** Signatures for the `signatures` block; the built-in baseline when absent. */
+  signatures?: Signature[]
   now?: () => number
 }
 
@@ -258,8 +267,10 @@ const runners: { [T in CheckType]: Runner<T> } = {
     return passed
   },
   keywords: (check, input) => {
-    const hit = matchKeywords(input.text, check.patterns, check.mode, check.caseSensitive)
-    if (hit) return { outcome: 'fail', branch: 'fail', reason: `Matched keyword "${hit}"` }
+    for (const text of textVariants(input.text)) {
+      const hit = matchKeywords(text, check.patterns, check.mode, check.caseSensitive)
+      if (hit) return { outcome: 'fail', branch: 'fail', reason: `Matched keyword "${hit}"` }
+    }
     return passed
   },
   judge: async (check, input, deps) => {
@@ -275,6 +286,22 @@ const runners: { [T in CheckType]: Runner<T> } = {
   },
   // Redaction rewrites the request before forwarding; it never blocks.
   redact: () => passed,
+  signatures: (check, input, deps) => {
+    const hit = matchSignatures(
+      input.text,
+      deps.signatures ?? baselineSignatures,
+      check.minSeverity,
+      check.categories,
+    )
+    if (!hit) return passed
+    const origin = hit.reference || hit.source
+    return {
+      outcome: 'fail',
+      branch: 'fail',
+      score: severityRisk[hit.severity],
+      reason: `${hit.title}${origin ? ` (${origin})` : ''} [${hit.id}]`,
+    }
+  },
   arguments: (check, input) => {
     const name = input.toolName
     if (input.kind !== 'tool_call' || !name) return notAToolCall

@@ -12,6 +12,7 @@
     "UPSTREAM_BASE_URL": "https://openrouter.ai/api",
     // Extra OIDC identity provider origins (comma-separated), e.g. a self-hosted Keycloak.
     "SSO_TRUSTED_ORIGINS": "",
+    "SIGNATURE_FEED_URL": "",
     "ACCESS_TOKEN_TTL_SEC": "900",
     "REFRESH_TOKEN_TTL_SEC": "2592000"
   },

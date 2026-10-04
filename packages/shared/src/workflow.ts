@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { blockOf } from './blocks.ts'
 import { approvalMethod, eventKind } from './events.ts'
+import { signatureCategory, signatureSeverity } from './signatures.ts'
 
 export const fingerprintCheck = z.object({ type: z.literal('fingerprint') })
 
@@ -31,6 +32,15 @@ export const redactCheck = z.object({
   pii: z.array(piiKind).default(['email', 'phone', 'iban', 'credit_card']),
 })
 export type RedactConfig = z.infer<typeof redactCheck>
+
+/** Known attack signatures: the built-in baseline plus whatever the external feed delivers. */
+export const signaturesCheck = z.object({
+  type: z.literal('signatures'),
+  /** Strictness: signatures below this severity are ignored. */
+  minSeverity: signatureSeverity.default('medium'),
+  /** Empty means every category. */
+  categories: z.array(signatureCategory).default([]),
+})
 
 export const argumentRule = z.object({
   /** Glob on the tool name; MCP tools match with or without the server prefix. */
@@ -88,6 +98,7 @@ export const checkConfig = z.discriminatedUnion('type', [
   keywordsCheck,
   judgeCheck,
   redactCheck,
+  signaturesCheck,
   argumentsCheck,
   untrustedContentCheck,
   toolPinningCheck,

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
-export const eventKind = z.enum(['model_request', 'tool_call'])
+/** `agent_message` is a message one agent hands to another (a delegated task or its result). */
+export const eventKind = z.enum(['model_request', 'tool_call', 'agent_message'])
 export type EventKind = z.infer<typeof eventKind>
 
 export const decision = z.enum([

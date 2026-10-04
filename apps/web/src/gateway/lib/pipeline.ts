@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm'
 import type { Principal } from '../context.ts'
 import { approvalsStub } from '../do/approvals.ts'
 import { effectivePermissions, permissionDenial, userGroupIds } from './access.ts'
+import { loadSignatures } from './signatures.ts'
 import { loadActiveWorkflow } from './workflow.ts'
 
 export type PipelineResult = {
@@ -71,10 +72,16 @@ export async function runPipeline(
       redact: null,
     }
   }
+  const usesSignatures = workflow.definition.nodes.some(
+    (n) => n.type === 'check' && n.enabled && n.check.type === 'signatures',
+  )
   const result = await evaluateGraph(
     workflow.definition,
     { ...input, groupIds, deviceStatus: principal.deviceStatus },
-    { judge: (check, i) => callJudge(check, i, { apiKey: judgeApiKey(env, check.endpoint) }) },
+    {
+      judge: (check, i) => callJudge(check, i, { apiKey: judgeApiKey(env, check.endpoint) }),
+      signatures: usesSignatures ? (await loadSignatures(env)).signatures : undefined,
+    },
   )
   const base = {
     checks: result.checks,

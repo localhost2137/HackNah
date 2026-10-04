@@ -13,3 +13,10 @@ dist
 *.log
 .DS_Store
 .scratch
+
+# Control suite output and locally managed signature feeds
+dataset/results.json
+feeds/
+
+# Classifier model weights, downloaded on first start
+.models

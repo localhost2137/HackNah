@@ -11,6 +11,8 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:controls": "node dataset/build.mjs && node scripts/controls.ts",
+    "feed": "node scripts/signature-feeder.mjs",
     "lint": "biome check .",
     "format": "biome check --write .",
     "db:generate": "pnpm --filter @acl/db generate",

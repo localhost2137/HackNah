@@ -1,7 +1,7 @@
 import type { CheckResult, Decision, EventKind } from '@acl/shared'
 import { approvalLabels, stepLabels } from '@acl/shared'
 import { Badge, cn } from '@acl/ui'
-import { Bot, Wrench } from 'lucide-react'
+import { Bot, Waypoints, Wrench } from 'lucide-react'
 import { decisionMeta, riskTone } from '#/lib/format.ts'
 
 export function DecisionBadge({ decision }: { decision: Decision }) {
@@ -22,12 +22,12 @@ export function KindLabel({
   model: string | null
   toolName: string | null
 }) {
-  const Icon = kind === 'tool_call' ? Wrench : Bot
+  const Icon = kind === 'tool_call' ? Wrench : kind === 'agent_message' ? Waypoints : Bot
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
       <Icon className="size-3.5 shrink-0 text-muted" />
       <span className="truncate font-mono text-xs">
-        {kind === 'tool_call' ? toolName : (model ?? 'model')}
+        {kind === 'model_request' ? (model ?? 'model') : (toolName ?? 'agent message')}
       </span>
     </span>
   )

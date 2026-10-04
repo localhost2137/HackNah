@@ -31,6 +31,7 @@ import {
   ScanSearch,
   ShieldAlert,
   ShieldOff,
+  Siren,
   Webhook,
 } from 'lucide-react'
 import { type PointerEvent, useEffect, useRef } from 'react'
@@ -62,6 +63,7 @@ export const blockIcons: Record<BlockId, LucideIcon> = {
   network: Globe,
   keywords: ScanSearch,
   judge: Gavel,
+  signatures: Siren,
   redact: ShieldOff,
   arguments: Braces,
   tool_pinning: Pin,

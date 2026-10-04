@@ -264,6 +264,7 @@ function EventsPage() {
         >
           <option value="">All kinds</option>
           <option value="model_request">Model requests</option>
+          <option value="agent_message">Agent messages</option>
           <option value="tool_call">Tool calls</option>
         </Select>
         <Input

@@ -9,3 +9,5 @@ JUDGE_API_KEY=
 ACCESS_TOKEN_TTL_SEC=86400
 # Optional: comma-separated self-hosted IdP origins (the mock at http://localhost:9400 is trusted in dev)
 SSO_TRUSTED_ORIGINS=
+# Optional: comma-separated signature feed URLs (run `node scripts/signature-feeder.mjs` for a local one)
+SIGNATURE_FEED_URL=http://localhost:9500/feed.json
