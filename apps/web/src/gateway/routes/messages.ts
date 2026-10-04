@@ -32,7 +32,13 @@ import { effectivePermissions, filterToolDefinitions, userGroupIds } from '../li
 import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
 import { checkLimits, recordUsage } from '../lib/limits.ts'
-import { type CatalogModel, loadModels, routeModel, type UpstreamRoute } from '../lib/models.ts'
+import {
+  type CatalogModel,
+  fetchMessages,
+  loadModels,
+  routeModel,
+  type UpstreamRoute,
+} from '../lib/models.ts'
 import {
   type GuardHooks,
   type GuardReport,
@@ -183,9 +189,7 @@ export const messages = new Hono<AppEnv>()
     const upstreamStarted = Date.now()
     let upstream: Response
     try {
-      upstream = await fetch(
-        upstreamRequest(c.env, route, c.req.raw, '/v1/messages', JSON.stringify(outgoing)),
-      )
+      upstream = await fetchMessages(c.env, route, c.req.raw, outgoing)
     } catch (err) {
       await limits.release()
       event.upstreamStatus = 502
@@ -321,6 +325,16 @@ export const messages = new Hono<AppEnv>()
           requested.model,
         )
         if ('error' in route) return c.json(anthropicError('permission_error', route.error), 403)
+        // OpenAI-compatible servers have no token counting endpoint; about 4 characters a token.
+        if (route.format === 'openai') {
+          if (!c.req.path.endsWith('/count_tokens'))
+            return c.json(
+              anthropicError('invalid_request_error', 'Not supported for this model'),
+              404,
+            )
+          const chars = JSON.stringify(requested).length
+          return c.json({ input_tokens: Math.ceil(chars / 4) })
+        }
         target = route
       }
     }

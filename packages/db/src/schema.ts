@@ -389,6 +389,9 @@ export const model = sqliteTable(
     kind: text({ enum: ['external', 'local'] })
       .notNull()
       .default('external'),
+    apiFormat: text({ enum: ['anthropic', 'openai'] })
+      .notNull()
+      .default('anthropic'),
     baseUrl: text().notNull().default(''),
     upstreamModel: text().notNull().default(''),
     /** Encrypted with ENCRYPTION_KEY; null uses the gateway's own upstream key. */

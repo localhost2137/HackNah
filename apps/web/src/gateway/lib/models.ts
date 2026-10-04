@@ -1,7 +1,18 @@
 import { type Db, model } from '@acl/db'
-import { decryptString, findModel, type ModelEntry, modelKeyAad } from '@acl/shared'
+import {
+  anthropicErrorFromOpenAI,
+  decryptString,
+  findModel,
+  fromOpenAIResponse,
+  type MessagesRequest,
+  type ModelEntry,
+  modelKeyAad,
+  openAIStreamToAnthropic,
+  toOpenAIRequest,
+} from '@acl/shared'
 import { asc, eq } from 'drizzle-orm'
 import { TtlCache } from './cache.ts'
+import { upstreamRequest } from './upstream.ts'
 
 export type CatalogModel = ModelEntry & { apiKeyEnc: string | null }
 
@@ -19,6 +30,7 @@ export function loadModels(db: Db, orgId: string): Promise<CatalogModel[]> {
       pattern: r.pattern,
       label: r.label,
       kind: r.kind,
+      apiFormat: r.apiFormat,
       baseUrl: r.baseUrl,
       upstreamModel: r.upstreamModel,
       inputUsdPerMTok: r.inputUsdPerMTok,
@@ -38,6 +50,7 @@ export type UpstreamRoute = {
   apiKey: string | null
   /** Model id to send upstream. */
   model: string
+  format: 'anthropic' | 'openai'
   entry: CatalogModel | null
 }
 
@@ -51,7 +64,8 @@ export async function routeModel(
   requested: string,
 ): Promise<UpstreamRoute | { error: string }> {
   const fallback = { baseUrl: env.UPSTREAM_BASE_URL, apiKey: env.OPENROUTER_API_KEY }
-  if (catalog.length === 0) return { ...fallback, model: requested, entry: null }
+  if (catalog.length === 0)
+    return { ...fallback, model: requested, format: 'anthropic', entry: null }
   const entry = findModel(catalog, requested) as CatalogModel | null
   if (!entry) return { error: `Model ${requested} is not in the organization's model catalog` }
   const apiKey = entry.apiKeyEnc
@@ -59,10 +73,49 @@ export async function routeModel(
     : entry.baseUrl
       ? null
       : fallback.apiKey
+  // The default upstream is OpenRouter, which serves both formats; its OpenAI API lives under /v1.
+  const defaultBase =
+    entry.apiFormat === 'openai' ? `${fallback.baseUrl.replace(/\/$/, '')}/v1` : fallback.baseUrl
   return {
-    baseUrl: entry.baseUrl || fallback.baseUrl,
+    baseUrl: entry.baseUrl || defaultBase,
     apiKey,
     model: entry.upstreamModel || requested,
+    format: entry.apiFormat,
     entry,
   }
+}
+
+/**
+ * Sends a Messages request to the route's upstream and answers in the Anthropic format whatever
+ * the upstream speaks: an `openai` upstream gets chat completions and its answer is translated
+ * back, stream included.
+ */
+export async function fetchMessages(
+  env: Env,
+  route: UpstreamRoute,
+  incoming: Request,
+  body: MessagesRequest,
+): Promise<Response> {
+  if (route.format === 'anthropic')
+    return fetch(upstreamRequest(env, route, incoming, '/v1/messages', JSON.stringify(body)))
+  const request = upstreamRequest(
+    env,
+    route,
+    incoming,
+    '/chat/completions',
+    JSON.stringify(toOpenAIRequest(body, route.model)),
+  )
+  const upstream = await fetch(request)
+  if (!upstream.ok || !upstream.body) {
+    const raw = await upstream.text().catch(() => '')
+    return Response.json(anthropicErrorFromOpenAI(upstream.status, raw), {
+      status: upstream.status || 502,
+    })
+  }
+  if (body.stream === true)
+    return new Response(openAIStreamToAnthropic(upstream.body, route.model), {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' },
+    })
+  return Response.json(fromOpenAIResponse(await upstream.json(), route.model))
 }

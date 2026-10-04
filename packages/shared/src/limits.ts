@@ -83,7 +83,16 @@ export const modelEntry = z.object({
   label: z.string().max(80).default(''),
   /** External models are charged per token, local ones per GPU-second. */
   kind: z.enum(['external', 'local']).default('external'),
-  /** Anthropic Messages API base URL; empty uses the gateway's default upstream. */
+  /**
+   * Wire format of the upstream. `anthropic` is passed through as is; `openai` (chat completions:
+   * OpenRouter, Ollama, vLLM, LM Studio, llama.cpp, LiteLLM) is translated both ways.
+   */
+  apiFormat: z.enum(['anthropic', 'openai']).default('anthropic'),
+  /**
+   * Upstream base URL: the gateway appends `/v1/messages` for `anthropic` and
+   * `/chat/completions` for `openai` (so an OpenAI base usually ends in `/v1`). Empty uses the
+   * gateway's default upstream (OpenRouter).
+   */
   baseUrl: z.string().default(''),
   /** Model id sent upstream; empty forwards the id the client asked for. */
   upstreamModel: z.string().default(''),

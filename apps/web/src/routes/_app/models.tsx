@@ -37,6 +37,7 @@ const blank: Draft = {
   pattern: '',
   label: '',
   kind: 'external',
+  apiFormat: 'anthropic',
   baseUrl: '',
   upstreamModel: '',
   inputUsdPerMTok: 0,
@@ -89,13 +90,23 @@ const presets: { label: string; draft: Draft }[] = [
     },
   },
   {
+    label: 'Any model on OpenRouter (OpenAI API)',
+    draft: {
+      ...blank,
+      pattern: 'openai/gpt-*',
+      label: 'GPT via OpenRouter',
+      apiFormat: 'openai',
+    },
+  },
+  {
     label: 'Local model (Ollama)',
     draft: {
       ...blank,
       pattern: 'qwen3-coder*',
       label: 'Qwen3 Coder (local)',
       kind: 'local',
-      baseUrl: 'http://localhost:11434',
+      apiFormat: 'openai',
+      baseUrl: 'http://localhost:11434/v1',
       gpuUsdPerHour: 1.5,
     },
   },
@@ -218,6 +229,7 @@ function ModelsPage() {
                     <Badge tone={m.kind === 'local' ? 'accent' : 'neutral'} className="mr-2">
                       {m.kind}
                     </Badge>
+                    <Badge className="mr-2">{m.apiFormat}</Badge>
                     <span className="font-mono text-muted">{m.baseUrl || 'default upstream'}</span>
                   </TD>
                   <TD className="font-mono text-xs text-muted">
@@ -326,13 +338,35 @@ function ModelForm({
         </Select>
       </Field>
       <Field
+        label="API format"
+        hint="Claude Code always talks Anthropic to the gateway; an OpenAI-compatible upstream is translated both ways. Thinking blocks and cache markers don't survive the translation."
+      >
+        <Select
+          value={draft.apiFormat}
+          onChange={(e) => onChange({ ...draft, apiFormat: e.target.value as Draft['apiFormat'] })}
+        >
+          <option value="anthropic">
+            Anthropic Messages (OpenRouter, Anthropic, Ollama ≥ 0.14)
+          </option>
+          <option value="openai">
+            OpenAI chat completions (OpenRouter, Ollama, vLLM, LM Studio, llama.cpp)
+          </option>
+        </Select>
+      </Field>
+      <Field
         label="Base URL"
-        hint="An Anthropic Messages API (the gateway appends /v1/messages): OpenRouter, Anthropic, or a local server such as Ollama or vLLM. Empty uses the gateway's default upstream."
+        hint={
+          draft.apiFormat === 'openai'
+            ? 'The gateway appends /chat/completions, so this usually ends in /v1. Empty uses OpenRouter.'
+            : 'The gateway appends /v1/messages. Empty uses the default upstream (OpenRouter).'
+        }
       >
         <Input
           className="font-mono"
           value={draft.baseUrl}
-          placeholder={draft.kind === 'local' ? 'http://localhost:11434' : 'default upstream'}
+          placeholder={
+            draft.apiFormat === 'openai' ? 'http://localhost:11434/v1' : 'default upstream'
+          }
           onChange={(e) => onChange({ ...draft, baseUrl: e.target.value })}
         />
       </Field>
