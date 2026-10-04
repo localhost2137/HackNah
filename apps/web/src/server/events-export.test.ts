@@ -10,6 +10,7 @@ const row: ExportRow = {
   userName: 'Chen, Maya',
   deviceId: null,
   sessionId: 's1',
+  traceId: 'trc_0123456789abcdef0123',
   kind: 'model_request',
   model: 'anthropic/claude-sonnet-4.5',
   mcpServerId: null,
@@ -52,7 +53,7 @@ describe('events export', () => {
     expect(line).toContain(`"'=HYPERLINK(""https://evil.example"")"`)
     expect(line).toContain(',24,737,46054,1947,0.0107,')
     expect(line.trimEnd().endsWith('Secrets v2: allow,secret_scan')).toBe(true)
-    expect(csvHeader().split(',')).toHaveLength(27)
+    expect(csvHeader().split(',')).toHaveLength(28)
   })
 
   it('writes JSONL with the nested checks and without the cursor', () => {

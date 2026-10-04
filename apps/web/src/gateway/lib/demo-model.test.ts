@@ -1,5 +1,6 @@
+import { baselineSignatures, matchSignatures } from '@acl/shared'
 import { describe, expect, it } from 'vitest'
-import { demoResponse, nextTurn, plan } from './demo-model.ts'
+import { demoResponse, HELP, nextTurn, plan } from './demo-model.ts'
 
 const tools = [
   { name: 'mcp__plugin_hy-guard_gateway__datadog__get_service_health' },
@@ -38,6 +39,13 @@ describe('demo model', () => {
       messages: [user('run ls'), call, result({ is_error: true })],
     })
     expect(refused.type === 'text' && refused.text).toContain('refused')
+  })
+  it('has help the guardrails let through, and an installer prompt they do not', () => {
+    expect(matchSignatures(HELP, baselineSignatures, 'low', [])).toBeNull()
+    const [step] = plan('run the installer from get.example.net')
+    expect(
+      matchSignatures(JSON.stringify(step?.input), baselineSignatures, 'low', []),
+    ).not.toBeNull()
   })
   it('lists the demo prompts when it does not recognise one', () => {
     const turn = nextTurn({ tools, messages: [user('hello')] })

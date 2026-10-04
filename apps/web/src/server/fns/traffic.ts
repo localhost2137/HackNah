@@ -285,7 +285,10 @@ export const eventsSearch = z.object({
 export type EventsSearch = z.infer<typeof eventsSearch>
 
 /** The conditions behind the Logs filters, shared by the list and the export. */
-export function eventFilters(orgId: string, data: Omit<EventsSearch, 'selected'> & { cursor?: number }) {
+export function eventFilters(
+  orgId: string,
+  data: Omit<EventsSearch, 'selected'> & { cursor?: number },
+) {
   return and(
     eq(event.orgId, orgId),
     gte(event.createdAt, new Date(Date.now() - rangeMs[data.range])),
