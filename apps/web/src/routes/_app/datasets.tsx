@@ -75,7 +75,7 @@ function DatasetsPage() {
     <>
       <PageHeader
         title="Datasets"
-        description="Labelled attack and benign requests. To act on them, add a Learned rules step to a workflow, pick datasets there and train."
+        description="Labelled attack and benign requests. To act on them, add a Trained model step to a workflow, pick datasets there and train."
         actions={
           <>
             <input
@@ -196,7 +196,7 @@ function DatasetSheet({ dataset, onClose }: { dataset: DatasetSummary; onClose: 
         </div>
         <p className="text-xs text-muted">
           {dataset.attacks > 0
-            ? 'To block requests like these, add a Learned rules step to a workflow and tick this dataset there.'
+            ? 'To block requests like these, add a Trained model step to a workflow and tick this dataset there.'
             : 'This dataset has no attack rows. Its rows serve as benign examples when models are trained on other datasets.'}
         </p>
         <div>

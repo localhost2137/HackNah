@@ -81,8 +81,14 @@ export type BlockSpec = {
   id: BlockId
   nodeType: PolicyNodeType
   group: BlockGroup
+  /** Two or three plain words. */
   label: string
+  /** One short sentence: what the block does. */
   description: string
+  /** Where the data the block decides on comes from. */
+  source: string
+  /** Anything worth knowing beyond the one sentence; shown in the step settings only. */
+  details?: string
   inputs: BlockInput[]
   outputs: BlockOutput[]
   /** The output an inserted block continues the existing path through; null for outcomes. */
@@ -112,9 +118,9 @@ export function conditionText(c: Condition, names: Record<string, string> = {}):
 
 export const approvalLabels: Record<ApprovalMethod, string> = {
   admin: 'Admin approval',
-  confirm: 'Confirm in Claude Code',
+  confirm: 'User confirm',
   touchid: 'Touch ID',
-  browser: 'Browser sign-in',
+  browser: 'Browser login',
 }
 
 const piiOptions: Option[] = [
@@ -144,7 +150,10 @@ type CheckOf<T extends CheckType> = Extract<CheckConfig, { type: T }>
 
 function checkBlock<T extends CheckType>(
   type: T,
-  spec: Pick<BlockSpec, 'group' | 'label' | 'description' | 'inputs' | 'outputs'> & {
+  spec: Pick<
+    BlockSpec,
+    'group' | 'label' | 'description' | 'source' | 'details' | 'inputs' | 'outputs'
+  > & {
     fields?: BlockField[]
     defaults: CheckOf<T>
     summary: (check: CheckOf<T>) => string
@@ -156,6 +165,8 @@ function checkBlock<T extends CheckType>(
     group: spec.group,
     label: spec.label,
     description: spec.description,
+    source: spec.source,
+    details: spec.details,
     inputs: spec.inputs,
     outputs: spec.outputs,
     through: 'pass',
@@ -175,13 +186,21 @@ const reasonField: BlockField = {
   hint: 'Shown to the user and in the approval queue.',
 }
 
-function approvalBlock(method: ApprovalMethod, description: string, wait: string): BlockSpec {
+function approvalBlock(
+  method: ApprovalMethod,
+  description: string,
+  source: string,
+  wait: string,
+  details?: string,
+): BlockSpec {
   return {
     id: `approve_${method}`,
     nodeType: 'decision',
     group: 'Outcome',
     label: approvalLabels[method],
     description,
+    source,
+    details,
     inputs: method === 'admin' ? [] : ['presence'],
     outputs: [],
     through: null,
@@ -213,14 +232,16 @@ const specs: BlockSpec[] = [
     id: 'trigger',
     nodeType: 'trigger',
     group: 'Routing',
-    label: 'Request comes in',
-    description:
+    label: 'Start',
+    description: 'Picks which requests run this workflow.',
+    source: 'The request',
+    details:
       'Decides which requests start this workflow. Without conditions every prompt and tool call does. A request that starts no workflow is allowed.',
     inputs: [],
     outputs: [
       {
         id: 'next',
-        label: 'Continue',
+        label: 'Next',
         tone: 'accent',
         next: ['fingerprint', 'posture', 'route', 'keywords'],
       },
@@ -238,18 +259,19 @@ const specs: BlockSpec[] = [
     nodeType: 'match',
     group: 'Routing',
     label: 'Route',
-    description: 'Send requests down different paths by tool, tier, server, team, device or model.',
+    description: 'Splits requests by tool, tier, server, group, device or model.',
+    source: 'The request',
     inputs: ['tool', 'identity', 'device', 'key_storage'],
     outputs: [
       {
         id: 'match',
-        label: 'Matches',
+        label: 'Match',
         tone: 'accent',
         next: ['keywords', 'arguments', 'untrusted_content', 'judge', 'approve_touchid'],
       },
       {
         id: 'else',
-        label: 'Otherwise',
+        label: 'No match',
         tone: 'neutral',
         next: ['route', 'keywords', 'redact', 'allow'],
       },
@@ -264,27 +286,31 @@ const specs: BlockSpec[] = [
   },
   checkBlock('fingerprint', {
     group: 'Device',
-    label: 'Device fingerprint',
-    description:
+    label: 'Device check',
+    description: 'Is this the device the token was issued to?',
+    source: 'Device token, checked by the gateway',
+    details:
       'Compares the device presenting the token with the one it was issued to. Approving a request that came through New device also trusts that device.',
     inputs: ['device'],
     outputs: [
-      pass('Passed', ['keywords', 'posture', 'judge', 'redact', 'route']),
+      pass('Known device', ['keywords', 'posture', 'judge', 'redact', 'route']),
       {
         id: 'new',
         label: 'New device',
         tone: 'warn',
         next: ['approve_admin', 'keywords', 'approve_browser', 'block'],
       },
-      { id: 'mismatch', label: 'Device mismatch', tone: 'bad', next: ['block', 'approve_admin'] },
+      { id: 'mismatch', label: 'Wrong device', tone: 'bad', next: ['block', 'approve_admin'] },
     ],
     defaults: { type: 'fingerprint' },
     summary: () => 'Known, new or copied device',
   }),
   checkBlock('posture', {
     group: 'Device',
-    label: 'Device posture (EDR)',
-    description:
+    label: 'EDR score',
+    description: 'Reads the device health score.',
+    source: 'CrowdStrike, sent by the plugin',
+    details:
       'Reads the CrowdStrike Zero Trust score for the device. A raised detection or a contained host leaves through Compromised; a stale, missing or unconfirmed score through Unknown.',
     inputs: ['posture'],
     outputs: [
@@ -313,12 +339,14 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('os_posture', {
     group: 'Device',
-    label: 'OS protections',
-    description:
+    label: 'OS security',
+    description: 'Checks disk encryption, SIP, Gatekeeper and firewall.',
+    source: 'The device, sent by the plugin',
+    details:
       'Built-in checks the device reports about itself. A baseline for machines without an EDR; fails when a required protection is off.',
     inputs: ['os_posture'],
     outputs: [
-      pass('Passed', ['network', 'keywords', 'route']),
+      pass('All on', ['network', 'keywords', 'route']),
       {
         id: 'fail',
         label: 'Protection off',
@@ -332,8 +360,10 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('network', {
     group: 'Device',
-    label: 'Network and location',
-    description:
+    label: 'Network check',
+    description: 'Flags a new network or impossible travel.',
+    source: 'Request IP, checked by the gateway',
+    details:
       'Flags the first request from a network this device has not used before, and jumps in location faster than a plane.',
     inputs: ['network'],
     outputs: [
@@ -367,13 +397,13 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('keywords', {
     group: 'Content',
-    label: 'Dangerous keywords',
-    description:
-      'Scans the prompt or tool arguments for patterns. Any match leaves through Failed.',
+    label: 'Keyword match',
+    description: 'Looks for your words or patterns in the request.',
+    source: 'Your pattern list',
     inputs: ['content'],
     outputs: [
-      pass('Passed', ['signatures', 'judge', 'redact', 'allow']),
-      { id: 'fail', label: 'Failed', tone: 'bad', next: ['block', 'approve_admin', 'judge'] },
+      pass('No match', ['signatures', 'judge', 'redact', 'allow']),
+      { id: 'fail', label: 'Match', tone: 'bad', next: ['block', 'approve_admin', 'judge'] },
     ],
     fields: [
       {
@@ -398,13 +428,15 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('signatures', {
     group: 'Content',
-    label: 'Known attack signatures',
-    description:
+    label: 'Known attacks',
+    description: 'Matches known bad packages, commands and code.',
+    source: 'Built-in list and the signature feed',
+    details:
       'Matches the request against signatures of attacks that already happened: code execution, unsafe deserialization, malicious packages and model-repository exploits, tool poisoning. Uses the built-in baseline plus the external signature feed, and sees through base64 and Unicode tricks.',
     inputs: ['content'],
     outputs: [
-      pass('Passed', ['judge', 'redact', 'untrusted_content', 'allow']),
-      { id: 'fail', label: 'Known attack', tone: 'bad', next: ['block', 'approve_admin'] },
+      pass('No match', ['judge', 'redact', 'untrusted_content', 'allow']),
+      { id: 'fail', label: 'Match', tone: 'bad', next: ['block', 'approve_admin'] },
     ],
     fields: [
       {
@@ -442,15 +474,17 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('learned', {
     group: 'Content',
-    label: 'Learned rules',
-    description:
+    label: 'Trained model',
+    description: 'Flags requests that look like attacks in your datasets.',
+    source: 'Datasets you pick',
+    details:
       'Flags requests that look like the attacks in the datasets you pick. Select datasets and train: a small model learns them in seconds and scores each request in well under a millisecond. It only knows what it was trained on.',
     inputs: ['content'],
     outputs: [
-      pass('Passed', ['judge', 'redact', 'allow']),
+      pass('No match', ['judge', 'redact', 'allow']),
       {
         id: 'fail',
-        label: 'Similar to known attacks',
+        label: 'Looks like attack',
         tone: 'bad',
         next: ['block', 'approve_admin', 'judge'],
       },
@@ -474,15 +508,17 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('judge', {
     group: 'Content',
-    label: 'Judge model',
-    description:
+    label: 'LLM judge',
+    description: 'Asks a model to rate the risk from 0 to 1.',
+    source: 'The model endpoint you set',
+    details:
       'Sends the input to a model on OpenRouter, or to any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM), and asks for a risk score between 0 and 1. Leaves through Error when the judge is down or times out.',
     inputs: ['content', 'tool'],
     outputs: [
-      pass('Passed', ['redact', 'allow', 'untrusted_content']),
+      pass('Low risk', ['redact', 'allow', 'untrusted_content']),
       {
         id: 'fail',
-        label: 'Failed',
+        label: 'High risk',
         tone: 'bad',
         next: ['block', 'approve_admin', 'approve_touchid'],
       },
@@ -517,11 +553,13 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('redact', {
     group: 'Content',
-    label: 'Redact secrets and PII',
-    description:
+    label: 'Redact data',
+    description: 'Hides secrets and personal data from the model.',
+    source: 'Built-in detectors',
+    details:
       'Replaces secrets and personal data with stable placeholders like [REDACTED_EMAIL_1] before they reach the model, and in MCP tool results. When the agent passes a placeholder back into a tool call, the gateway swaps the real value in. Never blocks.',
     inputs: ['content'],
-    outputs: [pass('Continue', ['allow', 'judge', 'keywords'])],
+    outputs: [pass('Next', ['allow', 'judge', 'keywords'])],
     fields: [
       {
         kind: 'switch',
@@ -537,12 +575,14 @@ const specs: BlockSpec[] = [
   checkBlock('arguments', {
     group: 'Tool',
     label: 'Argument rules',
-    description:
+    description: 'Checks tool arguments against your rules.',
+    source: 'Your rules',
+    details:
       'Refuses a tool call when an argument does not match its allowed pattern, for example email_send may only send to @company.com.',
     inputs: ['tool', 'arguments'],
     outputs: [
-      pass('Passed', ['untrusted_content', 'approve_confirm', 'allow']),
-      { id: 'fail', label: 'Rule violated', tone: 'bad', next: ['block', 'approve_admin'] },
+      pass('OK', ['untrusted_content', 'approve_confirm', 'allow']),
+      { id: 'fail', label: 'Rule broken', tone: 'bad', next: ['block', 'approve_admin'] },
     ],
     fields: [
       {
@@ -557,28 +597,32 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('tool_pinning', {
     group: 'Tool',
-    label: 'Tool definition pin',
-    description:
+    label: 'Tool pin',
+    description: 'Checks the tool is the one an admin approved.',
+    source: 'Pinned tool definitions, sent by the plugin',
+    details:
       'Compares the tool with the definition an admin pinned. A changed name, description or schema is how tool poisoning and rug pulls arrive.',
     inputs: ['definition'],
     outputs: [
-      pass('Unchanged', ['arguments', 'untrusted_content', 'allow']),
-      { id: 'changed', label: 'Definition changed', tone: 'bad', next: ['block', 'approve_admin'] },
+      pass('Same', ['arguments', 'untrusted_content', 'allow']),
+      { id: 'changed', label: 'Changed', tone: 'bad', next: ['block', 'approve_admin'] },
     ],
     defaults: { type: 'tool_pinning' },
     summary: () => 'Same definition as pinned',
   }),
   checkBlock('untrusted_content', {
     group: 'Session',
-    label: 'Untrusted content guard',
-    description:
+    label: 'Untrusted input',
+    description: 'Did the session read outside content recently?',
+    source: 'Session history, sent by the plugin',
+    details:
       'Prompt-injection guard. After the session reads untrusted content (a web page, an inbox, a ticket), requests leave through Recently read for the length of the window.',
     inputs: ['untrusted'],
     outputs: [
-      pass('Clean session', ['allow', 'redact', 'approve_confirm']),
+      pass('Clean', ['allow', 'redact', 'approve_confirm']),
       {
         id: 'tainted',
-        label: 'Recently read',
+        label: 'Read recently',
         tone: 'warn',
         next: ['approve_browser', 'approve_touchid', 'judge', 'block'],
       },
@@ -591,15 +635,17 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('hook', {
     group: 'Session',
-    label: 'Started by Claude Code',
-    description:
+    label: 'Hook check',
+    description: 'Did Claude Code start this tool call?',
+    source: 'Claude Code hook, sent by the plugin',
+    details:
       "Checks that Claude Code's own hook recorded this exact tool call. A call without a record came from something else holding the session.",
     inputs: ['hook'],
     outputs: [
-      pass('Hook record found', ['idle', 'untrusted_content', 'allow']),
+      pass('From Claude Code', ['idle', 'untrusted_content', 'allow']),
       {
         id: 'fail',
-        label: 'No hook record',
+        label: 'No record',
         tone: 'warn',
         next: ['approve_touchid', 'approve_browser', 'block'],
       },
@@ -609,15 +655,17 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('idle', {
     group: 'Session',
-    label: 'User at the keyboard',
-    description:
+    label: 'User present',
+    description: 'Is someone at the keyboard?',
+    source: 'Device idle time, sent by the plugin',
+    details:
       'Uses keyboard and mouse idle time on the device. An agent acting while nobody is there is worth a second look.',
     inputs: ['idle'],
     outputs: [
-      pass('User active', ['untrusted_content', 'allow', 'redact']),
+      pass('Present', ['untrusted_content', 'allow', 'redact']),
       {
         id: 'idle',
-        label: 'User away',
+        label: 'Away',
         tone: 'warn',
         next: ['approve_touchid', 'approve_browser', 'block'],
       },
@@ -633,7 +681,8 @@ const specs: BlockSpec[] = [
     nodeType: 'decision',
     group: 'Outcome',
     label: 'Allow',
-    description: 'Forward the request.',
+    description: 'Sends the request on.',
+    source: '—',
     inputs: [],
     outputs: [],
     through: null,
@@ -645,34 +694,42 @@ const specs: BlockSpec[] = [
       timeoutSec: 300,
       reason: '',
     }),
-    summary: () => 'Forward the request',
+    summary: () => 'Send the request on',
   },
   approvalBlock(
     'admin',
-    'Hold the request until an administrator approves it in the dashboard.',
+    'Waits for an admin to approve in the dashboard.',
+    'An admin, in the dashboard',
     'Wait for an admin',
   ),
   approvalBlock(
     'confirm',
-    'Ask the person in Claude Code to confirm. The lightest level: the device reports the answer, the gateway cannot verify it.',
+    'Asks the user to confirm in Claude Code.',
+    'The user, reported by the plugin',
     'Ask in Claude Code',
+    'The lightest level: the device reports the answer and the gateway cannot verify it.',
   ),
   approvalBlock(
     'touchid',
-    'Require a Touch ID proof from the device for this exact request. Devices without Touch ID are sent to the browser instead.',
+    'Asks the user to approve with Touch ID.',
+    'Touch ID proof, sent by the plugin',
     'Wait for Touch ID',
+    'The proof covers this exact request. Devices without Touch ID are sent to the browser instead.',
   ),
   approvalBlock(
     'browser',
-    "Require the device's owner to sign in again in the browser and approve this exact action.",
+    'Asks the user to sign in again and approve.',
+    'A fresh sign-in in the browser',
     'Wait for a fresh sign-in',
+    "Only the device's owner can approve, and the approval covers this exact action.",
   ),
   {
     id: 'block',
     nodeType: 'decision',
     group: 'Outcome',
     label: 'Block',
-    description: 'Deny the request.',
+    description: 'Stops the request.',
+    source: '—',
     inputs: [],
     outputs: [],
     through: null,
@@ -684,7 +741,7 @@ const specs: BlockSpec[] = [
       timeoutSec: 300,
       reason: '',
     }),
-    summary: (node) => (node.type === 'decision' && node.reason) || 'Deny the request',
+    summary: (node) => (node.type === 'decision' && node.reason) || 'Stop the request',
   },
 ]
 

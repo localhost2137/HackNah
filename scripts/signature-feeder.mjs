@@ -21,8 +21,38 @@ const port = 9500
 
 // Packages worth asking OSV about: AI and MCP tooling an agent is likely to be told to install.
 const WATCHLIST = {
-  PyPI: ['torchtriton', 'ultralytics', 'langchain', 'transformers', 'litellm', 'mcp', 'ollama'],
-  npm: ['postmark-mcp', 'mcp-remote', '@modelcontextprotocol/sdk', 'nx', 'cline'],
+  PyPI: [
+    'torchtriton',
+    'ultralytics',
+    'langchain',
+    'transformers',
+    'litellm',
+    'mcp',
+    'ollama',
+    'num2words',
+    'aiocpa',
+    'deepseeek',
+    'deepseekai',
+    'fabrice',
+  ],
+  npm: [
+    'postmark-mcp',
+    'mcp-remote',
+    '@modelcontextprotocol/sdk',
+    '@modelcontextprotocol/inspector',
+    'nx',
+    '@nx/devkit',
+    'cline',
+    '@ctrl/tinycolor',
+    'chalk',
+    'debug',
+    'eslint-config-prettier',
+    'is',
+    'ngx-bootstrap',
+    'node-ipc',
+    '@solana/web3.js',
+    '@lottiefiles/lottie-player',
+  ],
 }
 
 const read = (path) => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null)

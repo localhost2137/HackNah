@@ -103,7 +103,7 @@ describe('contextual step recommendations', () => {
   it('keeps terminal choices visible but unavailable when insertion would cut off the path', () => {
     const suggestion = find(graph(), 'fingerprint', 'pass', 'block')
     expect(suggestion.disabled).toBe(true)
-    expect(suggestion.reason).toContain('Dangerous keywords')
+    expect(suggestion.reason).toContain('Keyword match')
   })
   it('limits recommendations to four and keeps every block accessible', () => {
     const choices = recommendSteps(graph(), 'keywords', 'pass')

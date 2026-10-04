@@ -185,6 +185,9 @@ function PolicyNodeView({ data, selected }: NodeProps<FlowNode>) {
         <div className="min-w-0 flex-1">
           <div className="text-[15px] font-semibold leading-snug">{title}</div>
           <div className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">{subtitle}</div>
+          {node.type === 'check' ? (
+            <div className="mt-1 truncate text-[11px] text-subtle">From: {block.source}</div>
+          ) : null}
         </div>
         {hasError || hasWarning ? (
           <span

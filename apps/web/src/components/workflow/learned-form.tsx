@@ -32,7 +32,7 @@ type Run =
   | { phase: 'error'; message: string }
 
 /**
- * Picks the datasets a Learned rules block is trained on and trains the model for that
+ * Picks the datasets a Trained model step is trained on and trains the model for that
  * selection in the browser. A selection that was trained before reuses its saved model.
  */
 export function LearnedForm({

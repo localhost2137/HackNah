@@ -108,7 +108,15 @@ function NodeForm({
   const block = blockOf(node)
   return (
     <>
-      <p className="text-xs text-muted">{block.description}</p>
+      <div className="flex flex-col gap-1.5 text-xs">
+        <p className="text-fg">{block.description}</p>
+        {block.details ? <p className="text-muted">{block.details}</p> : null}
+        {block.source !== '—' ? (
+          <p className="text-muted">
+            <span className="text-subtle">Data from:</span> {block.source}
+          </p>
+        ) : null}
+      </div>
       {node.type === 'check' ? (
         <label className="flex items-center gap-2 text-xs">
           <Switch
