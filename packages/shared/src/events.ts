@@ -1,7 +1,26 @@
 import { z } from 'zod'
 
-export const eventKind = z.enum(['model_request', 'tool_call'])
+/**
+ * The stage of an interaction a workflow inspects. `model_request` is everything sent to the model
+ * as user input, `tool_result` what a tool returned, `model_output` what the model generated, and
+ * `agent_message` a message one agent hands to another (a delegated task or its reply).
+ */
+export const eventKind = z.enum([
+  'model_request',
+  'tool_call',
+  'tool_result',
+  'model_output',
+  'agent_message',
+])
 export type EventKind = z.infer<typeof eventKind>
+
+export const kindLabels: Record<EventKind, string> = {
+  model_request: 'Model input',
+  tool_call: 'Tool call',
+  tool_result: 'Tool result',
+  model_output: 'Model output',
+  agent_message: 'Agent message',
+}
 
 export const decision = z.enum([
   'allow',
@@ -24,7 +43,15 @@ export const checkOutcome = z.enum(['pass', 'fail', 'error', 'skipped'])
 export type CheckOutcome = z.infer<typeof checkOutcome>
 
 /** Which published workflow version took part in a decision. */
-export const workflowRef = z.object({ id: z.string(), name: z.string(), version: z.number() })
+export const workflowRef = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number(),
+  /** What this workflow alone decided. */
+  decision: z.enum(['allow', 'block', 'pending']).optional(),
+  /** Time this workflow took, judge calls included. */
+  durationMs: z.number().optional(),
+})
 export type WorkflowRef = z.infer<typeof workflowRef>
 
 export const checkResult = z.object({

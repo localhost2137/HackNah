@@ -5,8 +5,11 @@ import {
   type DeviceStatus,
   type EvaluationInput,
   type EvaluationResult,
+  type EventKind,
   evaluateGraph,
+  eventKind,
   type KeyStorage,
+  kindLabels,
   type OsPostureKey,
   type PolicyGraph,
   type PostureStatus,
@@ -114,6 +117,14 @@ function parseArguments(text: string): unknown {
 }
 
 /** Runs the graph in the browser against a made-up request. The judge is simulated. */
+const textLabels: Record<EventKind, string> = {
+  model_request: 'Prompt',
+  tool_call: 'Arguments',
+  tool_result: 'Tool result',
+  model_output: 'Model output',
+  agent_message: 'Message',
+}
+
 export function DryRun({
   graph,
   options,
@@ -137,7 +148,7 @@ export function DryRun({
 
   const run = async () => {
     const score = form.judgeScore.trim() ? Number(form.judgeScore) : Number.NaN
-    const toolCall = form.kind === 'tool_call'
+    const toolCall = form.kind === 'tool_call' || form.kind === 'tool_result'
     const input: EvaluationInput = {
       kind: form.kind,
       text: form.text,
@@ -148,7 +159,7 @@ export function DryRun({
       groupIds: form.groupIds,
       resourceIds: form.resourceIds,
       toolTier: toolCall ? form.tier : null,
-      toolArguments: toolCall ? parseArguments(form.text) : undefined,
+      toolArguments: form.kind === 'tool_call' ? parseArguments(form.text) : undefined,
       signals: signalsOf(form),
     }
     if (!triggerHolds(graph, input)) {
@@ -169,10 +180,13 @@ export function DryRun({
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Kind">
+        <Field label="Stage">
           <Select value={form.kind} onChange={(e) => set('kind', e.target.value as Form['kind'])}>
-            <option value="tool_call">Tool call</option>
-            <option value="model_request">Prompt</option>
+            {eventKind.options.map((k) => (
+              <option key={k} value={k}>
+                {kindLabels[k]}
+              </option>
+            ))}
           </Select>
         </Field>
         <Field label="Device">
@@ -185,7 +199,7 @@ export function DryRun({
             <option value="mismatch">Mismatch</option>
           </Select>
         </Field>
-        {form.kind === 'tool_call' ? (
+        {form.kind === 'tool_call' || form.kind === 'tool_result' ? (
           <>
             <Field label="Tool">
               <Input value={form.toolName} onChange={(e) => set('toolName', e.target.value)} />
@@ -216,7 +230,7 @@ export function DryRun({
           </Field>
         )}
       </div>
-      <Field label={form.kind === 'tool_call' ? 'Arguments' : 'Prompt'}>
+      <Field label={textLabels[form.kind]}>
         <Textarea
           rows={3}
           className="font-mono text-[11px]"

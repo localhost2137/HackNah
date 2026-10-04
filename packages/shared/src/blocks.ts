@@ -1,4 +1,4 @@
-import type { ApprovalMethod } from './events.ts'
+import type { ApprovalMethod, EventKind } from './events.ts'
 import type { CheckConfig, CheckType, Condition, PolicyNode, PolicyNodeType } from './workflow.ts'
 
 /**
@@ -36,6 +36,7 @@ export type BlockInput =
   | 'hook'
   | 'idle'
   | 'definition'
+  | 'usage'
 
 export const inputLabels: Record<BlockInput, string> = {
   content: 'Prompt, tool result or tool arguments',
@@ -52,6 +53,7 @@ export const inputLabels: Record<BlockInput, string> = {
   hook: "Claude Code's hook record of the call",
   idle: 'Keyboard and mouse idle time',
   definition: 'Pinned tool definition',
+  usage: 'Spend and requests counted by a limit',
 }
 
 export type BlockOutput = {
@@ -71,6 +73,7 @@ export type BlockField = { key: string; label: string; hint?: string } & (
   | { kind: 'select' | 'multi'; options: Option[] }
   | { kind: 'switch' }
   | { kind: 'argument_rules' }
+  | { kind: 'limit' }
 )
 
 type Body<N> = N extends PolicyNode ? Omit<N, 'id' | 'position'> : never
@@ -84,6 +87,8 @@ export type BlockSpec = {
   label: string
   description: string
   inputs: BlockInput[]
+  /** The stages this block inspects; elsewhere it is skipped and leaves through `pass`. */
+  appliesTo?: EventKind[]
   outputs: BlockOutput[]
   /** The output an inserted block continues the existing path through; null for outcomes. */
   through: string | null
@@ -94,7 +99,8 @@ export type BlockSpec = {
 }
 
 const conditionLabels: Record<Condition['field'], string> = {
-  kind: 'Kind',
+  kind: 'Stage',
+  source: 'Source',
   mcpServer: 'MCP server',
   tool: 'Tool',
   resource: 'Resource',
@@ -133,6 +139,9 @@ const osPostureOptions: Option[] = [
   { value: 'fw', label: 'Firewall' },
 ]
 
+/** Stages that come from the device: device and presence checks only apply to these. */
+const requestStages: EventKind[] = ['model_request', 'tool_call', 'agent_message']
+
 const pass = (label: string, next: BlockId[]): BlockOutput => ({
   id: 'pass',
   label,
@@ -144,7 +153,7 @@ type CheckOf<T extends CheckType> = Extract<CheckConfig, { type: T }>
 
 function checkBlock<T extends CheckType>(
   type: T,
-  spec: Pick<BlockSpec, 'group' | 'label' | 'description' | 'inputs' | 'outputs'> & {
+  spec: Pick<BlockSpec, 'group' | 'label' | 'description' | 'inputs' | 'outputs' | 'appliesTo'> & {
     fields?: BlockField[]
     defaults: CheckOf<T>
     summary: (check: CheckOf<T>) => string
@@ -157,6 +166,7 @@ function checkBlock<T extends CheckType>(
     label: spec.label,
     description: spec.description,
     inputs: spec.inputs,
+    appliesTo: spec.appliesTo,
     outputs: spec.outputs,
     through: 'pass',
     fields: spec.fields ?? [],
@@ -215,7 +225,7 @@ const specs: BlockSpec[] = [
     group: 'Routing',
     label: 'Request comes in',
     description:
-      'Decides which requests start this workflow. Without conditions every prompt and tool call does. A request that starts no workflow is allowed.',
+      'Decides which requests start this workflow. Without conditions it runs on every stage: model input, tool calls, tool results, model output and agent messages. A request that starts no workflow is allowed.',
     inputs: [],
     outputs: [
       {
@@ -230,7 +240,7 @@ const specs: BlockSpec[] = [
     create: () => ({ type: 'trigger', mode: 'all', conditions: [] }),
     summary: (node) =>
       node.type !== 'trigger' || node.conditions.length === 0
-        ? 'Every prompt and tool call'
+        ? 'Any stage'
         : node.conditions.map((c) => conditionText(c)).join(node.mode === 'all' ? ' and ' : ' or '),
   },
   {
@@ -238,7 +248,8 @@ const specs: BlockSpec[] = [
     nodeType: 'match',
     group: 'Routing',
     label: 'Route',
-    description: 'Send requests down different paths by tool, tier, server, team, device or model.',
+    description:
+      'Send requests down different paths by stage, tool, tier, server, team, device or model.',
     inputs: ['tool', 'identity', 'device', 'key_storage'],
     outputs: [
       {
@@ -264,6 +275,7 @@ const specs: BlockSpec[] = [
   },
   checkBlock('fingerprint', {
     group: 'Device',
+    appliesTo: requestStages,
     label: 'Device fingerprint',
     description:
       'Compares the device presenting the token with the one it was issued to. Approving a request that came through New device also trusts that device.',
@@ -283,6 +295,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('posture', {
     group: 'Device',
+    appliesTo: requestStages,
     label: 'Device posture (EDR)',
     description:
       'Reads the CrowdStrike Zero Trust score for the device. A raised detection or a contained host leaves through Compromised; a stale, missing or unconfirmed score through Unknown.',
@@ -313,6 +326,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('os_posture', {
     group: 'Device',
+    appliesTo: requestStages,
     label: 'OS protections',
     description:
       'Built-in checks the device reports about itself. A baseline for machines without an EDR; fails when a required protection is off.',
@@ -332,6 +346,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('network', {
     group: 'Device',
+    appliesTo: requestStages,
     label: 'Network and location',
     description:
       'Flags the first request from a network this device has not used before, and jumps in location faster than a plane.',
@@ -400,7 +415,7 @@ const specs: BlockSpec[] = [
     group: 'Content',
     label: 'Judge model',
     description:
-      'Sends the input to a model on OpenRouter, or to any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM), and asks for a risk score between 0 and 1. Leaves through Error when the judge is down or times out.',
+      'Sends the input to a model on OpenRouter, or to any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM), and asks for a risk score between 0 and 1. When the judge is down or times out, the workflow fallback decides.',
     inputs: ['content', 'tool'],
     outputs: [
       pass('Passed', ['redact', 'allow', 'untrusted_content']),
@@ -410,7 +425,6 @@ const specs: BlockSpec[] = [
         tone: 'bad',
         next: ['block', 'approve_admin', 'approve_touchid'],
       },
-      { id: 'error', label: 'Error', tone: 'warn', next: ['approve_admin', 'block', 'keywords'] },
     ],
     fields: [
       {
@@ -460,6 +474,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('arguments', {
     group: 'Tool',
+    appliesTo: ['tool_call'],
     label: 'Argument rules',
     description:
       'Refuses a tool call when an argument does not match its allowed pattern, for example email_send may only send to @company.com.',
@@ -481,6 +496,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('tool_pinning', {
     group: 'Tool',
+    appliesTo: ['tool_call'],
     label: 'Tool definition pin',
     description:
       'Compares the tool with the definition an admin pinned. A changed name, description or schema is how tool poisoning and rug pulls arrive.',
@@ -494,6 +510,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('untrusted_content', {
     group: 'Session',
+    appliesTo: ['model_request', 'tool_call'],
     label: 'Untrusted content guard',
     description:
       'Prompt-injection guard. After the session reads untrusted content (a web page, an inbox, a ticket), requests leave through Recently read for the length of the window.',
@@ -515,6 +532,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('hook', {
     group: 'Session',
+    appliesTo: ['tool_call'],
     label: 'Started by Claude Code',
     description:
       "Checks that Claude Code's own hook recorded this exact tool call. A call without a record came from something else holding the session.",
@@ -533,6 +551,7 @@ const specs: BlockSpec[] = [
   }),
   checkBlock('idle', {
     group: 'Session',
+    appliesTo: requestStages,
     label: 'User at the keyboard',
     description:
       'Uses keyboard and mouse idle time on the device. An agent acting while nobody is there is worth a second look.',
@@ -551,6 +570,22 @@ const specs: BlockSpec[] = [
     ],
     defaults: { type: 'idle', maxMinutes: 30 },
     summary: (c) => `Idle under ${c.maxMinutes} min`,
+  }),
+  checkBlock('limit', {
+    group: 'Session',
+    label: 'Usage limit',
+    description:
+      'Reads a rule from the Limits page set to "let the workflow decide": spend in USD, tokens, GPU time or requests for the user, their group or the org. Under the warning level the request passes; past it, it leaves through Near limit; past the limit, through Over limit.',
+    inputs: ['usage', 'identity'],
+    appliesTo: ['model_request', 'tool_call', 'agent_message'],
+    outputs: [
+      pass('Under limit', ['keywords', 'allow', 'route']),
+      { id: 'warn', label: 'Near limit', tone: 'warn', next: ['allow', 'approve_confirm'] },
+      { id: 'over', label: 'Over limit', tone: 'bad', next: ['block', 'approve_admin'] },
+    ],
+    fields: [{ kind: 'limit', key: 'limitId', label: 'Limit' }],
+    defaults: { type: 'limit', limitId: '' },
+    summary: (c) => (c.limitId ? 'Usage against a limit' : 'No limit selected'),
   }),
   {
     id: 'allow',

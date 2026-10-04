@@ -1,8 +1,10 @@
+import { kindLabels } from '@acl/shared'
 import { Badge, Button, Card, EmptyState, Table, TBody, TD, TH, THead, TR } from '@acl/ui'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Bot, Check, MonitorSmartphone, Wrench, X } from 'lucide-react'
+import { Check, MonitorSmartphone, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { kindIcons } from '#/components/event-bits.tsx'
 import { Segmented } from '#/components/filters.tsx'
 import { timeAgo } from '#/lib/format.ts'
 import { useLive } from '#/lib/live.tsx'
@@ -150,7 +152,7 @@ function PendingCard({
   const now = useNow()
   const a = row.approval
   const left = Math.max(0, Math.round((new Date(a.expiresAt).getTime() - now) / 1000))
-  const Icon = a.trustsDevice ? MonitorSmartphone : a.kind === 'tool_call' ? Wrench : Bot
+  const Icon = a.trustsDevice ? MonitorSmartphone : kindIcons[a.kind]
 
   return (
     <Card className="flex items-start gap-4 border-warn/30 px-4 py-3">
@@ -160,11 +162,7 @@ function PendingCard({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13px] font-medium">
-            {a.trustsDevice
-              ? 'New device sign-in'
-              : a.kind === 'tool_call'
-                ? 'Tool call'
-                : 'Prompt'}
+            {a.trustsDevice ? 'New device sign-in' : kindLabels[a.kind]}
           </span>
           {a.reasons.map((r) => (
             <Badge key={r} tone="warn">

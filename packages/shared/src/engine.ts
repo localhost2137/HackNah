@@ -1,19 +1,25 @@
-import type { ApprovalMethod, CheckResult, EventKind, WorkflowRef } from './events.ts'
+import { blocks } from './blocks.ts'
 import {
-  type CheckConfig,
-  type CheckNode,
-  type CheckType,
-  type Condition,
-  type JudgeCheck,
-  type KeyStorage,
-  type MatchNode,
-  nodeOutputs,
-  type OsPostureKey,
-  type PolicyGraph,
-  type PolicyNode,
-  type RedactConfig,
-  type ToolTier,
-  type TriggerNode,
+  type ApprovalMethod,
+  type CheckResult,
+  type EventKind,
+  kindLabels,
+  type WorkflowRef,
+} from './events.ts'
+import type {
+  CheckConfig,
+  CheckNode,
+  CheckType,
+  Condition,
+  JudgeCheck,
+  KeyStorage,
+  MatchNode,
+  OsPostureKey,
+  PolicyGraph,
+  PolicyNode,
+  RedactConfig,
+  ToolTier,
+  TriggerNode,
 } from './workflow.ts'
 
 export type DeviceStatus = 'trusted' | 'new' | 'mismatch' | 'revoked'
@@ -69,8 +75,13 @@ export type EvaluationInput = {
 
 export type JudgeVerdict = { score: number; reason: string }
 
+/** Where the user stands against one limit. */
+export type LimitStatus = { state: 'ok' | 'warn' | 'over'; reason: string }
+
 export type EngineDeps = {
   judge?: (check: JudgeCheck, input: EvaluationInput) => Promise<JudgeVerdict>
+  /** Reads a limit for the `limit` block; the block is skipped without it. */
+  limit?: (limitId: string, input: EvaluationInput) => Promise<LimitStatus>
   now?: () => number
 }
 
@@ -147,6 +158,13 @@ export async function evaluateGraph(
     if (node.type === 'decision') {
       if (node.action !== 'require_approval')
         return finish(node.action, { stepId: node.id, reason: node.reason })
+      // Streamed output can't wait minutes for someone to decide.
+      if (input.kind === 'model_output')
+        return finish('block', {
+          stepId: node.id,
+          reason:
+            node.reason || 'Model output needs approval, which streamed output cannot wait for',
+        })
       const approval = resolveApproval(node.method, input.signals)
       if (approval.satisfied)
         return finish('allow', { stepId: node.id, reason: approval.satisfied, method: node.method })
@@ -172,13 +190,20 @@ export async function evaluateGraph(
     } else if (node.type === 'check') {
       const started = now()
       const result = await runCheck(node, input, deps)
-      branch = result.branch
       checks.push({
         stepId: node.id,
         type: node.check.type,
         durationMs: Math.round(now() - started),
         ...result,
+        branch: result.outcome === 'error' ? undefined : result.branch,
       })
+      // A check that could not run is treated like an output with nothing connected.
+      if (result.outcome === 'error')
+        return finish(graph.fallback, {
+          stepId: '(fallback)',
+          reason: `${result.reason} (workflow fallback: ${graph.fallback})`,
+        })
+      branch = result.branch
       if (node.enabled && node.check.type === 'redact') redact = node.check
       if (node.check.type === 'fingerprint' && branch === 'new') trustsDevice = true
     }
@@ -228,12 +253,14 @@ export async function evaluateWorkflows(
   input: EvaluationInput,
   deps: EngineDeps = {},
 ): Promise<CombinedResult> {
+  const now = deps.now ?? (() => performance.now())
   const selected = selectWorkflows(workflows, input)
   const results = await Promise.all(
-    selected.map(async (w) => ({
-      workflow: w,
-      result: await evaluateGraph(w.definition, input, deps),
-    })),
+    selected.map(async (w) => {
+      const started = now()
+      const result = await evaluateGraph(w.definition, input, deps)
+      return { workflow: w, result, durationMs: Math.round(now() - started) }
+    }),
   )
   return combineResults(results)
 }
@@ -245,9 +272,16 @@ export function combineResults(
   results: {
     workflow: Pick<ActiveWorkflow, 'id' | 'name' | 'version'>
     result: EvaluationResult
+    durationMs?: number
   }[],
 ): CombinedResult {
-  const workflows = results.map(({ workflow: { id, name, version } }) => ({ id, name, version }))
+  const workflows = results.map(({ workflow: { id, name, version }, result, durationMs }) => ({
+    id,
+    name,
+    version,
+    decision: result.decision,
+    ...(durationMs === undefined ? {} : { durationMs }),
+  }))
   const checks = results.flatMap(({ workflow, result }) =>
     result.checks.map((c) => ({ ...c, workflowId: workflow.id })),
   )
@@ -488,6 +522,17 @@ const runners: { [T in CheckType]: Runner<T> } = {
       reason: 'Tool call not started by Claude Code (no matching hook record)',
     }
   },
+  limit: async (check, input, deps) => {
+    if (!check.limitId) return { outcome: 'skipped', branch: 'pass', reason: 'No limit selected' }
+    if (!deps.limit) return noSignal
+    const status = await deps.limit(check.limitId, input)
+    if (status.state === 'ok') return { ...passed, reason: status.reason || undefined }
+    return {
+      outcome: 'fail',
+      branch: status.state,
+      reason: status.reason,
+    }
+  },
   idle: (check, input) => {
     const minutes = input.signals?.userIdleMinutes
     if (minutes === undefined) return noSignal
@@ -503,14 +548,16 @@ async function runCheck(
 ): Promise<Outcome> {
   if (!node.enabled) return { outcome: 'skipped', reason: 'disabled', branch: 'pass' }
   const check = node.check
+  const stages = blocks[check.type].appliesTo
+  if (stages && !stages.includes(input.kind))
+    return { outcome: 'skipped', branch: 'pass', reason: `Not used on ${kindLabels[input.kind]}` }
   try {
     const run = runners[check.type] as Runner<CheckType>
     return await run(check, input, deps)
   } catch (err) {
-    const outputs = nodeOutputs(node)
     return {
       outcome: 'error',
-      branch: outputs.includes('error') ? 'error' : outputs.includes('fail') ? 'fail' : 'pass',
+      branch: 'pass',
       reason: `${check.type} failed: ${err instanceof Error ? err.message : String(err)}`,
     }
   }
@@ -534,6 +581,13 @@ export function conditionHolds(c: Condition, input: EvaluationInput): boolean {
       return c.values.includes(input.kind)
     case 'mcpServer':
       return input.mcpServerId != null && c.values.includes(input.mcpServerId)
+    case 'source':
+      return (
+        input.toolName != null &&
+        c.values.includes(
+          input.mcpServerId || input.toolName.startsWith('mcp__') ? 'mcp' : 'builtin',
+        )
+      )
     case 'tool':
       return input.toolName != null && c.values.some((p) => toolMatches(p, input.toolName!))
     case 'resource':

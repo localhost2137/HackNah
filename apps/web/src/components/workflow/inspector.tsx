@@ -6,17 +6,24 @@ import type {
   PolicyNode,
   TriggerNode,
 } from '@acl/shared'
-import { blockOf, blocks, inputLabels, palette } from '@acl/shared'
+import { blockOf, blocks, eventKind, inputLabels, kindLabels, palette } from '@acl/shared'
 import { Button, Field, Input, Select, Switch } from '@acl/ui'
 import { Plus, Trash2, X } from 'lucide-react'
 import { toneColor } from './graph-nodes.tsx'
 import { CheckboxGroup, FieldForm } from './step-form.tsx'
 
 export type Option = { value: string; label: string }
-export type PickerOptions = { servers: Option[]; resources: Option[]; groups: Option[] }
+export type PickerOptions = {
+  servers: Option[]
+  resources: Option[]
+  groups: Option[]
+  /** Limits a Limit block can read. */
+  limits?: Option[]
+}
 
 const fields: { value: Condition['field']; label: string }[] = [
-  { value: 'kind', label: 'Request kind' },
+  { value: 'kind', label: 'Stage' },
+  { value: 'source', label: 'Tool source' },
   { value: 'mcpServer', label: 'MCP server' },
   { value: 'tool', label: 'Tool name' },
   { value: 'resource', label: 'Resource' },
@@ -27,9 +34,11 @@ const fields: { value: Condition['field']; label: string }[] = [
   { value: 'keyStorage', label: 'Device key storage' },
 ]
 
-const kinds: Option[] = [
-  { value: 'model_request', label: 'Prompts' },
-  { value: 'tool_call', label: 'Tool calls' },
+const kinds: Option[] = eventKind.options.map((value) => ({ value, label: kindLabels[value] }))
+
+const sources: Option[] = [
+  { value: 'mcp', label: 'MCP server' },
+  { value: 'builtin', label: 'Built-in (Bash, Edit, …)' },
 ]
 
 const deviceStatuses: Option[] = [
@@ -124,6 +133,7 @@ function NodeForm({
         <FieldForm
           fields={block.fields}
           value={node.check}
+          limits={options.limits}
           onChange={(patch) =>
             onChange({ ...node, check: { ...node.check, ...patch } } as PolicyNode)
           }
@@ -306,6 +316,9 @@ function ConditionRow({
   switch (condition.field) {
     case 'kind':
       editor = picker(kinds, '')
+      break
+    case 'source':
+      editor = picker(sources, '')
       break
     case 'deviceStatus':
       editor = picker(deviceStatuses, '')

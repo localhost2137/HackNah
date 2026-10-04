@@ -78,6 +78,12 @@ export const networkCheck = z.object({
 
 export const hookCheck = z.object({ type: z.literal('hook') })
 
+/** Reads a rule from the Limits page whose action is "let the workflow decide". */
+export const limitCheck = z.object({
+  type: z.literal('limit'),
+  limitId: z.string().default(''),
+})
+
 export const idleCheck = z.object({
   type: z.literal('idle'),
   maxMinutes: z.number().int().min(1).max(1440).default(30),
@@ -96,6 +102,7 @@ export const checkConfig = z.discriminatedUnion('type', [
   networkCheck,
   hookCheck,
   idleCheck,
+  limitCheck,
 ])
 export type CheckConfig = z.infer<typeof checkConfig>
 export type CheckType = CheckConfig['type']
@@ -110,7 +117,10 @@ export type KeyStorage = z.infer<typeof keyStorage>
 const patterns = z.array(z.string().min(1))
 
 export const condition = z.discriminatedUnion('field', [
+  /** The stage: model input, tool call, tool result, model output or agent message. */
   z.object({ field: z.literal('kind'), values: z.array(eventKind) }),
+  /** Whether a tool comes from a connected MCP server or is built into the agent. */
+  z.object({ field: z.literal('source'), values: z.array(z.enum(['mcp', 'builtin'])) }),
   z.object({ field: z.literal('mcpServer'), values: z.array(z.string()) }),
   /** Glob patterns (`*` wildcard) on the tool name, e.g. `delete_*` or `Bash`. */
   z.object({ field: z.literal('tool'), values: patterns }),
@@ -194,8 +204,12 @@ export type PolicyEdge = z.infer<typeof policyEdge>
 
 export const policyGraph = z.object({
   nodes: z.array(policyNode).max(200),
-  edges: z.array(policyEdge).max(400),
-  /** What happens when a request reaches an output with nothing connected. */
+  // Checks no longer have an Error output; a failing check follows the fallback.
+  edges: z
+    .array(policyEdge)
+    .max(400)
+    .transform((edges) => edges.filter((e) => e.sourceHandle !== 'error')),
+  /** What happens when a request reaches an output with nothing connected, or a check errors. */
   fallback: z.enum(['allow', 'block']).default('block'),
 })
 export type PolicyGraph = z.infer<typeof policyGraph>

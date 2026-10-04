@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateGraph, evaluateWorkflows, matchKeywords, selectWorkflows } from './engine.ts'
-import { defaultWorkflow, type PolicyGraph, type PolicyNode, validateGraph } from './workflow.ts'
+import {
+  defaultWorkflow,
+  type PolicyGraph,
+  type PolicyNode,
+  policyGraph,
+  validateGraph,
+} from './workflow.ts'
 
 const input = {
   kind: 'model_request' as const,
@@ -101,7 +107,6 @@ describe('evaluateGraph', () => {
         edge('writes', 'else', 'allow'),
         edge('judge', 'pass', 'allow'),
         edge('judge', 'fail', 'approve'),
-        edge('judge', 'error', 'approve'),
       ],
     }
     const tool = { ...input, kind: 'tool_call' as const, mcpServerId: 'gh' }
@@ -124,8 +129,10 @@ describe('evaluateGraph', () => {
         },
       },
     )
-    expect(down.checks.find((c) => c.stepId === 'judge')?.branch).toBe('error')
-    expect(down.decision).toBe('pending')
+    // A judge that cannot answer follows the workflow fallback, like an unconnected output.
+    expect(down.checks.find((c) => c.stepId === 'judge')?.outcome).toBe('error')
+    expect(down.decision).toBe(wf.fallback)
+    expect(down.reasons.at(-1)).toContain('workflow fallback')
   })
 
   it('uses the fallback when an output is not connected', async () => {
@@ -290,6 +297,189 @@ describe('evaluateWorkflows', () => {
     expect(r.decision).toBe('pending')
     expect(r.approvalMethod).toBe('admin')
     expect(r.reasons).not.toContain('Needs Touch ID on the device')
+  })
+  it('records what each workflow decided and how long it took', async () => {
+    let t = 0
+    const r = await evaluateWorkflows(
+      [
+        workflow('allow', graph({}, decision('a', 'allow'))),
+        workflow('block', graph({}, decision('b', 'block'))),
+      ],
+      toolCall,
+      { now: () => (t += 5) },
+    )
+    expect(r.workflows.map((w) => `${w.id}:${w.decision}`)).toEqual(['allow:allow', 'block:block'])
+    expect(r.workflows.every((w) => typeof w.durationMs === 'number')).toBe(true)
+  })
+
+  it('a workflow without trigger conditions runs on every stage', () => {
+    const any = workflow('any', graph({}, decision('a', 'allow')))
+    const outputsOnly = workflow(
+      'outputs',
+      graph({ conditions: [{ field: 'kind', values: ['model_output'] }] }, decision('a', 'allow')),
+    )
+    for (const kind of ['model_request', 'tool_result', 'model_output', 'agent_message'] as const) {
+      const picked = selectWorkflows([any, outputsOnly], { ...input, kind })
+      expect(picked.map((w) => w.id)).toEqual(
+        kind === 'model_output' ? ['any', 'outputs'] : ['any'],
+      )
+    }
+  })
+})
+
+describe('stages', () => {
+  const chain = (check: PolicyNode, fallback: 'allow' | 'block' = 'block'): PolicyGraph => ({
+    fallback,
+    nodes: [
+      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+      check,
+      decision('allow', 'allow'),
+      decision('block', 'block'),
+    ],
+    edges: [
+      edge('start', 'next', check.id),
+      edge(check.id, 'pass', 'allow'),
+      edge(check.id, 'fail', 'block'),
+      edge(check.id, 'mismatch', 'block'),
+      edge(check.id, 'over', 'block'),
+      edge(check.id, 'warn', 'allow'),
+    ],
+  })
+  const check = (c: Extract<PolicyNode, { type: 'check' }>['check']): PolicyNode => ({
+    id: 'c',
+    type: 'check',
+    position: at,
+    enabled: true,
+    check: c,
+  })
+
+  it('skips device checks on tool results and model output', async () => {
+    const wf = chain(check({ type: 'fingerprint' }))
+    for (const kind of ['tool_result', 'model_output'] as const) {
+      const r = await evaluateGraph(wf, { ...input, kind, deviceStatus: 'mismatch' })
+      expect(r.decision).toBe('allow')
+      expect(r.checks[0]).toMatchObject({
+        outcome: 'skipped',
+        reason: expect.stringMatching(/^Not used on/),
+      })
+    }
+    const prompt = await evaluateGraph(wf, { ...input, deviceStatus: 'mismatch' })
+    expect(prompt.decision).toBe('block')
+  })
+
+  it('applies argument rules only to tool calls', async () => {
+    const wf = chain(
+      check({
+        type: 'arguments',
+        rules: [{ tool: '*', argument: 'to', pattern: '@co\\.com$', message: '' }],
+      }),
+    )
+    const args = { toolName: 'mail__send', toolArguments: { to: 'x@evil.example' } }
+    expect((await evaluateGraph(wf, { ...input, ...args, kind: 'tool_call' })).decision).toBe(
+      'block',
+    )
+    expect((await evaluateGraph(wf, { ...input, ...args, kind: 'tool_result' })).decision).toBe(
+      'allow',
+    )
+  })
+
+  it('scans model output for keywords', async () => {
+    const wf = chain(
+      check({
+        type: 'keywords',
+        patterns: ['BEGIN RSA PRIVATE KEY'],
+        mode: 'substring',
+        caseSensitive: false,
+      }),
+    )
+    const leak = await evaluateGraph(wf, {
+      ...input,
+      kind: 'model_output',
+      text: 'here you go: -----BEGIN RSA PRIVATE KEY-----',
+    })
+    expect(leak.decision).toBe('block')
+    const clean = await evaluateGraph(wf, { ...input, kind: 'model_output', text: 'done' })
+    expect(clean.decision).toBe('allow')
+  })
+
+  it('turns an approval on model output into a block', async () => {
+    const wf: PolicyGraph = {
+      fallback: 'allow',
+      nodes: [
+        { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+        decision('hold', 'require_approval'),
+      ],
+      edges: [edge('start', 'next', 'hold')],
+    }
+    expect((await evaluateGraph(wf, { ...input, kind: 'model_output' })).decision).toBe('block')
+    expect((await evaluateGraph(wf, { ...input, kind: 'tool_call' })).decision).toBe('pending')
+  })
+
+  it('routes on the tool source', async () => {
+    const wf: PolicyGraph = {
+      fallback: 'block',
+      nodes: [
+        { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
+        {
+          id: 'mcp',
+          type: 'match',
+          position: at,
+          label: '',
+          mode: 'all',
+          conditions: [{ field: 'source', values: ['mcp'] }],
+        },
+        decision('allow', 'allow'),
+        decision('block', 'block'),
+      ],
+      edges: [
+        edge('start', 'next', 'mcp'),
+        edge('mcp', 'match', 'block'),
+        edge('mcp', 'else', 'allow'),
+      ],
+    }
+    const call = { ...input, kind: 'tool_call' as const }
+    expect((await evaluateGraph(wf, { ...call, toolName: 'Bash' })).decision).toBe('allow')
+    expect(
+      (await evaluateGraph(wf, { ...call, toolName: 'gh__x', mcpServerId: 'gh' })).decision,
+    ).toBe('block')
+    expect((await evaluateGraph(wf, { ...call, toolName: 'mcp__srv__x' })).decision).toBe('block')
+  })
+
+  it('leaves a limit block through its state', async () => {
+    const wf = chain(check({ type: 'limit', limitId: 'lim_1' }))
+    const at = (state: 'ok' | 'warn' | 'over') => ({
+      limit: async () => ({ state, reason: `$${state}` }),
+    })
+    const r = (state: 'ok' | 'warn' | 'over') => evaluateGraph(wf, input, at(state))
+    expect((await r('ok')).decision).toBe('allow')
+    expect((await r('warn')).checks[0]?.branch).toBe('warn')
+    const over = await r('over')
+    expect(over.decision).toBe('block')
+    expect(over.reasons).toContain('$over')
+    // Without a limit source (e.g. the dry run of an old client) the block is skipped.
+    expect((await evaluateGraph(wf, input)).checks[0]?.outcome).toBe('skipped')
+  })
+
+  it('follows the fallback when a check errors', async () => {
+    const judge = check({
+      type: 'judge',
+      endpoint: 'http://judge.local/v1/chat/completions',
+      model: 'm',
+      threshold: 0.5,
+      timeoutMs: 1000,
+      instructions: '',
+    })
+    const failing = { judge: async () => Promise.reject(new Error('timeout')) }
+    expect((await evaluateGraph(chain(judge, 'block'), input, failing)).decision).toBe('block')
+    expect((await evaluateGraph(chain(judge, 'allow'), input, failing)).decision).toBe('allow')
+  })
+
+  it('drops edges from the removed Error output of saved graphs', () => {
+    const parsed = policyGraph.parse({
+      ...defaultWorkflow,
+      edges: [...defaultWorkflow.edges, edge('keywords', 'error', 'block')],
+    })
+    expect(parsed.edges.some((e) => e.sourceHandle === 'error')).toBe(false)
   })
 })
 

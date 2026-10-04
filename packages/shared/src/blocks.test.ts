@@ -238,7 +238,7 @@ describe('plugin checks', () => {
     }
     const r = await leave(check, { toolArguments: { to: 'dev@company.com' } })
     expect(r.outcome).toBe('error')
-    expect(r.branch).toBe('fail')
+    expect(r.branch).toBeUndefined()
   })
 })
 

@@ -1,4 +1,5 @@
 import type { Decision, EventKind, GatewayEvent } from '@acl/shared'
+import { eventKind, kindLabels } from '@acl/shared'
 import {
   Badge,
   Button,
@@ -265,9 +266,12 @@ function EventsPage() {
             setSearch({ kind: (e.target.value || undefined) as EventKind | undefined })
           }
         >
-          <option value="">All kinds</option>
-          <option value="model_request">Model requests</option>
-          <option value="tool_call">Tool calls</option>
+          <option value="">All stages</option>
+          {eventKind.options.map((k) => (
+            <option key={k} value={k}>
+              {kindLabels[k]}
+            </option>
+          ))}
         </Select>
         <Input
           className="w-64"
