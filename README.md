@@ -21,27 +21,56 @@ Durable Objects).
 ## How a request flows
 
 ```
-Claude Code ──► /v1/messages ──► workflow ──► openrouter.ai (Anthropic-compatible API)
-            ──► /mcp          ──► access + rate limit + workflow ──► GitHub / Jira / ... MCP
-            ──► /v1/acl/hooks/pre-tool-use (Bash, Edit, ...) ──► workflow
-                         │
-                         ├─ pending ──► ApprovalDO ──WebSocket──► dashboard Logs
-                         └─ event ──► Queue ──► D1 (metadata) + R2 (payloads)
+                     ┌──────────────── gateway (one Worker) ─────────────────────────────┐
+Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Model input ─► Tool result (each) ─┐
+                     │                                                                     ▼
+            ◄── output guard ◄─ Model output (text) + Tool call / Agent message (tool_use) ◄─ upstream
+                     │            Anthropic API (OpenRouter, Anthropic)  or  OpenAI API (Ollama, vLLM, ...)
+            ──► /mcp ─► access ─► limits ─► Tool call ─► MCP server ─► Tool result ─► agent
+            ──► /v1/acl/hooks/pre-tool-use (Bash, Edit, ...) ─► cached verdict, else limits ─► Tool call
+                     │
+                     ├─ pending ──► ApprovalDO ──WebSocket──► dashboard Logs
+                     └─ event (stage, decision, cost, timing) ──► Queue ──► D1 + R2 (payloads)
 ```
+
+- **Stages.** Every workflow runs on one or more stages: *Model input* (what the user turn sends to the model),
+  *Tool call* (arguments, built-in or MCP), *Tool result* (what a tool returned, checked before the model reads
+  it), *Model output* (text and tool calls the model generated) and *Agent message* (a task handed to a subagent
+  and its reply). A start node without conditions runs on all of them. Blocks that say nothing about a stage are
+  skipped there (a device fingerprint on a tool result, argument rules on model output). Every matching workflow
+  runs and the strictest outcome wins; a check that errors follows the workflow's fallback.
+- **Output guard.** Streamed answers are inspected block by block: text is released behind a 200-character
+  hold-back after the deterministic checks (so a secret can't leak in pieces) and redacted on the way, the judge
+  runs when a block is complete, and a failing answer ends with a notice instead of an error. Tool calls are held
+  until their arguments are complete; a refused call becomes a notice and the stop reason is corrected. The first
+  stage that checks a tool call stores the verdict in the session, so the hook and the MCP endpoint reuse it.
+- **Tool results.** A refused result is withheld from the model (`[Tool result withheld by AI Control Layer: …]`)
+  and the turn goes on. MCP results are checked at the MCP endpoint; built-in results when the next model request
+  carries them.
+- **Limits.** Requests, requests at once, tokens, USD and GPU-seconds, for models, MCP servers, tools, resources or
+  the guardrails' own judge calls; counted per user, per member of a group, for a group in total (All members
+  included) or for the org. Past the limit a rule blocks, warns, or leaves it to a *Usage limit* block in a
+  workflow (e.g. route over-budget requests to an approval). Budgets are compared with spend so far and charged
+  after the call, cache reads and writes included, and `max_tokens` is capped to what a budget has left.
 
 - **Auth.** The plugin logs in with the OAuth device flow. It gets a 15-minute JWT bound to a hash of the machine
   fingerprint, plus a rotating refresh token with reuse detection. The same token presented with a different
   fingerprint is flagged as `mismatch`. The workflow's fingerprint node routes it to a block or an approval.
 - **Sessions.** Claude Code's session id is pinned to the first user and device that use it (`SessionDO`). The
   session also stores the resource scope picked with `/acl resources` and the redaction vault.
-- **Workflow.** Each organization has one versioned policy graph (draft, then publish), edited with React Flow.
+- **Workflow.** Each workflow is a versioned policy graph (draft, then publish), edited with React Flow.
   Route nodes match on request kind, MCP server, tool, resource, group, device or model, so different tools can
   take stricter or looser paths. Check nodes (fingerprint, keywords, judge, redact) branch on their result, and
   every path ends in allow, approval or block. `evaluateGraph()` in `packages/shared` runs it in the gateway and
   in the editor's dry run, and each event stores the path it took.
-- **Models.** The gateway forwards Anthropic Messages requests to OpenRouter with the organization's
-  `OPENROUTER_API_KEY`. Claude Code is only guaranteed to work with Anthropic models there. The judge step can use
-  OpenRouter too (`https://openrouter.ai/api/v1/chat/completions`), with the same key.
+- **Models.** The Models page is the catalog: a pattern over model ids, where it is served, and what it costs
+  (per million input, output, cache-write and cache-read tokens for API models; per GPU-hour for local ones).
+  Requests go to the first matching entry; once the catalog has entries, other models are refused, `/v1/models`
+  lists the ones the user's groups allow, and groups pick models from it. An entry speaks the Anthropic Messages
+  API (passed through) or an OpenAI-compatible chat completions API (Ollama, vLLM, LM Studio, llama.cpp, OpenRouter),
+  which the gateway translates both ways, streams and tool calls included. With an empty catalog everything goes
+  to OpenRouter with `OPENROUTER_API_KEY`, as before. The judge calls any OpenAI-compatible endpoint, local ones
+  included.
 - **Dashboard login.** Email and password, or OIDC single sign-on (Settings → Single sign-on).
   People on the configured email domain must use SSO and join as members; admins keep password login as a
   fallback. Removing a member also revokes their Claude Code devices.
