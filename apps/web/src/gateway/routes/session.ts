@@ -84,6 +84,7 @@ export const pluginApi = new Hono<AppEnv>()
         text: args,
         toolName: body.data.tool_name,
         resourceIds: session.state?.resourceIds ?? [],
+        toolArguments: body.data.tool_input,
       },
       { eventId, sessionId: session.id, summary: `${body.data.tool_name}: ${args.slice(0, 200)}` },
     )
@@ -101,7 +102,7 @@ export const pluginApi = new Hono<AppEnv>()
       decision: result.decision,
       checks: result.checks,
       riskScore: result.riskScore,
-      workflowVersion: result.workflowVersion,
+      workflows: result.workflows,
       inputTokens: null,
       outputTokens: null,
       latencyMs: Date.now() - started,

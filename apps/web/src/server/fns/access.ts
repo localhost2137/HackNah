@@ -9,7 +9,7 @@ import {
   resourceGrant,
   user,
 } from '@acl/db'
-import { randomId } from '@acl/shared'
+import { normalizePermissions, randomId } from '@acl/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
@@ -230,6 +230,7 @@ export const listGroups = createServerFn({ method: 'GET' })
       .where(and(eq(resource.orgId, orgId), eq(resourceGrant.subjectType, 'group')))
     return groups.map((g) => ({
       ...g,
+      permissions: normalizePermissions(g.permissions),
       members: g.isDefault
         ? everyone.map((m) => ({ ...m, groupId: g.id }))
         : members.filter((m) => m.groupId === g.id),
@@ -342,10 +343,22 @@ export const setGroupPermissions = createServerFn({ method: 'POST' })
   .validator(
     z.object({
       groupId: z.string(),
-      permissions: z.object({ models: patterns, builtinTools: patterns }),
+      permissions: z.object({
+        models: patterns,
+        builtinTools: patterns,
+        /** Server id (or `*`) to tool name patterns; leave a server out to hide it. */
+        mcp: z.record(z.string(), patterns.min(1)).default({}),
+      }),
     }),
   )
   .handler(async ({ data, context: { db, orgId, user: me } }) => {
+    const servers = new Set(
+      (await db.select({ id: mcpServer.id }).from(mcpServer).where(eq(mcpServer.orgId, orgId))).map(
+        (s) => s.id,
+      ),
+    )
+    if (Object.keys(data.permissions.mcp).some((id) => id !== '*' && !servers.has(id)))
+      throw new Error('Unknown MCP server')
     const [row] = await db
       .update(group)
       .set({ permissions: data.permissions })
@@ -358,6 +371,40 @@ export const setGroupPermissions = createServerFn({ method: 'POST' })
       action: 'group.permissions',
       target: row.id,
       data: data.permissions,
+    })
+    return { ok: true }
+  })
+
+/** Sets which tools of one MCP server a group may call. No patterns hides the server. */
+export const setGroupMcpTools = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(z.object({ groupId: z.string(), serverId: z.string(), tools: patterns }))
+  .handler(async ({ data, context: { db, orgId, user: me } }) => {
+    const [g, server] = await Promise.all([
+      db.query.group.findFirst({ where: and(eq(group.id, data.groupId), eq(group.orgId, orgId)) }),
+      db.query.mcpServer.findFirst({
+        where: and(eq(mcpServer.id, data.serverId), eq(mcpServer.orgId, orgId)),
+      }),
+    ])
+    if (!g) throw new Error('Group not found')
+    if (!server) throw new Error('Unknown MCP server')
+    const permissions = normalizePermissions(g.permissions)
+    const { [server.id]: before = [], ...mcp } = permissions.mcp
+    await db
+      .update(group)
+      .set({
+        permissions: {
+          ...permissions,
+          mcp: data.tools.length ? { ...mcp, [server.id]: data.tools } : mcp,
+        },
+      })
+      .where(eq(group.id, g.id))
+    await audit(db, {
+      orgId,
+      actorId: me.id,
+      action: 'group.mcp_tools',
+      target: g.id,
+      data: { serverId: server.id, before, after: data.tools },
     })
     return { ok: true }
   })

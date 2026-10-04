@@ -9,7 +9,7 @@ import { adminMiddleware } from '../middleware.ts'
 export const timeRange = z.enum(['1h', '24h', '7d', '30d'])
 export type TimeRange = z.infer<typeof timeRange>
 
-const rangeMs: Record<TimeRange, number> = {
+export const rangeMs: Record<TimeRange, number> = {
   '1h': 3_600_000,
   '24h': 86_400_000,
   '7d': 7 * 86_400_000,

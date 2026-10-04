@@ -24,7 +24,13 @@ export type ApprovalMethod = z.infer<typeof approvalMethod>
 export const checkOutcome = z.enum(['pass', 'fail', 'error', 'skipped'])
 export type CheckOutcome = z.infer<typeof checkOutcome>
 
+/** Which published workflow version took part in a decision. */
+export const workflowRef = z.object({ id: z.string(), name: z.string(), version: z.number() })
+export type WorkflowRef = z.infer<typeof workflowRef>
+
 export const checkResult = z.object({
+  /** The workflow this step belongs to; absent for checks outside any workflow. */
+  workflowId: z.string().optional(),
   stepId: z.string(),
   type: z.string(),
   outcome: checkOutcome,
@@ -54,7 +60,8 @@ export const gatewayEvent = z.object({
   decision,
   checks: z.array(checkResult),
   riskScore: z.number(),
-  workflowVersion: z.number().nullable(),
+  /** Every workflow that ran; empty when none matched and the request was allowed. */
+  workflows: z.array(workflowRef),
   inputTokens: z.number().nullable(),
   outputTokens: z.number().nullable(),
   latencyMs: z.number(),

@@ -45,7 +45,7 @@ const nav: { title?: string; items: NavItem[] }[] = [
   {
     title: 'Policy',
     items: [
-      { to: '/workflow', label: 'Workflow', icon: ListChecks },
+      { to: '/workflows', label: 'Workflows', icon: ListChecks },
       { to: '/rate-limits', label: 'Rate limits', icon: Gauge },
     ],
   },

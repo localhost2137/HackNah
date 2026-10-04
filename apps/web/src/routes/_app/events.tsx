@@ -165,7 +165,10 @@ function EventsPage() {
           return failed.length ? (
             <div className="flex max-w-64 gap-1 overflow-hidden">
               {failed.map((c) => (
-                <Badge key={c.stepId} tone={c.action === 'block' ? 'bad' : 'warn'}>
+                <Badge
+                  key={`${c.workflowId}:${c.stepId}`}
+                  tone={c.action === 'block' ? 'bad' : 'warn'}
+                >
                   {c.type}
                 </Badge>
               ))}
@@ -394,7 +397,14 @@ function EventDrawer({ id, onClose }: { id: string | undefined; onClose: () => v
               }
             />
             <Meta label="Time" value={dateTime(data.createdAt)} sub={`${data.latencyMs}ms`} />
-            <Meta label="Workflow version" value={data.workflowVersion ?? 'default'} />
+            <Meta
+              label="Workflows"
+              value={
+                data.workflows.length
+                  ? data.workflows.map((w) => `${w.name} v${w.version}`).join(', ')
+                  : 'None matched'
+              }
+            />
             <Meta
               label="Tokens"
               value={
@@ -406,7 +416,7 @@ function EventDrawer({ id, onClose }: { id: string | undefined; onClose: () => v
           </dl>
           <section>
             <h4 className="mb-2 text-xs font-semibold text-muted uppercase">Checks</h4>
-            <CheckList checks={data.checks} />
+            <CheckList checks={data.checks} workflows={data.workflows} />
           </section>
           {data.payload ? (
             <>

@@ -1,9 +1,11 @@
 # AI Control Layer
 
 A control plane for Claude Code: every model request, built-in tool call and MCP tool call goes through
-a gateway that applies the organization's workflow (device fingerprint, dangerous keywords, judge model,
-redaction), rate limits and access rules. A dashboard shows the traffic, handles approvals and manages
-policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
+a gateway that applies the organization's workflows (device fingerprint, dangerous keywords, judge model,
+redaction), rate limits and access rules. Each workflow has start conditions (request kind, tool, MCP
+server, model, ...) and the member groups it runs for; every matching workflow runs and the strictest
+outcome wins, while a request that starts no workflow is allowed. A dashboard shows the traffic, handles
+approvals and manages policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
 Durable Objects).
 
 ## Layout
@@ -156,3 +158,71 @@ D1 migrations and deploys. It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_A
 - Proof-of-possession tokens (DPoP-style key binding) on top of the fingerprint binding.
 - Device-bound dashboard sessions (DBSC, `@dbsc-toolkit/better-auth`).
 - SSO domain verification (DNS TXT). Until then, the first organization to claim an email domain owns it.
+
+## Local MCP investigation environment
+
+Run `pnpm db:setup` once, then `pnpm dev`. Setup creates `.dev.vars` with random development
+secrets only if it is missing, applies local migrations, and seeds the database. Existing secrets,
+accounts, workflows, connections and user-created mock issues are preserved. A model API key is
+not needed for the MCP fixtures. The seed imports TypeScript fixture modules and requires Node
+22.18+ (or a newer supported Node release).
+
+The **Integrations** screen contains three explicitly labeled mock connections, using the normal
+shared-credential, discovery, group-permission and gateway policy paths:
+
+| Connection | Local endpoint | Tools |
+| --- | --- | --- |
+| Datadog (mock) | `/mock-mcp/datadog` | Environment, log search, trace detail, service health, monitors, deployments |
+| Confluence (mock) | `/mock-mcp/confluence` | Environment, page search, full pages |
+| Jira (mock) | `/mock-mcp/jira` | Environment, issue search/detail, create issue, add comment |
+
+These are real stateless MCP Streamable HTTP endpoints with JSON responses, backed by local D1.
+Their tools and response shapes are mock-specific, not exact replicas of vendor APIs. They are
+unavailable in production builds, including with valid mock credentials; the migration creates an
+empty storage table but never installs demo records in a remote database.
+
+**Dataset:** Aurelius Securities is a fictional investment bank. All identities, amounts, telemetry,
+URLs and incidents are synthetic. The seed contains 415 records: 337 logs, 36 linked traces, 8 service
+profiles, 6 monitors, 5 deployments, 10 substantive Confluence pages, 10 Jira issues with discussions,
+and 3 environment manifests. Trace spans and logs share identifiers. Healthy baselines, staging
+traffic, a recovered market-data alert and an explicitly superseded runbook exercise false leads.
+
+The primary story is **PAY-1847**, settlement timeouts following a retry change. A separate sanctions
+feed incident (**RISK-932**) must not be confused with ledger lock contention. There is evidence of
+payment delay, but no evidence of lost funds or duplicate journals. Recovery is incomplete.
+
+Try these investigations through the gateway/plugin once connected:
+
+- “Investigate PAY-1847. Compare failing and healthy traces, find the deployment trigger and cite the
+  current runbook. Explain whether RISK-932 caused the payment failures.”
+- “Should we follow the old bulk-retry procedure? Compare CONF-103 with the current runbook.”
+- “Is the market-data warning still active? What evidence connects it to settlement?”
+- As admin: “Create a follow-up Jira issue for missing replay canary coverage, referencing PAY-1847.
+  Use a stable idempotency key so retries do not create duplicates.”
+
+`seed-member` and the seeded SSO member belong to **Demo investigators**, which grants only read
+access through explicit per-server tool permissions. Enable Jira write tools for a group to exercise
+employee write policies. Resources are also seeded for optional session scoping; no redundant legacy
+resource grants bypass the group tool switches. Created issues/comments persist in D1, are
+attributed upstream to the mock integration bot, and retain employee attribution in gateway logs.
+Creating a ticket is not a simulation of a successful write: it can be retrieved and searched afterward.
+
+**Time and reseeding:** call `get_environment` for the frozen dataset clock before using timestamp
+filters. Ordinary `pnpm db:seed` preserves the timeline and avoids duplicates. To replay the canned
+scenario at the current time, run `pnpm --filter @acl/web db:seed --refresh-mocks`. This replaces only
+the fixed fixture records; it preserves user-created mock issues/comments, credentials, grants and
+workflow configuration. `MOCK_MCP_ORIGIN` can set a different loopback origin during initial setup.
+
+For direct transport testing, use bearer token `local-demo-<provider>-token` (for example,
+`local-demo-datadog-token`), `Content-Type: application/json`, and
+`Accept: application/json, text/event-stream`. Initialize with protocol `2025-06-18` and send
+`MCP-Protocol-Version: 2025-06-18` on subsequent requests. Cross-origin requests are rejected.
+The optional `x-mock-fault` header supports `unauthorized`, `rate-limit`, `unavailable`, `slow`
+(750ms), or `tool-error`. These controls require a valid mock token. GET/SSE is deliberately unsupported
+(405); notifications receive an empty 202 response.
+
+Search supports ordinary ANDed text; Datadog additionally accepts `service:`, `status:`, `env:` and
+`trace_id:` facets. Jira uses explicit project/status/priority filters, not JQL. Lists use `limit` and
+`cursor`; missing records, invalid arguments, and conflicting idempotency keys return explicit errors.
+The existing hy-guard plugin backend-integration gap still applies: these endpoints are ready for the
+current gateway, but this work does not claim to complete that separate plugin protocol migration.

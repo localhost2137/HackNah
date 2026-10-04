@@ -16,7 +16,7 @@ export function policyPreset(strictness: Strictness): PolicyGraph {
   const strict = strictness === 'strict'
   const permissive = strictness === 'permissive'
   const nodes: PolicyNode[] = [
-    { id: 'start', type: 'trigger', position: column(0) },
+    { id: 'start', type: 'trigger', position: column(0), mode: 'all', conditions: [] },
     {
       id: 'fingerprint',
       type: 'check',

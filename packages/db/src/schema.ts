@@ -5,6 +5,7 @@ import type {
   GroupPermissions,
   PolicyGraph,
   RateLimitRule,
+  WorkflowRef,
 } from '@acl/shared'
 import { sql } from 'drizzle-orm'
 import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
@@ -259,7 +260,7 @@ export const event = sqliteTable(
     decision: text().$type<Decision>().notNull(),
     checks: emptyList<CheckResult>(),
     riskScore: real().notNull().default(0),
-    workflowVersion: integer(),
+    workflows: emptyList<WorkflowRef>(),
     inputTokens: integer(),
     outputTokens: integer(),
     latencyMs: integer().notNull(),
@@ -307,12 +308,37 @@ export const approval = sqliteTable(
 // Policy configuration
 // ---------------------------------------------------------------------------
 
-/** Append-only versions of the org's shared workflow. The highest published version is active. */
+/**
+ * A named policy graph. Every enabled workflow whose trigger matches a request and whose groups
+ * include the user runs; the strictest outcome wins.
+ */
+export const workflow = sqliteTable(
+  'workflow',
+  {
+    id: text().primaryKey(),
+    orgId: text().notNull(),
+    name: text().notNull(),
+    description: text(),
+    enabled: bool().notNull().default(true),
+    /** Display order, and the order steps show up in an event. */
+    position: integer().notNull().default(0),
+    /** Groups whose members this workflow runs for. Empty means every member. */
+    groupIds: emptyList<string>(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('workflow_org_idx').on(t.orgId)],
+)
+
+/** Append-only versions of one workflow. Its highest published version is active. */
 export const workflowVersion = sqliteTable(
   'workflow_version',
   {
     id: text().primaryKey(),
     orgId: text().notNull(),
+    workflowId: text()
+      .notNull()
+      .references(() => workflow.id, { onDelete: 'cascade' }),
     version: integer().notNull(),
     definition: json<PolicyGraph>().notNull(),
     status: text({ enum: ['draft', 'published'] }).notNull(),
@@ -320,7 +346,7 @@ export const workflowVersion = sqliteTable(
     createdBy: text(),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('workflow_org_version_uq').on(t.orgId, t.version)],
+  (t) => [uniqueIndex('workflow_version_uq').on(t.workflowId, t.version)],
 )
 
 export const rateLimit = sqliteTable(
@@ -432,7 +458,7 @@ export const group = sqliteTable(
     isDefault: bool().notNull().default(false),
     permissions: json<GroupPermissions>()
       .notNull()
-      .$defaultFn(() => ({ models: [], builtinTools: [] })),
+      .$defaultFn(() => ({ models: [], builtinTools: [], mcp: {} })),
     createdAt: createdAt(),
   },
   (t) => [

@@ -1,4 +1,11 @@
-import type { BlockId, Condition, GraphIssue, MatchNode, PolicyNode } from '@acl/shared'
+import type {
+  BlockId,
+  Condition,
+  GraphIssue,
+  MatchNode,
+  PolicyNode,
+  TriggerNode,
+} from '@acl/shared'
 import { blockOf, blocks, inputLabels, palette } from '@acl/shared'
 import { Button, Field, Input, Select, Switch } from '@acl/ui'
 import { Plus, Trash2, X } from 'lucide-react'
@@ -112,6 +119,8 @@ function NodeForm({
       ) : null}
       {node.type === 'match' ? (
         <MatchForm node={node} options={options} onChange={onChange} />
+      ) : node.type === 'trigger' ? (
+        <TriggerForm node={node} options={options} onChange={onChange} />
       ) : node.type === 'check' ? (
         <FieldForm
           fields={block.fields}
@@ -191,7 +200,6 @@ function MatchForm({
   options: PickerOptions
   onChange: (node: PolicyNode) => void
 }) {
-  const setConditions = (conditions: Condition[]) => onChange({ ...node, conditions })
   return (
     <>
       <Field label="Label">
@@ -202,7 +210,47 @@ function MatchForm({
           onChange={(e) => onChange({ ...node, label: e.target.value })}
         />
       </Field>
-      <Field label="Matches when">
+      <ConditionsForm label="Matches when" node={node} options={options} onChange={onChange} />
+    </>
+  )
+}
+
+function TriggerForm({
+  node,
+  options,
+  onChange,
+}: {
+  node: TriggerNode
+  options: PickerOptions
+  onChange: (node: PolicyNode) => void
+}) {
+  return (
+    <>
+      {node.conditions.length === 0 ? (
+        <p className="rounded-md border border-line p-3 text-xs text-muted">
+          No conditions: every prompt and tool call starts this workflow.
+        </p>
+      ) : null}
+      <ConditionsForm label="Starts when" node={node} options={options} onChange={onChange} />
+    </>
+  )
+}
+
+function ConditionsForm<T extends MatchNode | TriggerNode>({
+  label,
+  node,
+  options,
+  onChange,
+}: {
+  label: string
+  node: T
+  options: PickerOptions
+  onChange: (node: T) => void
+}) {
+  const setConditions = (conditions: Condition[]) => onChange({ ...node, conditions })
+  return (
+    <>
+      <Field label={label}>
         <Select
           value={node.mode}
           onChange={(e) => onChange({ ...node, mode: e.target.value as 'all' | 'any' })}

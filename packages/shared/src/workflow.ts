@@ -146,7 +146,14 @@ export type DecisionAction = z.infer<typeof decisionAction>
 const position = z.object({ x: z.number(), y: z.number() })
 const nodeBase = { id: z.string().min(1).max(64), position }
 
-export const triggerNode = z.object({ ...nodeBase, type: z.literal('trigger') })
+export const triggerNode = z.object({
+  ...nodeBase,
+  type: z.literal('trigger'),
+  mode: z.enum(['all', 'any']).default('all'),
+  /** Which requests start this workflow. Empty means every request. */
+  conditions: z.array(condition).default([]),
+})
+export type TriggerNode = z.infer<typeof triggerNode>
 
 export const matchNode = z.object({
   ...nodeBase,
@@ -283,7 +290,10 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
     if (n.type === 'match' && n.conditions.length === 0) {
       issues.push({ level: 'error', nodeId: n.id, message: 'Add at least one condition' })
     }
-    if (n.type === 'match' && n.conditions.some((c) => c.values.length === 0)) {
+    if (
+      (n.type === 'match' || n.type === 'trigger') &&
+      n.conditions.some((c) => c.values.length === 0)
+    ) {
       issues.push({ level: 'error', nodeId: n.id, message: 'A condition has no values' })
     }
     if (n.type === 'check' && n.check.type === 'arguments' && n.check.rules.length === 0) {
@@ -308,7 +318,7 @@ export function validateGraph(graph: PolicyGraph): GraphIssue[] {
 export const defaultWorkflow: PolicyGraph = {
   fallback: 'block',
   nodes: [
-    { id: 'start', type: 'trigger', position: { x: 0, y: 100 } },
+    { id: 'start', type: 'trigger', position: { x: 0, y: 100 }, mode: 'all', conditions: [] },
     {
       id: 'fingerprint',
       type: 'check',
@@ -366,6 +376,29 @@ export const defaultWorkflow: PolicyGraph = {
   ],
 }
 
+/** What a newly created workflow starts from: tool calls go straight to allow. */
+export const starterWorkflow: PolicyGraph = {
+  fallback: 'block',
+  nodes: [
+    {
+      id: 'start',
+      type: 'trigger',
+      position: { x: 0, y: 100 },
+      mode: 'all',
+      conditions: [{ field: 'kind', values: ['tool_call'] }],
+    },
+    {
+      id: 'allow',
+      type: 'decision',
+      position: { x: 340, y: 100 },
+      action: 'allow',
+      method: 'admin',
+      timeoutSec: 300,
+      reason: '',
+    },
+  ],
+  edges: [{ id: 'e1', source: 'start', sourceHandle: 'next', target: 'allow' }],
+}
 export const rateLimitRule = z.object({
   id: z.string(),
   scope: z.enum(['mcp', 'tool', 'resource']),

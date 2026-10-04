@@ -1,4 +1,4 @@
-import type { ApprovalMethod, CheckResult, EventKind } from './events.ts'
+import type { ApprovalMethod, CheckResult, EventKind, WorkflowRef } from './events.ts'
 import {
   baselineSignatures,
   matchSignatures,
@@ -20,6 +20,7 @@ import {
   type PolicyNode,
   type RedactConfig,
   type ToolTier,
+  type TriggerNode,
 } from './workflow.ts'
 
 export type DeviceStatus = 'trusted' | 'new' | 'mismatch' | 'revoked'
@@ -200,6 +201,101 @@ export async function evaluateGraph(
     stepId: '(fallback)',
     reason: node ? 'Workflow is too deep' : `Nothing connected after ${from}`,
   })
+}
+
+/** One published workflow, as the gateway loads it. */
+export type ActiveWorkflow = {
+  id: string
+  name: string
+  version: number
+  /** Groups whose members this workflow runs for. Empty means every member. */
+  groupIds: string[]
+  definition: PolicyGraph
+}
+
+export type CombinedResult = EvaluationResult & { workflows: WorkflowRef[] }
+
+/** The enabled workflows that run for a request: in scope for the user, and triggered by it. */
+export function selectWorkflows(
+  workflows: ActiveWorkflow[],
+  input: EvaluationInput,
+): ActiveWorkflow[] {
+  const groups = new Set(input.groupIds ?? [])
+  return workflows.filter(
+    (w) =>
+      (w.groupIds.length === 0 || w.groupIds.some((id) => groups.has(id))) &&
+      triggerHolds(w.definition, input),
+  )
+}
+
+/**
+ * Runs every workflow the request triggers and keeps the strictest outcome: block over approval
+ * over allow. A request that triggers no workflow is allowed.
+ */
+export async function evaluateWorkflows(
+  workflows: ActiveWorkflow[],
+  input: EvaluationInput,
+  deps: EngineDeps = {},
+): Promise<CombinedResult> {
+  const selected = selectWorkflows(workflows, input)
+  const results = await Promise.all(
+    selected.map(async (w) => ({
+      workflow: w,
+      result: await evaluateGraph(w.definition, input, deps),
+    })),
+  )
+  return combineResults(results)
+}
+
+/** Stricter approvals first; the combined approval asks for the strictest one requested. */
+const approvalStrength: ApprovalMethod[] = ['admin', 'browser', 'touchid', 'confirm']
+
+export function combineResults(
+  results: {
+    workflow: Pick<ActiveWorkflow, 'id' | 'name' | 'version'>
+    result: EvaluationResult
+  }[],
+): CombinedResult {
+  const workflows = results.map(({ workflow: { id, name, version } }) => ({ id, name, version }))
+  const checks = results.flatMap(({ workflow, result }) =>
+    result.checks.map((c) => ({ ...c, workflowId: workflow.id })),
+  )
+  const blocked = results.filter((r) => r.result.decision === 'block')
+  const pending = results.filter((r) => r.result.decision === 'pending')
+  const decision = blocked.length ? 'block' : pending.length ? 'pending' : 'allow'
+  const deciding = blocked.length ? blocked : pending.length ? pending : results
+  const methods = pending.map((r) => r.result.approvalMethod ?? 'admin')
+  const method =
+    decision === 'pending' ? (approvalStrength.find((m) => methods.includes(m)) ?? 'admin') : null
+  const asks = new Set(Object.values(approvalAsk))
+  const reasons = [
+    ...new Set(deciding.flatMap((r) => r.result.reasons).filter((r) => !asks.has(r))),
+  ]
+  if (method && method !== 'admin') reasons.push(approvalAsk[method])
+
+  let redact: RedactConfig | null = null
+  for (const { result } of results) {
+    if (!result.redact) continue
+    redact = redact
+      ? {
+          type: 'redact',
+          secrets: redact.secrets || result.redact.secrets,
+          pii: [...new Set([...redact.pii, ...result.redact.pii])],
+        }
+      : result.redact
+  }
+
+  return {
+    decision,
+    checks,
+    riskScore: Math.max(0, ...results.map((r) => r.result.riskScore)),
+    reasons,
+    approvalTimeoutSec: Math.max(0, ...pending.map((r) => r.result.approvalTimeoutSec)) || 300,
+    approvalMethod: method,
+    trustsDevice: decision === 'pending' && pending.some((r) => r.result.trustsDevice),
+    redact,
+    workflows,
+  }
 }
 
 const approvalAsk: Record<Exclude<ApprovalMethod, 'admin'>, string> = {
@@ -447,9 +543,16 @@ async function runCheck(
   }
 }
 
-function matches(node: MatchNode, input: EvaluationInput): boolean {
+function matches(node: MatchNode | TriggerNode, input: EvaluationInput): boolean {
   const results = node.conditions.map((c) => conditionHolds(c, input))
   return node.mode === 'all' ? results.every(Boolean) : results.some(Boolean)
+}
+
+/** Whether a request starts this graph. A start node without conditions takes every request. */
+export function triggerHolds(graph: PolicyGraph, input: EvaluationInput): boolean {
+  const trigger = graph.nodes.find((n) => n.type === 'trigger')
+  if (!trigger) return false
+  return trigger.conditions.length === 0 || matches(trigger, input)
 }
 
 export function conditionHolds(c: Condition, input: EvaluationInput): boolean {

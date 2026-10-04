@@ -75,6 +75,21 @@ describe('single-tenant migration', () => {
       db.close()
     }
   })
+  it('adds empty MCP permissions to existing groups', () => {
+    const db = database()
+    try {
+      db.exec("INSERT INTO `group` VALUES ('g1','x','Backend',NULL,0)")
+      db.exec(migration('0003_single_tenant'))
+      db.exec(migration('0004_group_permissions'))
+      db.exec(migration('0006_group_mcp_permissions'))
+      expect(db.prepare('SELECT id,permissions FROM `group` ORDER BY id').all()).toEqual([
+        { id: 'g1', permissions: '{"models":[],"builtinTools":[],"mcp":{}}' },
+        { id: 'grp_default', permissions: '{"models":["*"],"builtinTools":["*"],"mcp":{}}' },
+      ])
+    } finally {
+      db.close()
+    }
+  })
   it('refuses to silently merge an existing multi-tenant installation', () => {
     const db = database()
     try {

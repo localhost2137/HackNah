@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateGraph, matchKeywords } from './engine.ts'
+import { evaluateGraph, evaluateWorkflows, matchKeywords, selectWorkflows } from './engine.ts'
 import { defaultWorkflow, type PolicyGraph, type PolicyNode, validateGraph } from './workflow.ts'
 
 const input = {
@@ -66,7 +66,7 @@ describe('evaluateGraph', () => {
     const wf: PolicyGraph = {
       fallback: 'block',
       nodes: [
-        { id: 'start', type: 'trigger', position: at },
+        { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
         {
           id: 'writes',
           type: 'match',
@@ -146,7 +146,7 @@ describe('evaluateGraph', () => {
     const wf: PolicyGraph = {
       fallback: 'block',
       nodes: [
-        { id: 'start', type: 'trigger', position: at },
+        { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [] },
         {
           id: 'redact',
           type: 'check',
@@ -186,6 +186,110 @@ describe('validateGraph', () => {
     expect(messages).toContain('The workflow contains a loop')
     expect(messages).toContain('Unknown output "nope"')
     expect(messages).toContain('An output can only connect once')
+  })
+})
+
+describe('evaluateWorkflows', () => {
+  const graph = (
+    trigger: Partial<Extract<PolicyNode, { type: 'trigger' }>>,
+    end: PolicyNode,
+  ): PolicyGraph => ({
+    fallback: 'block',
+    nodes: [
+      { id: 'start', type: 'trigger', position: at, mode: 'all', conditions: [], ...trigger },
+      end,
+    ],
+    edges: [edge('start', 'next', end.id)],
+  })
+  const workflow = (id: string, definition: PolicyGraph, groupIds: string[] = []) => ({
+    id,
+    name: id,
+    version: 1,
+    groupIds,
+    definition,
+  })
+  const toolCall = {
+    ...input,
+    kind: 'tool_call' as const,
+    toolName: 'github__delete_repo',
+    mcpServerId: 'srv_github',
+    groupIds: ['grp_dev'],
+  }
+
+  it('allows a request that triggers no workflow', async () => {
+    const onlyPrompts = graph(
+      { conditions: [{ field: 'kind', values: ['model_request'] }] },
+      decision('b', 'block'),
+    )
+    const r = await evaluateWorkflows([workflow('prompts', onlyPrompts)], toolCall)
+    expect(r.decision).toBe('allow')
+    expect(r.workflows).toEqual([])
+    expect(r.checks).toEqual([])
+  })
+
+  it('triggers on tool globs and MCP servers', () => {
+    const byTool = graph(
+      { conditions: [{ field: 'tool', values: ['delete_*'] }] },
+      decision('a', 'allow'),
+    )
+    const byServer = graph(
+      { conditions: [{ field: 'mcpServer', values: ['srv_slack'] }] },
+      decision('a', 'allow'),
+    )
+    const picked = selectWorkflows(
+      [workflow('tool', byTool), workflow('server', byServer)],
+      toolCall,
+    )
+    expect(picked.map((w) => w.id)).toEqual(['tool'])
+  })
+
+  it('only runs for the selected groups', () => {
+    const everyone = graph({}, decision('a', 'allow'))
+    const picked = selectWorkflows(
+      [
+        workflow('dev', everyone, ['grp_dev']),
+        workflow('ops', everyone, ['grp_ops']),
+        workflow('all', everyone),
+      ],
+      toolCall,
+    )
+    expect(picked.map((w) => w.id)).toEqual(['dev', 'all'])
+  })
+
+  it('keeps the strictest outcome and tags steps with their workflow', async () => {
+    const r = await evaluateWorkflows(
+      [
+        workflow('allow', graph({}, decision('a', 'allow'))),
+        workflow('approve', graph({}, decision('h', 'require_approval'))),
+        workflow(
+          'block',
+          graph({}, { ...decision('b', 'block'), reason: 'No deletes' } as PolicyNode),
+        ),
+      ],
+      toolCall,
+    )
+    expect(r.decision).toBe('block')
+    expect(r.reasons).toEqual(['No deletes'])
+    expect(r.workflows.map((w) => w.id)).toEqual(['allow', 'approve', 'block'])
+    expect(r.checks.map((c) => `${c.workflowId}:${c.stepId}`)).toEqual([
+      'allow:a',
+      'approve:h',
+      'block:b',
+    ])
+  })
+
+  it('asks for the strictest approval method', async () => {
+    const touchid = { ...decision('t', 'require_approval'), method: 'touchid' } as PolicyNode
+    const r = await evaluateWorkflows(
+      [
+        workflow('device', graph({}, touchid)),
+        workflow('admin', graph({}, decision('h', 'require_approval'))),
+      ],
+      toolCall,
+    )
+    expect(r.decision).toBe('pending')
+    expect(r.approvalMethod).toBe('admin')
+    expect(r.reasons).not.toContain('Needs Touch ID on the device')
   })
 })
 
