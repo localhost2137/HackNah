@@ -78,12 +78,12 @@ function buildSteps(guardrailHref: () => string | undefined): TourStep[] {
         '<b>Live</b> streams new events as they happen. CSV and JSONL export the filtered logs for audits or a SIEM.',
     },
     {
-      route: '/events',
-      target: 'events-approvals',
+      route: '/approvals',
+      target: 'approvals-list',
       side: 'bottom',
       title: 'Human approvals',
       description:
-        'Risky actions can pause until a person approves them. Pending and past approvals are listed here.',
+        'A guardrail can pause a risky action until an admin approves or declines it here. Each pending request shows a countdown, and unanswered requests are declined when it runs out. <b>History</b> lists past decisions.',
     },
     {
       route: '/guardrails',

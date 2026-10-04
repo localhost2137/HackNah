@@ -22,7 +22,6 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { Download, Radio, Waypoints } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { ApprovalRecords } from '#/components/approval-records.tsx'
 import {
   CheckList,
   DecisionBadge,
@@ -89,7 +88,6 @@ function EventsPage() {
   const navigate = Route.useNavigate()
   const live = useLive()
   const [follow, setFollow] = useState(true)
-  const [approvalsOpen, setApprovalsOpen] = useState(false)
   const filters = filterKey(search)
 
   const query = useInfiniteQuery({
@@ -270,22 +268,6 @@ function EventsPage() {
           </div>
         }
       />
-      <details
-        data-tour="events-approvals"
-        className="mb-4 rounded-lg border border-line bg-panel"
-        onToggle={(e) => setApprovalsOpen(e.currentTarget.open)}
-      >
-        <summary className="cursor-pointer px-4 py-3 text-sm text-muted">
-          Approval records
-          {live.pendingApprovals.length ? ` · ${live.pendingApprovals.length} pending` : ''}
-        </summary>
-        {approvalsOpen ? (
-          <div className="border-t border-line p-4">
-            <ApprovalRecords />
-          </div>
-        ) : null}
-      </details>
-
       <div className="mb-3 flex flex-wrap items-center gap-2" data-tour="events-filters">
         <Segmented<TimeRange>
           value={search.range}

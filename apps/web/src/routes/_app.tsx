@@ -21,6 +21,7 @@ import {
   PanelLeft,
   Plug,
   Settings,
+  UserCheck,
   Users,
   UsersRound,
 } from 'lucide-react'
@@ -28,7 +29,7 @@ import { type ComponentType, useState } from 'react'
 import { BrandLogo } from '#/components/brand-logo.tsx'
 import { DemoTourButton } from '#/components/demo-tour.tsx'
 import { authClient } from '#/lib/auth-client.ts'
-import { LiveProvider } from '#/lib/live.tsx'
+import { LiveProvider, useLive } from '#/lib/live.tsx'
 import { getViewer } from '#/server/fns/viewer.ts'
 
 export const Route = createFileRoute('/_app')({
@@ -52,6 +53,7 @@ const nav: { title?: string; items: NavItem[] }[] = [
     items: [
       { to: '/', label: 'Overview', icon: LayoutDashboard },
       { to: '/events', label: 'Logs', icon: Activity },
+      { to: '/approvals', label: 'Approvals', icon: UserCheck },
     ],
   },
   {
@@ -138,6 +140,7 @@ function AppLayout() {
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { viewer } = Route.useRouteContext()
   const navigate = useNavigate()
+  const pending = useLive().pendingApprovals.length
 
   return (
     <>
@@ -186,6 +189,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                 >
                   <item.icon className="size-[15px] shrink-0 text-subtle group-[[data-status=active]]:text-fg" />
                   <span className="flex-1">{item.label}</span>
+                  {item.to === '/approvals' && pending > 0 ? (
+                    <span className="rounded-full bg-warn-soft px-1.5 text-[11px] font-medium text-warn tabular-nums">
+                      {pending}
+                    </span>
+                  ) : null}
                 </Link>
               ))}
             </div>
