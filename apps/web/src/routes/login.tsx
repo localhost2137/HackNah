@@ -113,17 +113,6 @@ function LoginPage() {
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => {
-                  setEmail('admin@demo.test')
-                  setPassword('LocalDemo123!')
-                  setError(null)
-                }}
-              >
-                Fill admin credentials
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
                 disabled={pending}
                 onClick={() => startSso({ domain: 'sso.test' })}
               >
