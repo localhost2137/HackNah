@@ -41,6 +41,7 @@ import {
 } from '#/components/workflow/graph-nodes.tsx'
 import { Inspector, type PickerOptions } from '#/components/workflow/inspector.tsx'
 import { recommendSteps, type Suggestion } from '#/components/workflow/recommendations.ts'
+import { ShadowImpact } from '#/components/workflow/shadow-impact.tsx'
 import { timeAgo } from '#/lib/format.ts'
 import { listGroups, listResources } from '#/server/fns/access.ts'
 import { listMcpServers } from '#/server/fns/integrations.ts'
@@ -238,6 +239,7 @@ function WorkflowPage() {
       {mounted ? (
         <ReactFlowProvider>
           <Editor
+            workflowId={workflowId}
             graph={graph}
             setGraph={setGraph}
             issues={issues}
@@ -283,9 +285,23 @@ function WorkflowPage() {
 }
 
 type Version = Awaited<ReturnType<typeof getWorkflow>>['versions'][number]
-type Tab = 'inspect' | 'test' | 'history'
+type Tab = 'inspect' | 'test' | 'impact' | 'history'
+
+const tabLabels: Record<Tab, string> = {
+  inspect: 'Details',
+  test: 'Test request',
+  impact: 'Impact',
+  history: 'History',
+}
+const tabTitles: Record<Tab, string> = {
+  inspect: 'Step settings',
+  test: 'Try an example request',
+  impact: 'Impact on past traffic',
+  history: 'Saved versions',
+}
 
 function Editor({
+  workflowId,
   graph,
   setGraph,
   issues,
@@ -294,6 +310,7 @@ function Editor({
   versions,
   publishedId,
 }: {
+  workflowId: string
   graph: PolicyGraph
   setGraph: (g: PolicyGraph) => void
   issues: GraphIssue[]
@@ -610,7 +627,7 @@ function Editor({
           <Button variant="ghost" onClick={() => flow.fitView({ padding: 0.12, duration: 250 })}>
             <Maximize2 className="size-4" /> Fit chart
           </Button>
-          {(['inspect', 'test', 'history'] as const).map((t) => (
+          {(['inspect', 'test', 'impact', 'history'] as const).map((t) => (
             <Button
               key={t}
               variant={panelOpen && tab === t ? 'primary' : 'ghost'}
@@ -620,7 +637,7 @@ function Editor({
                 setPanelOpen(!(panelOpen && tab === t))
               }}
             >
-              {t === 'inspect' ? 'Details' : t === 'test' ? 'Test request' : 'History'}
+              {tabLabels[t]}
             </Button>
           ))}
         </div>
@@ -729,13 +746,7 @@ function Editor({
         {panelOpen && !paletteOpen ? (
           <aside className="absolute inset-y-0 right-0 z-10 flex w-[340px] max-w-full flex-col overflow-hidden border-l border-line-strong bg-panel shadow-2xl">
             <div className="flex items-center border-b border-line text-xs">
-              <span className="flex-1 px-4 py-3 font-medium">
-                {tab === 'inspect'
-                  ? 'Step settings'
-                  : tab === 'test'
-                    ? 'Try an example request'
-                    : 'Saved versions'}
-              </span>
+              <span className="flex-1 px-4 py-3 font-medium">{tabTitles[tab]}</span>
               <button
                 type="button"
                 aria-label="Close details"
@@ -762,6 +773,8 @@ function Editor({
                 )
               ) : tab === 'test' ? (
                 <DryRun graph={graph} options={options} onResult={setRun} />
+              ) : tab === 'impact' ? (
+                <ShadowImpact workflowId={workflowId} graph={graph} />
               ) : (
                 <VersionList
                   versions={versions}

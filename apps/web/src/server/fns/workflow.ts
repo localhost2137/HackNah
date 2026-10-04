@@ -12,7 +12,7 @@ function parseOrDefault(definition: unknown) {
   return parsed.success ? parsed.data : defaultWorkflow
 }
 
-async function findWorkflow(db: Db, orgId: string, id: string) {
+export async function findWorkflow(db: Db, orgId: string, id: string) {
   const row = await db.query.workflow.findFirst({
     where: and(eq(workflow.id, id), eq(workflow.orgId, orgId)),
   })
