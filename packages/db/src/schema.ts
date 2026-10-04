@@ -150,6 +150,18 @@ export const ssoProvider = sqliteTable(
 // Devices, plugin login and Claude Code sessions
 // ---------------------------------------------------------------------------
 
+/** What a plugin device reports about its software with every request. */
+export type DeviceContext = {
+  os_version?: string
+  kernel?: string
+  hostname?: string
+  os_user?: string
+  node?: string
+  bridge?: string
+  key_storage?: string
+  client?: { name?: string; version?: string } | null
+}
+
 export const device = sqliteTable(
   'device',
   {
@@ -171,10 +183,33 @@ export const device = sqliteTable(
     approvedAt: timestamp(),
     lastSeenAt: timestamp(),
     createdAt: createdAt(),
+    // --- Devices signed in through the plugin's key-bound flow (DPoP). Null on other devices. ---
+    /** RFC 7638 thumbprint of the device's routine key; its tokens only work with this key. */
+    jkt: text(),
+    jwk: json<Record<string, string>>(),
+    /** The Touch ID key, when the device registered one. */
+    presenceJkt: text(),
+    presenceJwk: json<Record<string, string>>(),
+    keyStorage: text(),
+    /** Display-only code the user compares with Claude Code; never an authenticator. */
+    shortCode: text(),
+    /** The fingerprint fields behind `fingerprintHash`, as sent at sign-in. */
+    fingerprintDetails: json<Record<string, string | number>>(),
+    /** Latest `HY-Client-Context` (OS, kernel, Claude Code version). */
+    context: json<DeviceContext>(),
+    /** A valid token or refresh token of this device was presented with another key or machine. */
+    theftSuspectedAt: timestamp(),
+    /** When the session last read untrusted content, and what it read. */
+    untrustedAt: timestamp(),
+    untrustedSource: text(),
+    /** The network of the last allowed request, for travel speed. */
+    lastIp: text(),
+    lastNetworkAt: timestamp(),
   },
   (t) => [
     uniqueIndex('device_user_fp_uq').on(t.userId, t.fingerprintHash),
     index('device_org_idx').on(t.orgId),
+    uniqueIndex('device_jkt_uq').on(t.jkt),
   ],
 )
 
@@ -215,6 +250,148 @@ export const gatewayRefreshToken = sqliteTable(
     createdAt: createdAt(),
   },
   (t) => [index('refresh_device_idx').on(t.deviceId)],
+)
+
+// ---------------------------------------------------------------------------
+// hy-guard plugin protocol (claude-plugin/docs/BACKEND_CONTRACT.md)
+// ---------------------------------------------------------------------------
+
+/** OAuth authorization codes of the plugin sign-in: single use, valid for 60 s. */
+export const pluginAuthCode = sqliteTable('plugin_auth_code', {
+  codeHash: text().primaryKey(),
+  clientId: text().notNull(),
+  redirectUri: text().notNull(),
+  codeChallenge: text().notNull(),
+  dpopJkt: text().notNull(),
+  orgId: text().notNull(),
+  userId: text().notNull(),
+  deviceName: text().notNull(),
+  platform: text(),
+  keyStorage: text(),
+  expiresAt: timestamp().notNull(),
+  createdAt: createdAt(),
+})
+
+/** Refresh tokens bound to a device key. Only the hash is stored. */
+export const pluginRefreshToken = sqliteTable(
+  'plugin_refresh_token',
+  {
+    id: text().primaryKey(),
+    tokenHash: text().notNull().unique(),
+    orgId: text().notNull(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    deviceId: text()
+      .notNull()
+      .references(() => device.id, { onDelete: 'cascade' }),
+    jkt: text().notNull(),
+    expiresAt: timestamp().notNull(),
+    /** Refreshing after this needs a Touch ID proof, or a new sign-in without a presence key. */
+    unlockedUntil: timestamp().notNull(),
+    revokedAt: timestamp(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('plugin_refresh_device_idx').on(t.deviceId)],
+)
+
+/** A tool call waiting for its owner to approve it in the browser after a fresh sign-in. */
+export const pluginChallenge = sqliteTable(
+  'plugin_challenge',
+  {
+    id: text().primaryKey(),
+    orgId: text().notNull(),
+    deviceId: text()
+      .notNull()
+      .references(() => device.id, { onDelete: 'cascade' }),
+    userId: text().notNull(),
+    tool: text().notNull(),
+    description: text(),
+    tier: text(),
+    arguments: json<unknown>(),
+    /** SHA-256 of canonical `{tool, arguments}`; the retry must carry the same action. */
+    actionHash: text().notNull(),
+    reasons: emptyList<string>(),
+    deviceName: text(),
+    deviceCode: text(),
+    keyStorage: text(),
+    claudeSessionId: text(),
+    ip: text(),
+    country: text(),
+    postureScore: integer(),
+    status: text({ enum: ['pending', 'approved', 'denied'] })
+      .notNull()
+      .default('pending'),
+    approvedBy: text(),
+    approvedAt: timestamp(),
+    expiresAt: timestamp().notNull(),
+    usedAt: timestamp(),
+    /** The gateway event of the call that was challenged (`decision_id`). */
+    eventId: text(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('plugin_challenge_device_idx').on(t.deviceId, t.createdAt)],
+)
+
+/** Networks a device was seen on. */
+export const deviceNetwork = sqliteTable(
+  'device_network',
+  {
+    deviceId: text()
+      .notNull()
+      .references(() => device.id, { onDelete: 'cascade' }),
+    ip: text().notNull(),
+    country: text(),
+    lat: real(),
+    lon: real(),
+    firstSeenAt: createdAt(),
+    lastSeenAt: timestamp().notNull(),
+  },
+  (t) => [uniqueIndex('device_network_uq').on(t.deviceId, t.ip)],
+)
+
+/** Telemetry the plugin and its hooks send, and what the gateway derives. At-least-once. */
+export const pluginEvent = sqliteTable(
+  'plugin_event',
+  {
+    eventId: text().primaryKey(),
+    orgId: text().notNull(),
+    deviceId: text().notNull(),
+    userId: text().notNull(),
+    type: text().notNull(),
+    source: text(),
+    ts: timestamp().notNull(),
+    context: json<unknown>(),
+    data: json<unknown>(),
+    receivedAt: createdAt(),
+  },
+  (t) => [index('plugin_event_device_idx').on(t.deviceId, t.ts)],
+)
+
+/** DPoP proof ids seen in the last 5 minutes (replay cache). */
+export const dpopJti = sqliteTable(
+  'dpop_jti',
+  {
+    jti: text().primaryKey(),
+    expiresAt: timestamp().notNull(),
+  },
+  (t) => [index('dpop_jti_expires_idx').on(t.expiresAt)],
+)
+
+/** Refused credentials. `theftSuspected`: a valid token came with the wrong key or machine. */
+export const pluginRejection = sqliteTable(
+  'plugin_rejection',
+  {
+    id: text().primaryKey(),
+    ip: text(),
+    path: text().notNull(),
+    reason: text().notNull(),
+    theftSuspected: bool().notNull().default(false),
+    victimDeviceId: text(),
+    presentedJkt: text(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('plugin_rejection_created_idx').on(t.createdAt)],
 )
 
 export const ccSession = sqliteTable(
@@ -442,6 +619,11 @@ export const mcpServer = sqliteTable(
     toolsRefreshedAt: timestamp(),
     enabled: bool().notNull().default(true),
     createdAt: createdAt(),
+    /**
+     * Admin pins: tool name -> hash of the definition an admin reviewed, as the gateway lists it
+     * (`{name, description, inputSchema}`). A pinned tool whose definition differs is reported.
+     */
+    toolPins: json<Record<string, string>>(),
   },
   (t) => [uniqueIndex('mcp_server_org_slug_uq').on(t.orgId, t.slug)],
 )

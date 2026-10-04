@@ -29,7 +29,6 @@ import { Hono } from 'hono'
 import { type AppContext, type AppEnv, clientInfo, type Principal } from '../context.ts'
 import { sessionStub } from '../do/session.ts'
 import { effectivePermissions, filterToolDefinitions, userGroupIds } from '../lib/access.ts'
-import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
 import { loadActiveGuardrails, loadLimits } from '../lib/guardrail.ts'
 import { checkLimits, recordUsage } from '../lib/limits.ts'
@@ -55,6 +54,7 @@ import {
   upstreamRequest,
 } from '../lib/upstream.ts'
 import { normalizeToolName, rememberVerdict, resultChecked } from '../lib/verdicts.ts'
+import { requireDevice } from '../plugin/auth.ts'
 
 const MAX_CAPTURED_RESPONSE = 256 * 1024
 const MAX_RECORDED_TEXT = 64 * 1024
@@ -78,9 +78,12 @@ type Ctx = {
  *
  * Models are routed through the model catalog, and limits on spend, tokens, GPU time, requests
  * and concurrency are checked before and charged after each call.
+ *
+ * Mounted twice: at `/v1` for bearer tokens, and at `/llm/v1` as the plugin's LLM gateway, where
+ * every request is signed by the device key (DPoP) and its signals reach the same guardrails.
  */
 export const messages = new Hono<AppEnv>()
-  .use('*', requireGatewayToken('anthropic'))
+  .use('*', requireDevice('anthropic', { bearer: true }))
   .post('/messages', async (c) => {
     const started = Date.now()
     let body: MessagesRequest
@@ -346,7 +349,8 @@ function defaultTarget(env: Env): UpstreamTarget {
 }
 
 async function passthrough(c: AppContext, target: UpstreamTarget) {
-  const path = new URL(c.req.url).pathname
+  // The upstream knows nothing of the `/llm` prefix the plugin's gateway URL carries.
+  const path = new URL(c.req.url).pathname.replace(/^\/llm(?=\/)/, '')
   const upstream = await fetch(upstreamRequest(c.env, target, c.req.raw, path))
   return new Response(upstream.body, {
     status: upstream.status,
@@ -509,6 +513,7 @@ async function outputHooks(ctx: Ctx, limits: Map<string, LimitStatus>) {
     deviceStatus: principal.deviceStatus,
     groupIds: ctx.groupIds,
     resourceIds: ctx.resourceIds,
+    signals: principal.signals,
   }
 
   const hooks: GuardHooks<CombinedResult> = {

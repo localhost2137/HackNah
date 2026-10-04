@@ -12,7 +12,7 @@ import { Hono } from 'hono'
 import { type AppContext, type AppEnv, clientInfo } from '../context.ts'
 import { sessionStub } from '../do/session.ts'
 import { callInternalTool, listInternalTools } from '../internal-mcp/handler.ts'
-import { isInternalTool } from '../internal-mcp/tools.ts'
+import { findInternalTool, isInternalTool } from '../internal-mcp/tools.ts'
 import {
   accessibleResources,
   isAdmin,
@@ -22,11 +22,10 @@ import {
   mcpToolAccess,
   userGroupIds,
 } from '../lib/access.ts'
-import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
 import { loadLimits } from '../lib/guardrail.ts'
 import { checkLimits } from '../lib/limits.ts'
-import { runPipeline } from '../lib/pipeline.ts'
+import { awaitApproval, evaluatePipeline, runPipeline } from '../lib/pipeline.ts'
 import { type ResolvedSession, resolveSession } from '../lib/session.ts'
 import { markResultChecked } from '../lib/verdicts.ts'
 import {
@@ -37,6 +36,19 @@ import {
   type McpTool,
 } from '../mcp/client.ts'
 import { upstreamToken } from '../mcp/credentials.ts'
+import { issueMcpSession, mcpSessionValid, requireDevice } from '../plugin/auth.ts'
+import { toolDefinitionHash } from '../plugin/canonical.ts'
+import type { ListedTool } from '../plugin/policy.ts'
+import { touchNetwork } from '../plugin/store.ts'
+import {
+  claimApprovedChallenge,
+  createChallenge,
+  ERR_CHALLENGE,
+  ERR_DENIED,
+  pluginCall,
+  pluginToolLevels,
+  RpcFailure,
+} from '../plugin/tool-call.ts'
 
 const TOOL_SEPARATOR = '__'
 const TOOLS_STALE_MS = 15 * 60_000
@@ -46,19 +58,39 @@ type Server = typeof mcpServer.$inferSelect
 /**
  * One MCP endpoint in front of every MCP server the org connected. Claude Code authenticates
  * once with the gateway token; upstream credentials never leave the gateway.
+ *
+ * The hy-guard plugin signs every request with its device key instead (DPoP). Its calls carry
+ * signals for the guardrails, and an approval the device can give in the browser comes back as
+ * a challenge (`-32010`) rather than waiting in the dashboard queue; a refusal is `-32011`.
  */
 export const mcp = new Hono<AppEnv>()
-  .use('*', requireGatewayToken())
+  .use('*', requireDevice('json', { bearer: true }))
   .get('/', (c) => c.body(null, 405))
   .delete('/', (c) => c.body(null, 204))
   .post('/', async (c) => {
     const payload = await c.req.json().catch(() => null)
     if (!payload) return c.json(rpcError(null, -32700, 'Parse error'), 400)
-    const session = await resolveSession(c)
-    if ('error' in session) return c.json(rpcError(null, -32001, session.error), 403)
-
     const batch = Array.isArray(payload)
     const messages = (batch ? payload : [payload]) as JsonRpcRequest[]
+
+    // The plugin's MCP session is bound to its device; from any other device it is unknown.
+    const plugin = c.get('plugin')
+    let claudeSession: string | null = null
+    if (plugin) {
+      if (messages.some((m) => m.method === 'initialize'))
+        c.header('Mcp-Session-Id', await issueMcpSession(c.env, plugin.device.id))
+      else if (!(await mcpSessionValid(c.env, plugin.device.id, c.req.header('mcp-session-id'))))
+        return c.json({ error: 'unknown session' }, 404)
+      // The Claude Code session comes from the hook record in the signed proof.
+      const call = messages.find((m) => m.method === 'tools/call')?.params as
+        | { name?: string; arguments?: unknown }
+        | undefined
+      if (call?.name)
+        claudeSession = (await pluginCall(plugin.claims, call.name, call.arguments)).claudeSessionId
+    }
+    const session = await resolveSession(c, claudeSession)
+    if ('error' in session) return c.json(rpcError(null, -32001, session.error), 403)
+
     const responses: JsonRpcResponse[] = []
     for (const msg of messages) {
       const res = await handle(c, session, msg)
@@ -100,6 +132,8 @@ async function handle(
         return rpcError(id, -32601, `Method not found: ${msg.method}`)
     }
   } catch (err) {
+    if (err instanceof RpcFailure)
+      return { jsonrpc: '2.0', id, error: { code: err.code, message: err.message, data: err.data } }
     return rpcError(id, -32603, err instanceof Error ? err.message : 'Internal error')
   }
 }
@@ -145,22 +179,49 @@ export async function refreshServerTools(
   return tools
 }
 
-async function listTools(c: AppContext, session: ResolvedSession) {
+/** A server's tool as the gateway lists it: prefixed with the server's slug and name. */
+function listedTool(server: Server, tool: McpTool): McpTool {
+  return {
+    ...tool,
+    name: `${server.slug}${TOOL_SEPARATOR}${tool.name}`,
+    description: `[${server.name}] ${tool.description ?? ''}`.trim(),
+  }
+}
+
+/** Every tool the user may see, with what the guardrails need to know about each. */
+export async function listedTools(c: AppContext, session: ResolvedSession): Promise<ListedTool[]> {
   const access = await userMcpAccess(c, session)
   const servers = await orgServers(c.get('db'), c.get('principal').orgId)
-  const out: McpTool[] = await listInternalTools(c)
+  const out: ListedTool[] = (await listInternalTools(c)).map((tool) => ({
+    tool,
+    serverId: null,
+    tier: findInternalTool(tool.name)?.readOnly ? 'read' : 'write',
+    resourceIds: [],
+    pin: null,
+  }))
   for (const server of servers) {
     if (!mcpServerVisible(access, server.id)) continue
     for (const tool of await serverTools(c, server)) {
-      if (!mcpToolAccess(access, server.id, tool.name).allowed) continue
+      const granted = mcpToolAccess(access, server.id, tool.name)
+      if (!granted.allowed) continue
       out.push({
-        ...tool,
-        name: `${server.slug}${TOOL_SEPARATOR}${tool.name}`,
-        description: `[${server.name}] ${tool.description ?? ''}`.trim(),
+        tool: listedTool(server, tool),
+        serverId: server.id,
+        tier: toolTierFromAnnotations(tool.annotations),
+        resourceIds: granted.resourceIds,
+        pin: server.toolPins?.[tool.name] ?? null,
       })
     }
   }
   return out
+}
+
+async function listTools(c: AppContext, session: ResolvedSession): Promise<McpTool[]> {
+  const tools = await listedTools(c, session)
+  if (!c.get('plugin')) return tools.map((t) => t.tool)
+  // Tools the guardrails would refuse anyway are not even listed to the plugin.
+  const levels = await pluginToolLevels(c, tools)
+  return tools.filter((t) => levels.get(t.tool.name) !== 'hide').map((t) => t.tool)
 }
 
 function toolError(text: string) {
@@ -168,6 +229,21 @@ function toolError(text: string) {
 }
 
 async function callTool(c: AppContext, session: ResolvedSession, fullName: string, args: unknown) {
+  // What a plugin request proves about this one call, on top of what it proved about the device.
+  const plugin = c.get('plugin')
+  const call = plugin ? await pluginCall(plugin.claims, fullName, args) : null
+  const approved = plugin && call ? await claimApprovedChallenge(c, plugin, call) : false
+  if (call)
+    c.set('principal', {
+      ...c.get('principal'),
+      signals: {
+        ...c.get('principal').signals,
+        hookCorrelated: call.hookCorrelated,
+        approvedChallenge: approved,
+        // The bridge asks for confirmation itself when the policy says so; it cannot be proven.
+        confirmed: true,
+      },
+    })
   if (isInternalTool(fullName)) return callInternalTool(c, session, fullName, args)
   const started = Date.now()
   const db = c.get('db')
@@ -211,22 +287,44 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     payloadKey: null,
     createdAt: new Date(started).toISOString(),
   }
+  const definition = (server.tools as McpTool[]).find((t) => t.name === toolName)
+  const tier = toolTierFromAnnotations(definition?.annotations)
+  const pin = server.toolPins?.[toolName]
+  const signals = call
+    ? {
+        ...principal.signals,
+        // An admin pinned this tool's definition: has the server changed it since?
+        definitionChanged: Boolean(
+          pin &&
+            pin !==
+              (await toolDefinitionHash(listedTool(server, definition ?? { name: toolName }))),
+        ),
+      }
+    : undefined
   const finish = (decision: Decision, response?: unknown) => {
     event.decision = decision
     event.latencyMs = Date.now() - started
     c.executionCtx.waitUntil(
       recordEvent(c.env, event, {
         input: { text: argsText, toolName: fullName, toolArguments: args },
+        // The signals the decision was made on, for the audit trail.
+        request: signals ? { signals } : undefined,
         response,
       }),
     )
+  }
+  /** The plugin tells a refusal from a failed tool by its JSON-RPC error. */
+  const deny = (reasons: string[], message: string) => {
+    if (plugin) throw new RpcFailure(ERR_DENIED, 'denied', { decision_id: eventId, reasons })
+    return toolError(message)
   }
 
   const granted = mcpToolAccess(await userMcpAccess(c, session), server.id, toolName)
   event.resourceIds = granted.resourceIds
   if (!granted.allowed) {
     finish('block')
-    return toolError(`You don't have access to ${fullName} in this session.`)
+    const why = `You don't have access to ${fullName} in this session.`
+    return deny([why], why)
   }
 
   const limits = await checkLimits(
@@ -254,35 +352,59 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
   }
   // Concurrency slots are held until the upstream answers.
   const callWithinLimits = async () => {
-    const result = await runPipeline(
-      c.env,
-      db,
-      principal,
-      {
-        kind: 'tool_call',
-        text: argsText,
-        toolName: fullName,
-        mcpServerId: server.id,
-        resourceIds: event.resourceIds,
-        toolTier: toolTierFromAnnotations(
-          (server.tools as McpTool[]).find((t) => t.name === toolName)?.annotations,
-        ),
-        toolArguments: args,
-      },
-      {
+    const input = {
+      kind: 'tool_call' as const,
+      text: argsText,
+      toolName: fullName,
+      mcpServerId: server.id,
+      resourceIds: event.resourceIds,
+      toolTier: tier,
+      toolArguments: args,
+      signals,
+    }
+    const meta = {
+      eventId,
+      sessionId: session.id,
+      summary: `${fullName}: ${argsText.slice(0, 200)}`,
+      limits: limits.states,
+    }
+    const evaluation = await evaluatePipeline(c.env, db, principal, input, meta)
+    event.checks = [...limits.checks, ...evaluation.checks]
+    event.riskScore = evaluation.riskScore
+    event.guardrails = evaluation.guardrails
+    // An approval the person at the device can give: Touch ID was asked for but this request
+    // carried no proof, or the browser was. The owner approves this exact action after a fresh
+    // sign-in, and the plugin repeats the call with the challenge id.
+    if (
+      plugin &&
+      call &&
+      evaluation.decision === 'pending' &&
+      evaluation.approvalMethod !== 'admin'
+    ) {
+      const challenge = await createChallenge(c, plugin, call, {
+        tool: fullName,
+        description: definition?.description,
+        tier,
+        arguments: args,
+        reasons: evaluation.reasons,
         eventId,
-        sessionId: session.id,
-        summary: `${fullName}: ${argsText.slice(0, 200)}`,
-        limits: limits.states,
-      },
-    )
-    event.checks = [...limits.checks, ...result.checks]
-    event.riskScore = result.riskScore
-    event.guardrails = result.guardrails
+      })
+      finish('pending')
+      throw new RpcFailure(ERR_CHALLENGE, 'challenge_required', challenge)
+    }
+    const result =
+      evaluation.decision === 'pending'
+        ? await awaitApproval(c.env, db, principal, input, meta, evaluation)
+        : evaluation
     if (result.decision === 'block' || result.decision === 'declined') {
       finish(result.decision)
-      return toolError(`Blocked by Hack?Nah!: ${result.reasons.join('; ') || 'policy'}`)
+      const reasons = result.reasons.length ? result.reasons : ['policy']
+      return deny(reasons, `Blocked by Hack?Nah!: ${reasons.join('; ')}`)
     }
+    // Allowed on the strength of the owner's approval in the browser.
+    const decision: Decision =
+      approved && result.decision === 'allow' ? 'approved' : result.decision
+    if (plugin) c.executionCtx.waitUntil(touchNetwork(db, plugin.device.id, plugin.network))
 
     const { redact } = result
     const stub = session.id ? sessionStub(c.env, principal.orgId, session.id) : null
@@ -298,7 +420,7 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
       // The result is checked before the agent sees it, as the Tool result stage.
       const checked = await checkResult(c, session, server.id, fullName, event, response)
       if (checked.withheld) {
-        finish(result.decision, response)
+        finish(decision, response)
         return toolError(`Tool result withheld by Hack?Nah!: ${checked.withheld}`)
       }
       const before = vault.size
@@ -315,11 +437,11 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
       }
       if (stub && vault.size !== before) await stub.mergeVault(vault.toJSON())
       await markResultChecked(c.env, principal.orgId, session.id, resultText(response))
-      finish(result.decision, response)
+      finish(decision, response)
       return response
     } catch (err) {
       event.upstreamStatus = 502
-      finish(result.decision)
+      finish(decision)
       return toolError(err instanceof Error ? err.message : 'Upstream MCP call failed')
     }
   }

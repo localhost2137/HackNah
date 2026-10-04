@@ -39,8 +39,10 @@ export const requireGatewayToken = (format: 'anthropic' | 'json' = 'json') =>
 
     const token = bearerToken(c.req.raw.headers)
     if (!token) return deny(401, 'Missing gateway token. Run `/acl login` in Claude Code.')
-    const claims = await verifyJwt<GatewayTokenClaims>(c.env.JWT_SECRET, token)
+    const claims = await verifyJwt<GatewayTokenClaims & { cnf?: unknown }>(c.env.JWT_SECRET, token)
     if (!claims) return deny(401, 'Gateway token is invalid or expired.')
+    // A token bound to a device key is worthless without a proof by that key.
+    if (claims.cnf) return deny(401, 'This token needs a DPoP proof.')
 
     const fingerprint = c.req.header(HEADER_DEVICE_FINGERPRINT)
     const presented = fingerprint ? await sha256Hex(fingerprint) : null
