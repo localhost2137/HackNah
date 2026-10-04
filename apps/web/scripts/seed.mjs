@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hashPassword } from 'better-auth/crypto'
 import { mockClient, mockIssuer, mockSsoDomain, seededSsoUsers, subjectFor } from './mock-sso.mjs'
+import { seedMockMcp } from './seed-mcp.mjs'
 
 // Development fixtures only. Always targets Wrangler's local D1 database.
 const cwd = fileURLToPath(new URL('..', import.meta.url))
@@ -27,7 +28,7 @@ function insert(table, row, where = '1') {
       )
       .join(
         ',',
-      )} WHERE ${where}${table === 'member' ? ` AND NOT EXISTS (SELECT 1 FROM member WHERE user_id = ${quote(row.user_id)} AND organization_id = (SELECT id FROM organization LIMIT 1))` : ''} ON CONFLICT DO NOTHING;`,
+      )} WHERE ${where}${table === 'member' ? ` AND NOT EXISTS (SELECT 1 FROM member WHERE user_id = ${quote(row.user_id)} AND organization_id = (SELECT id FROM organization LIMIT 1))` : ''} ON CONFLICT ${table === 'mock_mcp_record' && process.argv.includes('--refresh-mocks') ? 'DO UPDATE SET body = excluded.body' : 'DO NOTHING'};`,
   )
 }
 const userExists = (id) => `EXISTS (SELECT 1 FROM user WHERE id = ${quote(id)})`
@@ -131,6 +132,8 @@ for (let i = 0; i < 48; i++) {
   })
 }
 
+const mockSummary = await seedMockMcp({ cwd, insert, expr, quote, now })
+
 const temporary = mkdtempSync(join(tmpdir(), 'acl-seed-'))
 try {
   const file = join(temporary, 'seed.sql')
@@ -140,7 +143,7 @@ try {
     stdio: 'inherit',
   })
   console.log(
-    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nMock SSO accounts (pnpm mock:idp): ${seededSsoUsers.map((u) => u.email).join(', ')}\nExisting fixtures are preserved on subsequent runs.`,
+    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nMock SSO accounts (pnpm mock:idp): ${seededSsoUsers.map((u) => u.email).join(', ')}\nMock MCPs: Datadog, Confluence, Jira (${mockSummary.records} records, dataset clock ${mockSummary.asOf}).\nExisting fixtures are preserved on subsequent runs.`,
   )
 } finally {
   rmSync(temporary, { recursive: true, force: true })

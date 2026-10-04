@@ -16,7 +16,8 @@
     "db:seed": "node scripts/seed.mjs",
     "mock:idp": "node scripts/mock-idp.mjs",
     "db:migrate:remote": "wrangler d1 migrations apply acl --remote",
-    "cf-typegen": "wrangler types --strict-vars=false"
+    "cf-typegen": "wrangler types --strict-vars=false",
+    "db:setup": "node scripts/init-dev.mjs && pnpm db:migrate && pnpm db:seed"
   },
   "dependencies": {
     "@acl/db": "workspace:*",
