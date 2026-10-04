@@ -1,21 +1,7 @@
 import { ccSession, device, event, guardrail, guardrailVersion, user } from '@acl/db'
 import { decision as decisionSchema, eventKind, eventPayload, policyGraph } from '@acl/shared'
 import { createServerFn } from '@tanstack/react-start'
-import {
-  and,
-  count,
-  desc,
-  eq,
-  gte,
-  inArray,
-  like,
-  lt,
-  max,
-  or,
- 
-  sql,
-  sum,
-} from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, like, lt, max, or, sql, sum } from 'drizzle-orm'
 import { z } from 'zod'
 import { env } from '../env.ts'
 import { adminMiddleware } from '../middleware.ts'
@@ -298,6 +284,31 @@ export const eventsSearch = z.object({
 })
 export type EventsSearch = z.infer<typeof eventsSearch>
 
+/** The conditions behind the Logs filters, shared by the list and the export. */
+export function eventFilters(orgId: string, data: Omit<EventsSearch, 'selected'> & { cursor?: number }) {
+  return and(
+    eq(event.orgId, orgId),
+    gte(event.createdAt, new Date(Date.now() - rangeMs[data.range])),
+    data.decision ? eq(event.decision, data.decision) : undefined,
+    data.kind ? eq(event.kind, data.kind) : undefined,
+    data.user ? eq(event.userId, data.user) : undefined,
+    data.session ? eq(event.sessionId, data.session) : undefined,
+    data.trace ? eq(event.traceId, data.trace) : undefined,
+    data.guardrail
+      ? sql`exists (select 1 from json_each(${event.guardrails}) where json_extract(value, '$.id') = ${data.guardrail})`
+      : undefined,
+    data.cursor ? lt(event.seq, data.cursor) : undefined,
+    data.q
+      ? or(
+          like(event.toolName, `%${data.q}%`),
+          like(event.model, `%${data.q}%`),
+          eq(event.id, data.q),
+          like(event.traceId, `%${data.q}%`),
+        )
+      : undefined,
+  )
+}
+
 export const listEvents = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
   .validator(
@@ -307,25 +318,6 @@ export const listEvents = createServerFn({ method: 'GET' })
     }),
   )
   .handler(async ({ data, context: { db, orgId } }) => {
-    const filters: (SQL | undefined)[] = [
-      eq(event.orgId, orgId),
-      gte(event.createdAt, new Date(Date.now() - rangeMs[data.range])),
-      data.decision ? eq(event.decision, data.decision) : undefined,
-      data.kind ? eq(event.kind, data.kind) : undefined,
-      data.user ? eq(event.userId, data.user) : undefined,
-      data.session ? eq(event.sessionId, data.session) : undefined,
-      data.guardrail
-        ? sql`exists (select 1 from json_each(${event.guardrails}) where json_extract(value, '$.id') = ${data.guardrail})`
-        : undefined,
-      data.cursor ? lt(event.seq, data.cursor) : undefined,
-      data.q
-        ? or(
-            like(event.toolName, `%${data.q}%`),
-            like(event.model, `%${data.q}%`),
-            eq(event.id, data.q),
-          )
-        : undefined,
-    ]
     const rows = await db
       .select({
         seq: event.seq,
