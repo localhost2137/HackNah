@@ -357,7 +357,8 @@ export function combineResults(
   }
 }
 
-const approvalAsk: Record<Exclude<ApprovalMethod, 'admin'>, string> = {
+/** What a held request tells the person: who has to do what. */
+export const approvalAsk: Record<Exclude<ApprovalMethod, 'admin'>, string> = {
   confirm: 'Needs confirmation in Claude Code',
   touchid: 'Needs Touch ID on the device',
   browser: 'Needs a fresh sign-in in the browser',

@@ -1,4 +1,4 @@
-import { type Db, device, gatewayRefreshToken } from '@acl/db'
+import { type Db, device, gatewayRefreshToken, pluginRefreshToken } from '@acl/db'
 import { and, eq, isNull } from 'drizzle-orm'
 import { invalidateDeviceStatus } from '#/gateway/control.ts'
 
@@ -14,6 +14,10 @@ export async function revokeUserDevices(db: Db, orgId: string, userId: string) {
       .update(gatewayRefreshToken)
       .set({ revokedAt: new Date() })
       .where(and(eq(gatewayRefreshToken.deviceId, id), isNull(gatewayRefreshToken.revokedAt)))
+    await db
+      .update(pluginRefreshToken)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(pluginRefreshToken.deviceId, id), isNull(pluginRefreshToken.revokedAt)))
     invalidateDeviceStatus(id)
   }
 }

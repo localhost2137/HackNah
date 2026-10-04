@@ -1,4 +1,4 @@
-import { device, deviceCode, gatewayRefreshToken, user } from '@acl/db'
+import { device, deviceCode, gatewayRefreshToken, pluginRefreshToken, user } from '@acl/db'
 import { randomId } from '@acl/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { and, desc, eq, gt, isNull } from 'drizzle-orm'
@@ -37,6 +37,10 @@ export const setDeviceStatus = createServerFn({ method: 'POST' })
         .update(gatewayRefreshToken)
         .set({ revokedAt: new Date() })
         .where(and(eq(gatewayRefreshToken.deviceId, row.id), isNull(gatewayRefreshToken.revokedAt)))
+      await db
+        .update(pluginRefreshToken)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(pluginRefreshToken.deviceId, row.id), isNull(pluginRefreshToken.revokedAt)))
     }
     invalidateDeviceStatus(row.id)
     await audit(db, {

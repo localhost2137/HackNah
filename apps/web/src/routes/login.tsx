@@ -47,6 +47,8 @@ function LoginPage() {
       return setError(error.message ?? 'This instance requires single sign-on')
     }
     if (error) return setError(error.message ?? 'Sign in failed')
+    // The plugin's sign-in and approval pages are served by the gateway, not by this app.
+    if (/^\/(authorize|challenge)(\/|\?|$)/.test(target)) return window.location.assign(target)
     await navigate({ href: target })
   }
 

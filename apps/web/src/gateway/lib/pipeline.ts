@@ -1,5 +1,6 @@
 import { approval, type Db } from '@acl/db'
 import {
+  type ApprovalMethod,
   type ApprovalView,
   type CheckResult,
   callJudge,
@@ -39,28 +40,43 @@ function judgeApiKey(env: Env, endpoint: string): string | undefined {
   return env.JUDGE_API_KEY || undefined
 }
 
+type PipelineInput = Omit<EvaluationInput, 'deviceStatus' | 'groupIds'>
+
+type PipelineMeta = {
+  eventId: string
+  sessionId: string | null
+  summary: string
+  /** Where the request stands against its limits, for the Usage limit block. */
+  limits?: Map<string, LimitStatus>
+}
+
+/** A request held for an approval nobody has given yet. */
+export type PendingEvaluation = Omit<PipelineResult, 'decision'> & {
+  decision: 'pending'
+  approvalMethod: ApprovalMethod
+  approvalTimeoutSec: number
+  trustsDevice: boolean
+}
+
+export type PipelineEvaluation =
+  | (PipelineResult & { decision: 'allow' | 'block' })
+  | PendingEvaluation
+
 /**
- * Runs every guardrail the request triggers and keeps the strictest outcome. A request that
- * triggers none is allowed. If the outcome is an approval, this blocks until someone decides in
- * the dashboard or the approval times out.
+ * Runs every guardrail the request triggers and keeps the strictest outcome, without waiting for
+ * anyone. A request that triggers none is allowed.
  *
  * Device-side approvals (confirm, Touch ID, browser) pass on their own when the request carries
- * the proof in `input.signals`. Until the gateway issues the plugin's challenges, a request
- * without that proof waits in the same queue, labelled with the method it asked for.
+ * the proof in its signals: the ones given in `input`, or else what the device proved when it
+ * authenticated (`principal.signals`).
  */
-export async function runPipeline(
+export async function evaluatePipeline(
   env: Env,
   db: Db,
   principal: Principal,
-  input: Omit<EvaluationInput, 'deviceStatus' | 'groupIds'>,
-  meta: {
-    eventId: string
-    sessionId: string | null
-    summary: string
-    /** Where the request stands against its limits, for the Usage limit block. */
-    limits?: Map<string, LimitStatus>
-  },
-): Promise<PipelineResult> {
+  input: PipelineInput,
+  meta: Pick<PipelineMeta, 'limits'> = {},
+): Promise<PipelineEvaluation> {
   const [guardrails, groupIds, permissions] = await Promise.all([
     loadActiveGuardrails(db, principal.orgId),
     userGroupIds(db, principal),
@@ -93,7 +109,12 @@ export async function runPipeline(
     )
   const result = await evaluateGuardrails(
     guardrails,
-    { ...input, groupIds, deviceStatus: principal.deviceStatus },
+    {
+      ...input,
+      signals: input.signals ?? principal.signals,
+      groupIds,
+      deviceStatus: principal.deviceStatus,
+    },
     {
       judge: (check, i) => guardedJudge(env, db, principal, groupIds, check, i),
       limit: async (limitId) =>
@@ -124,10 +145,32 @@ export async function runPipeline(
   }
   if (result.decision === 'allow') return { ...base, decision: 'allow' }
   if (result.decision === 'block') return { ...base, decision: 'block' }
+  return {
+    ...base,
+    decision: 'pending',
+    approvalMethod: result.approvalMethod ?? 'admin',
+    approvalTimeoutSec: result.approvalTimeoutSec,
+    trustsDevice: result.trustsDevice,
+  }
+}
 
-  const timeoutMs = result.approvalTimeoutSec * 1000
+/**
+ * Puts a held request into the dashboard's approval queue and blocks until someone decides or
+ * the approval times out. A device-side approval the request carried no proof for waits here
+ * too, labelled with the method it asked for, unless the caller issued a challenge instead.
+ */
+export async function awaitApproval(
+  env: Env,
+  db: Db,
+  principal: Principal,
+  input: Pick<PipelineInput, 'kind'>,
+  meta: PipelineMeta,
+  result: PendingEvaluation,
+): Promise<PipelineResult> {
+  const { approvalMethod, approvalTimeoutSec, trustsDevice: trusts, ...base } = result
+  const timeoutMs = approvalTimeoutSec * 1000
   const now = new Date()
-  const trustsDevice = principal.deviceStatus === 'new' && result.trustsDevice
+  const trustsDevice = principal.deviceStatus === 'new' && trusts
   const view: ApprovalView = {
     id: randomId('apr'),
     eventId: meta.eventId,
@@ -137,7 +180,7 @@ export async function runPipeline(
     kind: input.kind,
     summary: meta.summary,
     reasons: result.reasons,
-    method: result.approvalMethod ?? 'admin',
+    method: approvalMethod,
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + timeoutMs).toISOString(),
   }
@@ -178,6 +221,22 @@ export async function runPipeline(
     decision: status === 'approved' ? 'approved' : 'declined',
     reasons: status === 'expired' ? [...result.reasons, 'Approval timed out'] : result.reasons,
   }
+}
+
+/**
+ * Evaluates the request and, if the outcome is an approval, blocks until someone decides in the
+ * dashboard or the approval times out.
+ */
+export async function runPipeline(
+  env: Env,
+  db: Db,
+  principal: Principal,
+  input: PipelineInput,
+  meta: PipelineMeta,
+): Promise<PipelineResult> {
+  const result = await evaluatePipeline(env, db, principal, input, meta)
+  if (result.decision !== 'pending') return result
+  return awaitApproval(env, db, principal, input, meta, result)
 }
 
 /**

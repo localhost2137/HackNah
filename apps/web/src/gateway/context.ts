@@ -1,12 +1,18 @@
 import type { Db } from '@acl/db'
-import type { DeviceStatus } from '@acl/shared'
+import type { DeviceStatus, RequestSignals } from '@acl/shared'
 import type { Context } from 'hono'
+import type { PluginRequest } from './plugin/auth.ts'
 
 export type Principal = {
   userId: string
   orgId: string
   deviceId: string
   deviceStatus: DeviceStatus
+  /**
+   * What the device proved about itself and its session when it authenticated with a key-bound
+   * token. Absent for bearer tokens, where guardrail checks on these signals are skipped.
+   */
+  signals?: RequestSignals
 }
 
 export type AppEnv = {
@@ -14,6 +20,8 @@ export type AppEnv = {
   Variables: {
     db: Db
     principal: Principal
+    /** Set when the request was authenticated with a DPoP proof (the hy-guard plugin). */
+    plugin: PluginRequest | undefined
   }
 }
 

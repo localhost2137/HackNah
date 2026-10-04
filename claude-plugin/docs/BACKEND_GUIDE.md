@@ -2,7 +2,7 @@
 
 This guide is for whoever (human or coding agent) implements the **server side** of hy-guard in this repository. The client side, the Claude Code plugin in `claude-plugin/`, is finished. The backend has to speak the protocol that plugin expects, so the plugin can be pointed at it **without any change on the client**.
 
-**Status:** the backend in `apps/` isn't integrated with the plugin yet. Until it is, the plugin runs against its own mock platform (`claude-plugin/mock-backend/`).
+**Status:** the gateway in `apps/web` speaks this protocol (`apps/web/src/gateway/plugin/` and `routes/plugin.ts`): milestones M1–M6, with M7 and M9 in part and M8 (EDR posture) reported as unknown. `npm run test:backend` in `claude-plugin/` drives the plugin against it (`scripts/e2e-backend.mjs`). The mock platform (`claude-plugin/mock-backend/`) stays the executable reference, and what the plugin's own tests run against.
 
 ## Read in this order (paths from the repository root)
 

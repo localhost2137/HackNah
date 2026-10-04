@@ -12,6 +12,7 @@
     "mock:auto": "MOCK_AUTO_APPROVE=1 MOCK_TRUST_IP_HEADER=1 node mock-backend/server.mjs",
     "build:native": "swiftc -O plugin/native/se-signer.swift -o plugin/native/hy-guard",
     "test": "node scripts/e2e.mjs",
+    "test:backend": "node scripts/e2e-backend.mjs",
     "test:se": "HY_KEY_PROVIDER=secure-enclave node scripts/e2e.mjs",
     "attack": "node scripts/attack.mjs",
     "zta": "node scripts/zta.mjs",

@@ -49,5 +49,6 @@
     { "tag": "v1", "new_sqlite_classes": ["SessionDO", "ApprovalDO", "RateLimiterDO"] }
   ]
   // Secrets (wrangler secret put / .dev.vars):
-  //   OPENROUTER_API_KEY, JWT_SECRET, BETTER_AUTH_SECRET, ENCRYPTION_KEY, JUDGE_API_KEY (optional)
+  //   OPENROUTER_API_KEY, JWT_SECRET, BETTER_AUTH_SECRET, ENCRYPTION_KEY, JUDGE_API_KEY (optional),
+  //   RESPONSE_SIGNING_JWK (private ES256 JWK; signs responses to the hy-guard plugin)
 }
