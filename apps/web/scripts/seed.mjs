@@ -4,6 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hashPassword } from 'better-auth/crypto'
+import {
+  policyGraph,
+  recommendedGuardrails,
+  selectionModelId,
+} from '../../../packages/shared/src/index.ts'
+import { loadDatasets, root, starterModelRefs } from '../../../scripts/lib/dataset-files.mjs'
 import { mockClient, mockIssuer, mockSsoDomain, seededSsoUsers, subjectFor } from './mock-sso.mjs'
 import { seedMockMcp } from './seed-mcp.mjs'
 
@@ -132,6 +138,45 @@ for (let i = 0; i < 48; i++) {
   })
 }
 
+// The recommended guardrails, published. The Default one they replace is switched off the first
+// time only; `--reset-guardrails` publishes the current graphs as a new version.
+const guardrails = recommendedGuardrails(starterModelRefs(loadDatasets().sets, selectionModelId))
+const resetGuardrails = process.argv.includes('--reset-guardrails')
+sql.push(
+  `UPDATE workflow SET enabled = 0 WHERE id = 'wf_default' AND NOT EXISTS (SELECT 1 FROM workflow WHERE id = ${quote(guardrails[0].id)});`,
+)
+guardrails.forEach(({ id, name, description, graph }, i) => {
+  const fresh = `NOT EXISTS (SELECT 1 FROM workflow_version WHERE workflow_id = ${quote(id)})`
+  insert('workflow', {
+    id,
+    org_id: 'seed-org',
+    name,
+    description,
+    enabled: 1,
+    position: i + 1,
+    group_ids: '[]',
+    created_at: now,
+    updated_at: now,
+  })
+  insert(
+    'workflow_version',
+    {
+      id: resetGuardrails ? `${id}-${now}` : `${id}-v1`,
+      org_id: 'seed-org',
+      workflow_id: id,
+      version: expr(
+        `(SELECT COALESCE(MAX(version), 0) + 1 FROM workflow_version WHERE workflow_id = ${quote(id)})`,
+      ),
+      definition: JSON.stringify(policyGraph.parse(graph)),
+      status: 'published',
+      note: 'Recommended guardrail',
+      created_by: 'seed-admin',
+      created_at: now,
+    },
+    resetGuardrails ? '1' : fresh,
+  )
+})
+
 const mockSummary = await seedMockMcp({ cwd, insert, expr, quote, now })
 
 const temporary = mkdtempSync(join(tmpdir(), 'acl-seed-'))
@@ -142,8 +187,11 @@ try {
     cwd,
     stdio: 'inherit',
   })
+  // Datasets for Attack analysis and the two models the guardrails above use.
+  if (!process.argv.includes('--skip-datasets'))
+    execFileSync('node', ['scripts/datasets-upload.mjs'], { cwd: root, stdio: 'inherit' })
   console.log(
-    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nMock SSO accounts (pnpm mock:idp): ${seededSsoUsers.map((u) => u.email).join(', ')}\nMock MCPs: Datadog, Confluence, Jira (${mockSummary.records} records, dataset clock ${mockSummary.asOf}).\nExisting fixtures are preserved on subsequent runs.`,
+    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nMock SSO accounts (pnpm mock:idp): ${seededSsoUsers.map((u) => u.email).join(', ')}\nMock MCPs: Datadog, Confluence, Jira (${mockSummary.records} records, dataset clock ${mockSummary.asOf}).\nGuardrails: ${guardrails.map((g) => g.name).join(', ')}.\nExisting fixtures are preserved on subsequent runs.`,
   )
 } finally {
   rmSync(temporary, { recursive: true, force: true })

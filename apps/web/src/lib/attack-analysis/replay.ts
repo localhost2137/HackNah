@@ -1,6 +1,7 @@
 import {
   type ActiveWorkflow,
   type CombinedResult,
+  type EngineDeps,
   type EvaluationInput,
   evaluateWorkflows,
   skipLeavesGap,
@@ -37,6 +38,8 @@ export async function replayTraffic(
   workflows: ActiveWorkflow[],
   persona: Persona,
   onProgress?: (completed: number) => void,
+  /** Signatures and trained models, as the gateway would load them. Never a judge. */
+  deps: Pick<EngineDeps, 'signatures' | 'models'> = {},
 ): Promise<EventResult[]> {
   const results: EventResult[] = []
   for (let offset = 0; offset < events.length; offset += 100) {
@@ -50,7 +53,7 @@ export async function replayTraffic(
           model: persona.model || entry.input.model,
         }
         // No judge stub: an unavailable judge must never be reported as a measured detection.
-        const result = await evaluateWorkflows(workflows, input)
+        const result = await evaluateWorkflows(workflows, input, deps)
         // A check skipped because it does not apply to the stage is not a missing measurement.
         const incomplete = result.checks.some(
           (check) => check.outcome === 'error' || skipLeavesGap(check),

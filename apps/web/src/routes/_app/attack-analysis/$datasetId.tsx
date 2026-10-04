@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { CoverageCharts } from '#/components/attack-analysis/coverage.tsx'
+import { RunPerformance } from '#/components/attack-analysis/performance.tsx'
 import { AnalysisResults } from '#/components/attack-analysis/results.tsx'
 import { TrafficChart } from '#/components/attack-analysis/traffic-chart.tsx'
 import { CheckList, JsonBlock } from '#/components/event-bits.tsx'
@@ -362,6 +363,7 @@ function AttackAnalysisPage({ datasetId }: { datasetId: string }) {
           </button>
         </div>
       ) : null}
+      {run ? <RunPerformance run={run} /> : null}
       {run ? <CoverageCharts run={run} /> : null}
       <Card className="mt-6 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">

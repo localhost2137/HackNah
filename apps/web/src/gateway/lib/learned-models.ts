@@ -26,7 +26,10 @@ export async function readModelIndex(env: Env): Promise<LearnedModelSummary[]> {
 const cache = new TtlCache<ScoringModel | null>(30_000)
 
 /** The models with these ids, decoded once each and re-read every 30 seconds. */
-export async function loadLearnedModels(env: Env, ids: string[]): Promise<ScoringModel[]> {
+export async function loadLearnedModels(
+  env: Pick<Env, 'PAYLOADS'>,
+  ids: string[],
+): Promise<ScoringModel[]> {
   const models = await Promise.all(
     [...new Set(ids)].map((id) =>
       cache.get(id, async () => {

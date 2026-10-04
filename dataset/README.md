@@ -68,7 +68,16 @@ the workflows you have published and shows what was blocked, missed or blocked b
 - `Mixed check · 200 / 500 / 1000`: half attacks of every kind, half normal requests, taken in turn
   from every dataset so no source dominates. Requests for harmful content and obfuscated variants
   are left out.
-- `Normal requests`: 1,500 benign rows, for measuring false blocks.
+- `Normal requests`: about 1,300 benign rows, for measuring false blocks.
+
+A derived set takes at most a quarter of any source. The upload also trains two starter models
+(prompt injections and jailbreaks; instructions hidden in tool results) on the rows the derived
+sets do not use, so the mixed checks measure them on requests they have not seen.
+
+`node dataset/tool-results.mjs` builds `imported/hacknah-tool-results.jsonl`: 657 normal tool
+results (mock Datadog, Jira and Confluence records, and source files as the Read tool returns
+them). Public injection datasets have almost no benign tool results, and a model trained without
+them flags anything shaped like one.
 
 ## Public datasets
 

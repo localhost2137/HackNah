@@ -264,7 +264,7 @@ const timings = outcomes
   .sort((a, b) => a - b)
 const at = (q: number) => timings[Math.min(timings.length - 1, Math.floor(q * timings.length))]!
 console.log(
-  `\nPolicy evaluation latency: p50 ${at(0.5).toFixed(2)} ms · p95 ${at(0.95).toFixed(2)} ms · max ${at(1).toFixed(2)} ms`,
+  `\nPolicy evaluation latency: p50 ${at(0.5).toFixed(2)} ms · p95 ${at(0.95).toFixed(2)} ms · p99 ${at(0.99).toFixed(2)} ms · max ${at(1).toFixed(2)} ms`,
 )
 
 const listed = verbose ? outcomes.filter((o) => o.status === 'fail') : requiredFailed
@@ -284,7 +284,7 @@ writeFileSync(
       signatures: signatures.length,
       ranAt: new Date().toISOString(),
       required: { total: required.length, failed: requiredFailed.length },
-      latencyMs: { p50: at(0.5), p95: at(0.95), max: at(1) },
+      latencyMs: { p50: at(0.5), p95: at(0.95), p99: at(0.99), max: at(1) },
       cases: outcomes.map(
         ({
           id,

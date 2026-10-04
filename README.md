@@ -48,7 +48,8 @@ every kind:
 - **Synthetic**: generated traffic for prompt injection, tool poisoning, definition drift and argument
   exfiltration, with device and session signals varied.
 - **Labelled**: public datasets and this project's own cases, with their sources (see `dataset/`).
-  Run `pnpm datasets:upload` to load them, including the mixed and normal sets built from them.
+  `pnpm db:seed` loads them (or `pnpm datasets:upload` on its own), including the mixed and normal
+  sets built from them.
 
 Results and policy snapshots are saved server-side (D1 index, R2 payloads), with the latest ten valid
 runs available per dataset across browser sessions. Synthetic identities use the selected group context;
@@ -158,6 +159,16 @@ For local test data, run `pnpm db:seed` after migrations. This adds 48 sample
 traffic events to the existing instance, plus `admin@demo.test` and `member@demo.test` accounts with their
 respective roles. Both use password `LocalDemo123!`. The seed always targets local D1 and preserves
 existing fixtures when rerun. These credentials are for local development only.
+
+The seed also publishes six recommended guardrails (device trust, prompt screening, tool call safety,
+tool result screening, model output, agent messages), switches the Default one off, uploads the
+datasets and trains the two models the guardrails use. Every block in them runs in the gateway
+without a network call. On the held-out Mixed check · 500 they block 213 of 250 attacks and 4 of 250
+normal requests, at p50 0.03 ms and p99 0.6 ms per request. `pnpm db:seed --reset-guardrails`
+publishes the current recommended graphs as a new version; `--skip-datasets` leaves the bucket alone.
+
+Each Attack analysis run shows a Performance panel: p50, p95, p99 and requests per second, overall
+and per stage. `pnpm test:controls` prints the same percentiles for the control suite.
 
 Checks: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
 

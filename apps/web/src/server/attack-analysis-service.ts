@@ -11,6 +11,8 @@ import {
 import { type ActiveWorkflow, defaultWorkflow, policyGraph, randomId } from '@acl/shared'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { loadLearnedModels } from '#/gateway/lib/learned-models.ts'
+import { loadSignatures } from '#/gateway/lib/signatures.ts'
 import { catalogVersion } from '#/lib/attack-analysis/catalog.ts'
 import { datasets } from '#/lib/attack-analysis/datasets.ts'
 import {
@@ -46,7 +48,7 @@ export type PlatformContext = {
   db: Db
   orgId: string
   user: { id: string }
-  env: Pick<Env, 'PAYLOADS'>
+  env: Pick<Env, 'PAYLOADS'> & Partial<Pick<Env, 'SIGNATURE_FEED_URL'>>
 }
 
 export const getAnalysisRunInput = z.object({ id: z.string().min(1).max(100) })
@@ -188,7 +190,19 @@ export async function runAnalysisService({
       : []
   })
   if ((await revisionOf(db, orgId)) !== revision) throw changed()
-  const results = await replayTraffic(traffic, workflows, persona)
+  // The same signatures and trained models the gateway would use on live traffic.
+  const deps = {
+    signatures: (await loadSignatures(env)).signatures,
+    models: await loadLearnedModels(
+      env,
+      workflows.flatMap((w) =>
+        w.definition.nodes.flatMap((n) =>
+          n.type === 'check' && n.enabled && n.check.type === 'learned' ? n.check.models : [],
+        ),
+      ),
+    ),
+  }
+  const results = await replayTraffic(traffic, workflows, persona, undefined, deps)
   if ((await revisionOf(db, orgId)) !== revision) throw changed()
   const id = randomId('arun')
   const at = new Date()

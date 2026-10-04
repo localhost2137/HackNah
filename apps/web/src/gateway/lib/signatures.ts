@@ -73,7 +73,9 @@ async function refresh(urls: string[]): Promise<SignatureSet> {
  * The built-in baseline plus every feed in `SIGNATURE_FEED_URL` (comma-separated). Feeds are
  * re-read every 30 seconds, so a signature added upstream takes effect without a deploy.
  */
-export async function loadSignatures(env: Env): Promise<SignatureSet> {
+export async function loadSignatures(
+  env: Partial<Pick<Env, 'SIGNATURE_FEED_URL'>>,
+): Promise<SignatureSet> {
   const urls = (env.SIGNATURE_FEED_URL ?? '')
     .split(',')
     .map((u) => u.trim())

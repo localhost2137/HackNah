@@ -3,6 +3,7 @@ import {
   type LearnedModel,
   type LearnedModelSummary,
   learnedMetrics,
+  learnedModel,
   randomId,
 } from '@acl/shared'
 import { createServerFn } from '@tanstack/react-start'
@@ -71,6 +72,21 @@ export const getBenignPool = createServerFn({ method: 'GET' })
         texts.push(benign[i]!.text)
     }
     return texts
+  })
+
+/** Trained models with their weights, for timing a run in the browser. */
+export const getModels = createServerFn({ method: 'GET' })
+  .middleware([adminMiddleware])
+  .validator(z.object({ ids: z.array(z.string().regex(/^mdl_[a-z0-9]{4,40}$/)).max(20) }))
+  .handler(async ({ data }) => {
+    const models: LearnedModel[] = []
+    for (const id of new Set(data.ids)) {
+      const parsed = learnedModel.safeParse(
+        await (await env.PAYLOADS.get(modelKey(id)))?.json().catch(() => null),
+      )
+      if (parsed.success) models.push(parsed.data)
+    }
+    return models
   })
 
 const modelUpload = z.object({
