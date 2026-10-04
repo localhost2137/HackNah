@@ -202,6 +202,7 @@ export const messages = new Hono<AppEnv>()
       return c.json(anthropicError('api_error', `Upstream model server failed: ${why}`), 502)
     }
     event.upstreamStatus = upstream.status
+    upstream = ownCredentialFailure(c, upstream)
     const overheadBefore = upstreamStarted - started
 
     const settle = async (
@@ -351,11 +352,27 @@ function defaultTarget(env: Env): UpstreamTarget {
 async function passthrough(c: AppContext, target: UpstreamTarget) {
   // The upstream knows nothing of the `/llm` prefix the plugin's gateway URL carries.
   const path = new URL(c.req.url).pathname.replace(/^\/llm(?=\/)/, '')
-  const upstream = await fetch(upstreamRequest(c.env, target, c.req.raw, path))
+  const upstream = ownCredentialFailure(
+    c,
+    await fetch(upstreamRequest(c.env, target, c.req.raw, path)),
+  )
   return new Response(upstream.body, {
     status: upstream.status,
     headers: clientResponseHeaders(upstream.headers),
   })
+}
+
+/**
+ * The provider refusing the gateway's own credential is the gateway's failure, not the device's.
+ * To the plugin a 401 means its credentials were rejected, and it signs the user out, so that
+ * status must not reach it for a key the device never held.
+ */
+function ownCredentialFailure(c: AppContext, upstream: Response): Response {
+  if (upstream.status !== 401 || !c.get('plugin')) return upstream
+  return Response.json(
+    anthropicError('api_error', 'The model provider rejected the gateway credential (HTTP 401)'),
+    { status: 502 },
+  )
 }
 
 function newEvent(ctx: Ctx, kind: EventKind, id: string, started: number): GatewayEvent {

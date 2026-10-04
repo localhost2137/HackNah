@@ -1,9 +1,11 @@
 import { type Db, mcpServer } from '@acl/db'
 import {
+  approvalAsk,
   type Decision,
   type GatewayEvent,
   type RedactConfig,
   RedactionVault,
+  type RequestSignals,
   randomId,
   toolTierFromAnnotations,
 } from '@acl/shared'
@@ -240,8 +242,6 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
         ...c.get('principal').signals,
         hookCorrelated: call.hookCorrelated,
         approvedChallenge: approved,
-        // The bridge asks for confirmation itself when the policy says so; it cannot be proven.
-        confirmed: true,
       },
     })
   if (isInternalTool(fullName)) return callInternalTool(c, session, fullName, args)
@@ -289,18 +289,9 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
   }
   const definition = (server.tools as McpTool[]).find((t) => t.name === toolName)
   const tier = toolTierFromAnnotations(definition?.annotations)
-  const pin = server.toolPins?.[toolName]
-  const signals = call
-    ? {
-        ...principal.signals,
-        // An admin pinned this tool's definition: has the server changed it since?
-        definitionChanged: Boolean(
-          pin &&
-            pin !==
-              (await toolDefinitionHash(listedTool(server, definition ?? { name: toolName }))),
-        ),
-      }
-    : undefined
+  const listed = listedTool(server, definition ?? { name: toolName })
+  const pin = server.toolPins?.[toolName] ?? null
+  let signals: RequestSignals | undefined
   const finish = (decision: Decision, response?: unknown) => {
     event.decision = decision
     event.latencyMs = Date.now() - started
@@ -325,6 +316,20 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     finish('block')
     const why = `You don't have access to ${fullName} in this session.`
     return deny([why], why)
+  }
+  if (call) {
+    const forecast = await pluginToolLevels(c, [
+      { tool: listed, serverId: server.id, tier, resourceIds: granted.resourceIds, pin },
+    ])
+    signals = {
+      ...principal.signals,
+      // A confirmation is the bridge's own dialog and cannot be proven. It counts as given when
+      // the policy told the bridge to ask for it on this tool. A confirmation the guardrails
+      // only ask for now, because of this call's signals, the bridge never showed.
+      confirmed: forecast.get(fullName) === 'confirm',
+      // An admin pinned this tool's definition: has the server changed it since?
+      definitionChanged: Boolean(pin && pin !== (await toolDefinitionHash(listed))),
+    }
   }
 
   const limits = await checkLimits(
@@ -372,9 +377,10 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     event.checks = [...limits.checks, ...evaluation.checks]
     event.riskScore = evaluation.riskScore
     event.guardrails = evaluation.guardrails
-    // An approval the person at the device can give: Touch ID was asked for but this request
-    // carried no proof, or the browser was. The owner approves this exact action after a fresh
-    // sign-in, and the plugin repeats the call with the challenge id.
+    // An approval the person at the device can give, but this request carried no proof of:
+    // Touch ID, a confirmation the bridge was not told to ask for, or the browser itself. The
+    // owner approves this exact action in the browser after a fresh sign-in, and the plugin
+    // repeats the call with the challenge id.
     if (
       plugin &&
       call &&
@@ -386,7 +392,10 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
         description: definition?.description,
         tier,
         arguments: args,
-        reasons: evaluation.reasons,
+        // Whatever was asked for, the browser is where it is given.
+        reasons: evaluation.reasons.map((r) =>
+          r === approvalAsk.confirm || r === approvalAsk.touchid ? approvalAsk.browser : r,
+        ),
         eventId,
       })
       finish('pending')

@@ -5,11 +5,12 @@
 //   /challenge/<id>  sign in again (a fresh session), approve the action
 // env: HY_E2E_EMAIL, HY_E2E_PASSWORD   the dashboard account
 //      HY_E2E_DECISION=deny            deny instead of approving
+//      HY_E2E_URL_FILE=<file>          only write the URL there and leave the page alone
 //      HY_E2E_BROWSER_LOG=<file>       append what happened (debugging)
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 
-const target = new URL(process.argv[2]);
+const target = new URL(process.argv[2] ?? 'http://localhost');
 const base = target.origin;
 const log = (...a) => process.env.HY_E2E_BROWSER_LOG && appendFileSync(process.env.HY_E2E_BROWSER_LOG, `${a.join(' ')}\n`);
 
@@ -40,7 +41,9 @@ export const post = (origin, path, cookie, fields) =>
     redirect: 'manual',
   });
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === `file://${process.argv[1]}` && process.env.HY_E2E_URL_FILE) {
+  writeFileSync(process.env.HY_E2E_URL_FILE, target.toString());
+} else if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     const decision = process.env.HY_E2E_DECISION === 'deny' ? 'deny' : 'approve';
     // The pages are only useful to someone signed in; an anonymous visit is sent to /login.

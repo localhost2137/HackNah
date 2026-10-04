@@ -81,6 +81,14 @@ function sameOrigin(c: AppContext): boolean {
 
 const wantsJson = (c: AppContext) => (c.req.header('accept') ?? '').includes('application/json')
 
+/** A page that decides something: never cached, never framed by another site. */
+function page(c: AppContext, html: string, status: 200 | 400 | 403 | 404 = 200) {
+  c.header('Cache-Control', 'no-store')
+  c.header('X-Frame-Options', 'DENY')
+  c.header('Content-Security-Policy', "frame-ancestors 'none'")
+  return c.html(html, status)
+}
+
 const loginRedirect = (c: AppContext) => {
   const url = new URL(c.req.url)
   return c.redirect(`/login?redirect=${encodeURIComponent(url.pathname + url.search)}`)
@@ -123,6 +131,7 @@ const oauthError = (error: string, description?: string): OAuthError => ({
   error,
   ...(description ? { error_description: description } : {}),
 })
+const BODY_NOT_BOUND = oauthError('invalid_dpop_proof', 'body hash mismatch')
 
 /**
  * Creates or updates the device a sign-in registers, keyed by the thumbprint of its key. The
@@ -169,16 +178,12 @@ async function registerDevice(
       })
       return oauthError('invalid_grant', 'this device key is registered to a different machine')
     }
-    // Another account signing in on the same device takes it over; the old sessions end.
-    if (byKey.userId !== code.userId) await revokeRefreshTokens(db, byKey.id)
+    // A device key belongs to one account. Handing a device over starts with revoking it.
+    if (byKey.userId !== code.userId)
+      return oauthError('invalid_grant', 'this device is registered to another account')
     const [row] = await db
       .update(device)
-      .set({
-        ...registration,
-        userId: code.userId,
-        orgId: code.orgId,
-        fingerprintDetails: extra.fingerprint ?? byKey.fingerprintDetails,
-      })
+      .set({ ...registration, fingerprintDetails: extra.fingerprint ?? byKey.fingerprintDetails })
       .where(eq(device.id, byKey.id))
       .returning()
     return row!
@@ -264,8 +269,10 @@ async function authorizationCodeGrant(
   c: AppContext,
   form: Record<string, string>,
   proof: Awaited<ReturnType<typeof verifyDpop>>,
+  bodyBound: boolean,
 ) {
   const db = c.get('db')
+  if (!bodyBound) return c.json(BODY_NOT_BOUND, 400)
   // Single use: the code is gone whether or not the rest of the exchange succeeds.
   const [code] = form.code
     ? await db
@@ -344,6 +351,7 @@ async function refreshTokenGrant(
   c: AppContext,
   form: Record<string, string>,
   proof: Awaited<ReturnType<typeof verifyDpop>>,
+  bodyBound: boolean,
 ) {
   const db = c.get('db')
   const net = requestNetwork(c)
@@ -368,6 +376,7 @@ async function refreshTokenGrant(
     await stolen('refresh token bound to another key')
     return c.json(oauthError('invalid_grant', 'refresh token bound to another key'), 400)
   }
+  if (!bodyBound) return c.json(BODY_NOT_BOUND, 400)
   const dev = await db.query.device.findFirst({ where: eq(device.id, row.deviceId) })
   if (!dev || dev.status === 'revoked' || dev.jkt !== row.jkt || dev.userId !== row.userId)
     return c.json(oauthError('invalid_grant', 'device revoked'), 400)
@@ -437,11 +446,13 @@ async function challengeViewer(c: AppContext, row: ChallengeRow): Promise<Challe
 async function decideChallenge(c: AppContext, decision: 'approve' | 'deny') {
   const db = c.get('db')
   const row = await findChallenge(db, c.req.param('id') ?? '')
-  if (!row) return c.html(messagePage('Unknown challenge', 'This approval link is not valid.'), 404)
+  if (!row)
+    return page(c, messagePage('Unknown challenge', 'This approval link is not valid.'), 404)
   const refuse = async (message: string) =>
     wantsJson(c)
       ? c.json({ error: message }, 403)
-      : c.html(
+      : page(
+          c,
           challengePage(
             { ...row, status: challengeStatus(row) },
             await challengeViewer(c, row),
@@ -520,17 +531,19 @@ export const plugin = new Hono<AppEnv>()
     const params = authorizeParams.safeParse(c.req.query())
     if (!params.success) {
       const fields = [...new Set(params.error.issues.map((i) => i.path.join('.')))].join(', ')
-      return c.html(messagePage('Bad request', `Missing or invalid: ${fields}`), 400)
+      return page(c, messagePage('Bad request', `Missing or invalid: ${fields}`), 400)
     }
     const me = await viewer(c)
     if (!me) return loginRedirect(c)
     if (!me.role)
-      return c.html(
+      return page(
+        c,
         messagePage('No access', `${me.user.email} is not a member of this organization.`),
         403,
       )
     const csrf = await csrfToken(c.env, me.session.id, `authorize:${stableStringify(params.data)}`)
-    return c.html(
+    return page(
+      c,
       authorizePage({
         email: me.user.email,
         deviceName: params.data.device_name,
@@ -548,7 +561,7 @@ export const plugin = new Hono<AppEnv>()
     const fail = (status: 400 | 403, message: string) =>
       wantsJson(c)
         ? c.json({ error: message }, status)
-        : c.html(messagePage('Sign-in not approved', message), status)
+        : page(c, messagePage('Sign-in not approved', message), status)
     if (!params.success) return fail(400, 'The sign-in request is malformed. Start again.')
     if (!me?.role) return fail(403, 'Sign in to the dashboard first, then start again.')
     const csrf = await csrfToken(c.env, me.session.id, `authorize:${stableStringify(params.data)}`)
@@ -587,12 +600,13 @@ export const plugin = new Hono<AppEnv>()
     const db = c.get('db')
     let proof: Awaited<ReturnType<typeof verifyDpop>>
     try {
-      // No `ath`: there is no token yet. The body is covered by `bh`.
+      // No `ath`: there is no token yet. The body hash is checked by each grant, after it has
+      // looked at whose credential this is: a stolen refresh token is logged as theft even
+      // when the thief's proof is sloppy.
       proof = await verifyDpop({
         proof: c.req.header('dpop'),
         method: 'POST',
         url: publicUrl(c.env, '/token'),
-        body,
         nonceValid: (nonce) => nonceValid(c.env.JWT_SECRET, nonce),
         claimJti: (jti, ttl) => claimJti(db, jti, ttl),
       })
@@ -602,8 +616,10 @@ export const plugin = new Hono<AppEnv>()
       throw err
     }
     if (form.client_id !== CLIENT_ID) return c.json(oauthError('invalid_client'), 400)
-    if (form.grant_type === 'authorization_code') return authorizationCodeGrant(c, form, proof)
-    if (form.grant_type === 'refresh_token') return refreshTokenGrant(c, form, proof)
+    const bodyBound = proof.claims.bh === (await sha256B64Url(body))
+    if (form.grant_type === 'authorization_code')
+      return authorizationCodeGrant(c, form, proof, bodyBound)
+    if (form.grant_type === 'refresh_token') return refreshTokenGrant(c, form, proof, bodyBound)
     return c.json(oauthError('unsupported_grant_type'), 400)
   })
 
@@ -687,9 +703,9 @@ export const plugin = new Hono<AppEnv>()
   .get('/challenge/:id', async (c) => {
     const row = await findChallenge(c.get('db'), c.req.param('id'))
     if (!row)
-      return c.html(messagePage('Unknown challenge', 'This approval link is not valid.'), 404)
-    c.header('Cache-Control', 'no-store')
-    return c.html(
+      return page(c, messagePage('Unknown challenge', 'This approval link is not valid.'), 404)
+    return page(
+      c,
       challengePage({ ...row, status: challengeStatus(row) }, await challengeViewer(c, row)),
     )
   })

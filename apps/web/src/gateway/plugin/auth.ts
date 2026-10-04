@@ -38,6 +38,7 @@ export type PluginTokenClaims = GatewayTokenClaims & {
   iss: string
   aud: string
   cnf: { jkt: string }
+  jti: string
 }
 
 export async function issuePluginAccessToken(env: Env, dev: DeviceRow): Promise<string> {
@@ -51,6 +52,8 @@ export async function issuePluginAccessToken(env: Env, dev: DeviceRow): Promise<
     dev: dev.id,
     fph: dev.fingerprintHash,
     cnf: { jkt: dev.jkt },
+    // Two tokens issued in the same second are still two tokens.
+    jti: randomToken(9),
     iat,
     exp: iat + ACCESS_TOKEN_TTL_SEC,
   }
