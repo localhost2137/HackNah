@@ -1,11 +1,10 @@
 import { Card } from '@acl/ui'
-import { useId, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Bar,
-  BarChart,
   CartesianGrid,
+  ComposedChart,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -72,7 +71,6 @@ export function TrafficChart({
   results?: EventResult[]
 }) {
   const [minutes, setMinutes] = useState(5)
-  const syncId = useId()
   const series = useMemo(
     () => bucketTraffic(traffic, results, minutes),
     [traffic, results, minutes],
@@ -120,82 +118,58 @@ export function TrafficChart({
         </div>
       </div>
       <div className="px-5 pt-4 pb-3">
-        <div className="mb-3 flex items-center justify-between text-[10px] text-muted">
-          <span>
-            VOLUME <span className="ml-2 font-mono text-subtle">events / {minutes} min</span>
-          </span>
-          <span className="font-mono text-subtle">peak {number(peak)}</span>
-        </div>
-        <div
-          className="h-44"
-          role="img"
-          aria-label={`${series.length} ${minutes}-minute intervals containing ${traffic.length} synthetic events. Peak ${peak} events per interval.`}
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={series}
-              syncId={syncId}
-              margin={{ top: 6, right: 6, bottom: 0, left: -12 }}
-              barCategoryGap="14%"
-            >
-              <CartesianGrid vertical={false} stroke="#252934" strokeDasharray="2 4" />
-              <XAxis {...axis} dataKey="timestamp" ticks={ticks} tickFormatter={time} height={24} />
-              <YAxis {...axis} allowDecimals={false} width={40} tickCount={4} />
-              {tooltip}
-              <Bar
-                dataKey="total"
-                name="Traffic"
-                fill="#7189c4"
-                fillOpacity={0.78}
-                isAnimationActive={false}
-                maxBarSize={28}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-      <div className="border-t border-line px-5 pt-4 pb-3">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[10px]">
-          <span className="text-muted">
-            BLOCK DECISIONS{' '}
-            <span className="ml-2 font-mono text-subtle">events / {minutes} min</span>
-          </span>
-          <div className="flex gap-4 text-muted">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-[10px] text-muted">
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-sm bg-[#7189c4]/50" />
+              Traffic
+            </span>
             <span className="flex items-center gap-1.5">
               <span className="w-3 border-t border-dashed border-[#f0b965]" />
-              Expected
+              Expected blocks
             </span>
             {results ? (
               <span className="flex items-center gap-1.5">
                 <span className="w-3 border-t border-[#42c8ad]" />
-                Observed
+                Observed blocks
               </span>
             ) : (
               <span className="text-subtle">Run to compare</span>
             )}
           </div>
+          <span className="font-mono text-subtle">
+            events / {minutes} min · peak {number(peak)}
+          </span>
         </div>
         <div
-          className="h-36"
+          className="h-64"
           role="img"
-          aria-label={`${minutes}-minute expected and ${results ? 'observed' : 'not yet evaluated'} block counts.`}
+          aria-label={`${series.length} ${minutes}-minute intervals containing ${traffic.length} synthetic events, with expected and ${results ? 'observed' : 'not yet evaluated'} block counts on the same scale. Peak ${peak} events per interval.`}
         >
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart
+            <ComposedChart
               data={series}
-              syncId={syncId}
               margin={{ top: 6, right: 6, bottom: 0, left: -12 }}
+              barCategoryGap="14%"
             >
               <CartesianGrid vertical={false} stroke="#252934" strokeDasharray="2 4" />
               <XAxis {...axis} dataKey="timestamp" ticks={ticks} tickFormatter={time} height={24} />
-              <YAxis {...axis} allowDecimals={false} width={40} tickCount={4} />
+              <YAxis {...axis} allowDecimals={false} width={40} tickCount={5} />
               {tooltip}
+              <Bar
+                dataKey="total"
+                name="Traffic"
+                fill="#7189c4"
+                fillOpacity={0.3}
+                isAnimationActive={false}
+                maxBarSize={28}
+              />
               <Line
                 dataKey="expected"
                 name="Expected blocks"
                 type="linear"
                 stroke="#f0b965"
-                strokeWidth={1.25}
+                strokeWidth={1.5}
                 strokeDasharray="3 2"
                 dot={false}
                 activeDot={{ r: 3 }}
@@ -207,13 +181,13 @@ export function TrafficChart({
                   name="Observed blocks"
                   type="linear"
                   stroke="#42c8ad"
-                  strokeWidth={1.5}
+                  strokeWidth={1.75}
                   dot={false}
                   activeDot={{ r: 3 }}
                   isAnimationActive={false}
                 />
               ) : null}
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
