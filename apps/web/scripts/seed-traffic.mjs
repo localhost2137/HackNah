@@ -354,6 +354,7 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
 
   // Seeded events are replaced on every run, so the month always ends today.
   sql.push(`DELETE FROM event WHERE id LIKE 'seed-event-%';`)
+  sql.push(`DELETE FROM cc_session WHERE id LIKE 'seed-session-%';`)
   sql.push(`DELETE FROM device WHERE id IN ('seed-admin-device', 'seed-member-device');`)
   const random = rng(20261004)
   const pick = (list) => list[Math.floor(random() * list.length)]
@@ -385,9 +386,24 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
     )
     const decision = result.decision === 'pending' ? 'approved' : result.decision
     const request = kind === 'model_request'
+    const billed = request && decision !== 'block'
     session.context += Math.ceil(text.length / 3) + (request ? between(200, 900) : 0)
-    const output = request ? between(120, 1400) : 0
-    const cached = request ? Math.round(session.context * 0.8) : 0
+    // Prompt caching as Claude Code uses it: the conversation so far is read from the cache, what
+    // was added since is written to it, and only a short tail is billed as plain input.
+    const read = billed ? session.cached : 0
+    const fresh = billed ? Math.min(session.context - read, between(4, 60)) : 0
+    const written = billed ? session.context - read - fresh : 0
+    const output = billed ? between(120, 1400) : 0
+    if (billed) {
+      session.cached = read + written
+      session.context += output
+    }
+    session.totals.requests++
+    if (decision === 'block') session.totals.blocked++
+    session.totals.input += fresh
+    session.totals.output += output
+    session.totals.firstSeen ??= at
+    session.totals.lastSeen = at
     insert('event', {
       id: `seed-event-${count++}`,
       org_id: 'seed-org',
@@ -404,14 +420,16 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
       checks: JSON.stringify(result.checks),
       risk_score: result.riskScore,
       guardrails: JSON.stringify(result.guardrails),
-      ...(request && decision !== 'block'
+      ...(billed
         ? {
-            input_tokens: session.context - cached,
-            cache_read_tokens: cached,
+            input_tokens: fresh,
+            cache_read_tokens: read,
+            cache_write_tokens: written,
             output_tokens: output,
             cost_usd:
-              ((session.context - cached) * session.model.input +
-                cached * session.model.input * 0.1 +
+              (fresh * session.model.input +
+                read * session.model.input * 0.1 +
+                written * session.model.input * 1.25 +
                 output * session.model.output) /
               1e6,
             upstream_status: 200,
@@ -445,6 +463,8 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
       model: MODELS.find((_, i) => share < MODELS.slice(0, i + 1).reduce((s, x) => s + x.share, 0)),
       network: pick(NETWORKS),
       context: between(18_000, 60_000),
+      cached: 0,
+      totals: { requests: 0, blocked: 0, input: 0, output: 0, firstSeen: null, lastSeen: null },
       deviceStatus: 'trusted',
       signals: healthy,
       traceId: nextTrace(),
@@ -458,12 +478,11 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
     }
     for (const move of script) {
       if (move.agent) {
-        if (!(await step('agent_message', move.agent))) return
+        if (!(await step('agent_message', move.agent))) break
       } else if (move.ask) {
-        session.traceId = nextTrace()
         if (!(await step('model_request', move.ask))) return
       } else if (move.say) {
-        if (!(await step('model_output', move.say))) return
+        if (!(await step('model_output', move.say))) break
       } else {
         const call = {
           toolName: move.tool,
@@ -471,12 +490,27 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
           tier: move.tier,
           server: move.server,
         }
-        if (!(await step('tool_call', JSON.stringify(move.args), call))) return
-        if (!(await step('tool_result', move.result, call))) return
+        if (!(await step('tool_call', JSON.stringify(move.args), call))) break
+        if (!(await step('tool_result', move.result, call))) break
         // The result goes back to the model as the next request.
-        if (!(await step('model_request', move.result))) return
+        if (!(await step('model_request', move.result))) break
       }
     }
+    // The counters the event consumer keeps for live traffic.
+    const { totals: t } = session
+    insert('cc_session', {
+      id: session.id,
+      org_id: 'seed-org',
+      user_id: person.id,
+      device_id: `${person.id}-device`,
+      resource_ids: '[]',
+      request_count: t.requests,
+      blocked_count: t.blocked,
+      input_tokens: t.input,
+      output_tokens: t.output,
+      started_at: t.firstSeen,
+      last_seen_at: t.lastSeen,
+    })
   }
 
   const day = 86_400_000

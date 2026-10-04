@@ -20,7 +20,7 @@ import {
 import { keepPreviousData, queryOptions, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
-import { Radio, Waypoints } from 'lucide-react'
+import { Download, Radio, Waypoints } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { ApprovalRecords } from '#/components/approval-records.tsx'
 import {
@@ -53,6 +53,18 @@ type Row = Awaited<ReturnType<typeof listEvents>>['rows'][number]
 function filterKey(s: EventsSearch) {
   const { selected: _selected, ...rest } = s
   return rest
+}
+
+function exportUrl(format: 'csv' | 'jsonl', filters: Omit<EventsSearch, 'selected'>) {
+  const params = new URLSearchParams({ format })
+  for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value)
+  return `/api/events/export?${params}`
+}
+
+function download(href: string) {
+  const anchor = document.createElement('a')
+  anchor.href = href
+  anchor.click()
 }
 
 function matchesLive(e: GatewayEvent, s: EventsSearch) {
@@ -237,13 +249,25 @@ function EventsPage() {
         title="Logs"
         description="Every prompt and tool call that went through the gateway, with the checks that ran on it."
         actions={
-          <Button
-            variant={follow ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => setFollow(!follow)}
-          >
-            <Radio /> {follow ? 'Live' : 'Paused'}
-          </Button>
+          <div className="flex gap-2">
+            {(['csv', 'jsonl'] as const).map((format) => (
+              <Button
+                key={format}
+                size="sm"
+                title={`Download the filtered logs as ${format.toUpperCase()}`}
+                onClick={() => download(exportUrl(format, filters))}
+              >
+                <Download /> {format.toUpperCase()}
+              </Button>
+            ))}
+            <Button
+              variant={follow ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => setFollow(!follow)}
+            >
+              <Radio /> {follow ? 'Live' : 'Paused'}
+            </Button>
+          </div>
         }
       />
       <details

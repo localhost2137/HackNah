@@ -39,6 +39,7 @@ import { Route as AppIntegrationsServerIdRouteImport } from './routes/_app/integ
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsConnectRouteImport } from './routes/_app/settings/connect'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiEventsExportRouteImport } from './routes/api/events/export'
 import { Route as ApiOauthCallbackRouteImport } from './routes/api/oauth/callback'
 import { Route as AppAccessResourcesResourceIdRouteImport } from './routes/_app/access/resources_.$resourceId'
 import { Route as AppGuardrailsGuardrailIdImpactRouteImport } from './routes/_app/guardrails/$guardrailId_.impact'
@@ -195,6 +196,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiEventsExportRoute = ApiEventsExportRouteImport.update({
+  id: '/api/events/export',
+  path: '/api/events/export',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOauthCallbackRoute = ApiOauthCallbackRouteImport.update({
   id: '/api/oauth/callback',
   path: '/api/oauth/callback',
@@ -245,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/events/export': typeof ApiEventsExportRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/attack-analysis/': typeof AppAttackAnalysisIndexRoute
   '/guardrails/': typeof AppGuardrailsIndexRoute
@@ -279,6 +286,7 @@ export interface FileRoutesByTo {
   '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/events/export': typeof ApiEventsExportRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/attack-analysis': typeof AppAttackAnalysisIndexRoute
   '/guardrails': typeof AppGuardrailsIndexRoute
@@ -316,6 +324,7 @@ export interface FileRoutesById {
   '/_app/integrations_/$serverId': typeof AppIntegrationsServerIdRoute
   '/_app/settings/connect': typeof AppSettingsConnectRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/events/export': typeof ApiEventsExportRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/_app/attack-analysis/': typeof AppAttackAnalysisIndexRoute
   '/_app/guardrails/': typeof AppGuardrailsIndexRoute
@@ -353,6 +362,7 @@ export interface FileRouteTypes {
     | '/integrations/$serverId'
     | '/settings/connect'
     | '/api/auth/$'
+    | '/api/events/export'
     | '/api/oauth/callback'
     | '/attack-analysis/'
     | '/guardrails/'
@@ -387,6 +397,7 @@ export interface FileRouteTypes {
     | '/integrations/$serverId'
     | '/settings/connect'
     | '/api/auth/$'
+    | '/api/events/export'
     | '/api/oauth/callback'
     | '/attack-analysis'
     | '/guardrails'
@@ -423,6 +434,7 @@ export interface FileRouteTypes {
     | '/_app/integrations_/$serverId'
     | '/_app/settings/connect'
     | '/api/auth/$'
+    | '/api/events/export'
     | '/api/oauth/callback'
     | '/_app/attack-analysis/'
     | '/_app/guardrails/'
@@ -442,6 +454,7 @@ export interface RootRouteChildren {
   ApiLiveRoute: typeof ApiLiveRoute
   ApiPolicyRoute: typeof ApiPolicyRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiEventsExportRoute: typeof ApiEventsExportRoute
   ApiOauthCallbackRoute: typeof ApiOauthCallbackRoute
   ApiOauthStartServerIdRoute: typeof ApiOauthStartServerIdRoute
 }
@@ -658,6 +671,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/events/export': {
+      id: '/api/events/export'
+      path: '/api/events/export'
+      fullPath: '/api/events/export'
+      preLoaderRoute: typeof ApiEventsExportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/oauth/callback': {
       id: '/api/oauth/callback'
       path: '/api/oauth/callback'
@@ -762,6 +782,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiLiveRoute: ApiLiveRoute,
   ApiPolicyRoute: ApiPolicyRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiEventsExportRoute: ApiEventsExportRoute,
   ApiOauthCallbackRoute: ApiOauthCallbackRoute,
   ApiOauthStartServerIdRoute: ApiOauthStartServerIdRoute,
 }

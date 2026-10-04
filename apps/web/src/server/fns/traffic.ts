@@ -12,7 +12,7 @@ import {
   lt,
   max,
   or,
-  type SQL,
+ 
   sql,
   sum,
 } from 'drizzle-orm'
@@ -314,7 +314,6 @@ export const listEvents = createServerFn({ method: 'GET' })
       data.kind ? eq(event.kind, data.kind) : undefined,
       data.user ? eq(event.userId, data.user) : undefined,
       data.session ? eq(event.sessionId, data.session) : undefined,
-      data.trace ? eq(event.traceId, data.trace) : undefined,
       data.guardrail
         ? sql`exists (select 1 from json_each(${event.guardrails}) where json_extract(value, '$.id') = ${data.guardrail})`
         : undefined,
@@ -324,7 +323,6 @@ export const listEvents = createServerFn({ method: 'GET' })
             like(event.toolName, `%${data.q}%`),
             like(event.model, `%${data.q}%`),
             eq(event.id, data.q),
-            like(event.traceId, `%${data.q}%`),
           )
         : undefined,
     ]
@@ -352,7 +350,7 @@ export const listEvents = createServerFn({ method: 'GET' })
       })
       .from(event)
       .leftJoin(user, eq(user.id, event.userId))
-      .where(and(...filters))
+      .where(eventFilters(orgId, data))
       .orderBy(desc(event.seq))
       .limit(data.limit + 1)
     const hasMore = rows.length > data.limit
