@@ -1,79 +1,18 @@
 # Hack?Nah!
 
-A control plane for Claude Code: every model request, built-in tool call and MCP tool call goes through
-a gateway that applies the organization's guardrails (device fingerprint, dangerous keywords, judge model,
-redaction), limits and access rules. Each guardrail runs on chosen stages (model input, tool calls, tool
-results, model output, agent messages) for chosen member groups, and asks about the request with condition
-blocks (tool, model, MCP server, group, ...); every matching guardrail runs and the strictest outcome wins,
-while a request that starts no guardrail, or whose path ends in Skip, is allowed. A dashboard shows the traffic, handles
-approvals and manages policy. Both live in one Cloudflare Worker, backed only by Cloudflare services (D1, R2, Queues and
-Durable Objects).
-
-## Built-in platform MCP
-
-Hack?Nah! includes its own management tools in the existing `/mcp` endpoint. No MCP server record,
-connection, credential entry or Integrations card is needed. Agents already using the gateway discover
-the `hacknah_*` tools through `tools/list`. Authentication uses the existing gateway bearer token and
-`x-acl-device` fingerprint header; an active admin membership and a matching, trusted device are required
-on every call. Ordinary members do not discover these tools and cannot invoke them by name.
-
-| Tools | Actions |
-| --- | --- |
-| `hacknah_platform_context` | Inspect group, resource and integration IDs without stored credentials |
-| `hacknah_list_guardrails`, `hacknah_get_guardrail`, `hacknah_guardrail_schema` | Inspect guardrails and the graph format |
-| `hacknah_create_guardrail`, `hacknah_update_guardrail`, `hacknah_save_guardrail_draft`, `hacknah_publish_guardrail` | Create, edit and publish using the same services as the dashboard |
-| `hacknah_export_policy`, `hacknah_preview_policy`, `hacknah_apply_policy` | Read, preview and apply guardrails, limits and the model catalog; merge is the default |
-| `hacknah_list_events`, `hacknah_get_event` | Inspect paginated traffic and checks; raw payload access is explicit |
-| `hacknah_list_datasets`, `hacknah_run_analysis`, `hacknah_list_analysis_runs`, `hacknah_get_analysis_run` | Replay synthetic traffic and retrieve persisted, revision-scoped results |
-
-Draft saves are separate from publishing. Publishing, enabling/disabling and applying policies affect
-production rules. Tools pass through gateway limits and guardrail checks using the management action name, tier and
-structured arguments; policy text is configuration, not a model request. Role and device access are
-checked again after any pending approval. Calls have an actor-attributed attempt and outcome in the
-Settings audit log and an event in Logs. Arguments and returned payloads are not duplicated into MCP
-audit records. Connected-server tools keep their `<server>__<tool>` names; built-ins cannot collide.
-
-The product name is **Hack?Nah!** (`hack-nah` in package/MCP identifiers). Existing `acl` deployment
-resource names, API paths, headers, package scopes and the separate `hy-guard` client identifiers remain
-compatible, so the rename does not create new infrastructure or disconnect installed clients.
-
-## Attack analysis
-
-Open **Attack analysis**, pick a dataset, and run it against the current published guardrails. One page lists
-every kind:
-
-- **Mixed check** (200, 500 or 1,000 rows): half attacks of every kind, half normal requests. The quick
-  one to rerun after changing a guardrail.
-- **Normal requests**: benign rows only, so anything blocked is a false positive.
-- **Synthetic**: generated traffic for prompt injection, tool poisoning, definition drift and argument
-  exfiltration, with device and session signals varied.
-- **Labelled**: public datasets and this project's own cases, with their sources (see `dataset/`).
-  `pnpm db:seed` loads them (or `pnpm datasets:upload` on its own), including the mixed and normal
-  sets built from them.
-
-Results and policy snapshots are saved server-side (D1 index, R2 payloads), with the latest ten valid
-runs available per dataset across browser sessions. Synthetic identities use the selected group context;
-no production requests are sent. A missing judge, model or limit evaluation is inconclusive; a check
-that is not used on a row's stage is not.
-
-Migration `0010_analysis_runs.sql` adds a per-organization rule revision. Guardrail edits and publishing,
-access rules, limits, model catalog changes and relevant integration changes invalidate all saved runs
-for that organization. Reverting a rule does not restore old results. Runs reject concurrent rule
-changes; reads only return the current revision and synthetic catalog version. Invalidated payloads
-remain stored but are not offered as current results. Bump `catalogVersion` when changing the synthetic
-traffic or replay semantics. Apply migrations before starting or deploying the updated app.
+Control plane for Claude Code. Gateway checks model requests, tool calls, and MCP calls against guardrails, limits, and access rules. Dashboard shows traffic, approvals, and policy. Single Cloudflare Worker backed by D1, R2, Queues, and Durable Objects.
 
 ## Layout
 
-| Path | What it is |
+| Path | Contents |
 | --- | --- |
-| `apps/web` | The Worker. `src/server.ts` sends `/v1`, `/mcp`, `/auth` and `/health` to the gateway (`src/gateway`, Hono) and everything else to the dashboard (TanStack Start) |
+| `apps/web` | Worker. `src/server.ts` sends `/v1`, `/mcp`, `/auth`, `/health` to the gateway (`src/gateway`, Hono) and all else to the dashboard (TanStack Start) |
 | `packages/shared` | Guardrail schema and engine, redaction, crypto, judge client |
-| `packages/db` | Drizzle schema and generated SQL migrations for D1 |
+| `packages/db` | Drizzle schema and SQL migrations for D1 |
 | `packages/ui` | Tailwind theme and UI primitives |
-| `claude-plugin` | hy-guard Claude Code plugin, mock platform, and backend integration contract |
+| `claude-plugin` | hy-guard plugin, mock platform, backend contract |
 
-## How a request flows
+## Request flow
 
 ```
                      ┌──────────────── gateway (one Worker) ─────────────────────────────┐
@@ -88,151 +27,80 @@ Claude Code ──► /v1/messages ─► catalog route ─► limits ─► Mod
                      └─ event (stage, decision, cost, timing) ──► Queue ──► D1 + R2 (payloads)
 ```
 
-- **Stages.** Every guardrail runs on one or more stages: *Model input* (what the user turn sends to the model),
-  *Tool call* (arguments, built-in or MCP), *Tool result* (what a tool returned, checked before the model reads
-  it), *Model output* (text and tool calls the model generated) and *Agent message* (a task handed to a subagent
-  and its reply). A start node with no stage ticked runs on all of them. Blocks that say nothing about a stage are
-  skipped there (a device fingerprint on a tool result, argument rules on model output). Every matching guardrail
-  runs and the strictest outcome wins; a check that errors follows the guardrail's fallback.
-- **Output guard.** Streamed answers are inspected block by block: text is released behind a 200-character
-  hold-back after the deterministic checks (so a secret can't leak in pieces) and redacted on the way, the judge
-  runs when a block is complete, and a failing answer ends with a notice instead of an error. Tool calls are held
-  until their arguments are complete; a refused call becomes a notice and the stop reason is corrected. The first
-  stage that checks a tool call stores the verdict in the session, so the hook and the MCP endpoint reuse it.
-- **Tool results.** A refused result is withheld from the model (`[Tool result withheld by Hack?Nah!: …]`)
-  and the turn goes on. MCP results are checked at the MCP endpoint; built-in results when the next model request
-  carries them.
-- **Limits.** Requests, requests at once, tokens, USD and GPU-seconds, for models, MCP servers, tools, resources or
-  the guardrails' own judge calls; counted per user, per member of a group, for a group in total (All members
-  included) or for the org. Past the limit a rule blocks, warns, or leaves it to a *Usage limit* block in a
-  guardrail (e.g. route over-budget requests to an approval). Budgets are compared with spend so far and charged
-  after the call, cache reads and writes included, and `max_tokens` is capped to what a budget has left.
+- **Stages.** You tick stages per guardrail: model input, tool call, tool result, model output, agent message. A start node with no tick runs on all stages. Blocks with no rule for a stage skip it. Each match runs and the strictest verdict wins.
+- **Output guard.** Gateway holds streamed text behind a 200-character buffer, runs deterministic checks, redacts secrets, then releases text. Judge runs on complete blocks. You see a notice in place of a refused block. Gateway holds tool calls until arguments complete.
+- **Tool results.** Gateway withholds a refused result from the model (`[Tool result withheld by Hack?Nah!: …]`) and lets the turn continue. You check MCP results at `/mcp` and built-in results on the next model request.
+- **Limits.** You cap requests, concurrency, tokens, USD, GPU-seconds per model, server, tool, resource, judge call. You count per user, per group member, per group, per org. Past the cap you block, warn, or route to a Usage limit block for approval. Gateway charges spend after the call, cache reads and writes included, and trims `max_tokens` to budget left.
+- **Auth and sessions.** You log in with OAuth device flow. You receive a 15-minute JWT bound to a machine fingerprint hash plus a rotating refresh token with reuse detection. A token with a changed fingerprint flags as `mismatch` for the fingerprint node. Gateway pins a Claude Code session id to first user and device (`SessionDO`) and stores resource scope and redaction vault there.
+- **Guardrails.** You edit each guardrail as a versioned graph (draft, then publish) in React Flow. Condition blocks ask one question each (Tool is, Model is, MCP server is, User group is, Stage is) with Yes and No exits. You chain Yes for AND and No for OR. Check nodes (fingerprint, keywords, judge, redact) branch on result. Each path ends in allow, approval, block, or Skip. `evaluateGraph()` in `packages/shared` runs in gateway and editor dry run. Each event stores the path it took.
+- **Traces.** One trace holds one user turn: prompt plus each model request, tool call, result, output, agent message. Model responses return `x-acl-trace-id`. Claude Code 2.1.283+ sends `x-claude-code-prompt-id` when you set `CLAUDE_CODE_GATEWAY_HINT_HEADERS=1`. Gateway falls back to session plus prompt. In Logs you click a trace id to list events and click Path to see the guardrail chart for that version.
+- **Models and access.** You list allowed models in Models: id pattern, endpoint, price per million tokens (input, output, cache write, cache read) or per GPU-hour. Requests use first match. With an empty catalog all traffic goes to OpenRouter with `OPENROUTER_API_KEY`. You grant MCP tools through named resources (server id to tool globs) to users or groups. Groups hold models and built-in tools. Admins call all tools. Access checks cache for 10 seconds. You log in with email and password or OIDC SSO. You restrict the dashboard to admins. Members use Claude Code.
+- **Credentials and redaction.** Gateway encrypts MCP credentials with AES-GCM bound to server and user and decrypts them in the Worker for upstream calls. Gateway swaps secrets and PII for `[REDACTED_EMAIL_1]` placeholders before the model reads them and restores them in MCP tool arguments.
 
-- **Auth.** The plugin logs in with the OAuth device flow. It gets a 15-minute JWT bound to a hash of the machine
-  fingerprint, plus a rotating refresh token with reuse detection. The same token presented with a different
-  fingerprint is flagged as `mismatch`. The guardrail's fingerprint node routes it to a block or an approval.
-- **Sessions.** Claude Code's session id is pinned to the first user and device that use it (`SessionDO`). The
-  session also stores the resource scope picked with `/acl resources` and the redaction vault.
-- **Guardrail ("Guardrail" in the dashboard).** Each guardrail is a versioned policy graph (draft, then publish), edited with React Flow.
-  Condition blocks ask one question each (*Tool is*, *Model is*, *MCP server is*, *User group is*, *Stage is*,
-  ...) and leave through Yes or No; chaining Yes into the next condition makes AND, chaining No makes OR, and
-  a block may have several incoming connections. Check nodes (fingerprint, keywords, judge, redact) branch on
-  their result, and every path ends in allow, approval, block or *Skip* (the guardrail does not apply). Graphs
-  saved with the older start-node conditions and Route blocks are converted when they are loaded. `evaluateGraph()` in `packages/shared` runs it in the gateway and
-  in the editor's dry run, and each event stores the path it took.
-- **Traces.** One trace is one user turn: the prompt and every model request, tool call, tool result, model
-  output and agent message it leads to. Each event stores a `trace_id`, and model responses return it as
-  `x-acl-trace-id`. Claude Code 2.1.283+ sends a prompt id when `CLAUDE_CODE_GATEWAY_HINT_HEADERS=1` is set
-  (`x-claude-code-prompt-id`); the gateway uses it when present. Otherwise the trace is derived from the session
-  and the prompt that started the turn, and MCP calls and hooks join the session's latest trace. In Logs, click
-  a trace id to list its events, or **Path** on a line to see the guardrail chart of the version that ran, with
-  the path the request took (`/events/<event id>`; step through the trace with the arrow keys).
-- **Models.** The Models page is the catalog: a pattern over model ids, where it is served, and what it costs
-  (per million input, output, cache-write and cache-read tokens for API models; per GPU-hour for local ones).
-  Requests go to the first matching entry; once the catalog has entries, other models are refused, `/v1/models`
-  lists the ones the user's groups allow, and groups pick models from it. An entry speaks the Anthropic Messages
-  API (passed through) or an OpenAI-compatible chat completions API (Ollama, vLLM, LM Studio, llama.cpp, OpenRouter),
-  which the gateway translates both ways, streams and tool calls included. With an empty catalog everything goes
-  to OpenRouter with `OPENROUTER_API_KEY`, as before. The judge calls any OpenAI-compatible endpoint, local ones
-  included.
-- **Dashboard login.** Email and password, or OIDC single sign-on (Settings → Single sign-on).
-  People on the configured email domain must use SSO and join as members; admins keep password login as a
-  fallback. Removing a member also revokes their Claude Code devices.
-- **Access.** A resource is a named set of MCP tools, from one server or several (server id to tool
-  glob patterns). Admins grant resources to users or groups, and that is the only way to give anyone
-  MCP tools; groups themselves hold models and built-in tools. Admins can call every tool.
-  Checks are D1 queries, cached for 10 seconds.
-- **MCP credentials** are AES-GCM encrypted with additional authenticated data (AAD) bound to the server and the
-  user. They are only decrypted inside the Worker when calling the upstream MCP server.
-- **Redaction** replaces secrets and PII with `[REDACTED_EMAIL_1]`-style placeholders before the model sees them,
-  and restores them in MCP tool arguments, so the agent can work with data it never sees in clear text.
+## Platform tools
+
+You manage policy through the existing `/mcp` endpoint with `hacknah_*` tools. You present gateway bearer token and `x-acl-device` header. You need active admin membership and a trusted device on each call. Members see no tools.
+
+| Tools | Actions |
+| --- | --- |
+| `hacknah_platform_context` | Inspect group, resource, integration IDs |
+| `hacknah_list_guardrails`, `hacknah_get_guardrail`, `hacknah_guardrail_schema` | Inspect guardrails and graph format |
+| `hacknah_create_guardrail`, `hacknah_update_guardrail`, `hacknah_save_guardrail_draft`, `hacknah_publish_guardrail` | Create, edit, publish with dashboard services |
+| `hacknah_export_policy`, `hacknah_preview_policy`, `hacknah_apply_policy` | Read, preview, apply guardrails, limits, catalog |
+| `hacknah_list_events`, `hacknah_get_event` | Inspect traffic and checks |
+| `hacknah_list_datasets`, `hacknah_run_analysis`, `hacknah_list_analysis_runs`, `hacknah_get_analysis_run` | Replay traffic and fetch stored results |
+
+You save drafts apart from publishing. Publishing, enabling, disabling, applying change production rules. You treat policy text as configuration. Gateway logs actor, attempt, outcome in Settings audit log and Logs. You keep existing `acl` paths, headers, scopes. Package and MCP IDs use `hack-nah`. Client IDs use `hy-guard`.
+
+## Attack analysis
+
+You open Attack analysis, pick a dataset, run it against published guardrails.
+
+- **Mixed check** (200, 500, 1000 rows): half attacks, half normal. You rerun this one after guardrail edits.
+- **Normal requests**: benign rows. You count blocks as false positives.
+- **Synthetic**: prompt injection, tool poisoning, definition drift, argument exfiltration with varied device and session signals.
+- **Labelled**: public sets plus project cases with sources in `dataset/`. `pnpm db:seed` loads them (`pnpm datasets:upload` loads sets alone).
+
+Gateway stores results and policy snapshots in D1 and R2 and keeps ten valid runs per dataset. Synthetic runs use group context and send no production traffic. Apply migrations before you start or deploy.
 
 ## Local development
 
-Requirements: Node 22+ and pnpm 12. No Docker: D1, R2, Queues and Durable Objects all run locally inside the
-Vite dev server.
+You need Node 22+ and pnpm 12. You need no Docker. You run D1, R2, Queues, Durable Objects inside the Vite dev server.
 
 ```sh
 pnpm install
 cp apps/web/.dev.vars.example apps/web/.dev.vars   # fill OPENROUTER_API_KEY and generate the three secrets
-pnpm db:migrate                                    # applies packages/db/drizzle to the local D1
-pnpm dev                                           # http://localhost:3000 (dashboard and gateway) + mock SSO
+pnpm db:migrate
+pnpm dev                                            # http://localhost:3000 + mock SSO
 ```
 
-This is a single-tenant installation. The first account becomes admin automatically; later accounts need access granted by an admin or SSO. Local data lives in
-`apps/web/.wrangler/state`; delete that folder and run `pnpm db:migrate` again to start over.
+You claim admin with first signup. You grant access to later accounts. Local data lives in `apps/web/.wrangler/state`. You delete that folder and rerun `pnpm db:migrate` to reset.
 
-For local test data, run `pnpm db:seed` after migrations. This adds a month of traffic (sessions
-from seven people, decided by the seeded guardrails), plus `admin@demo.test` and `member@demo.test` accounts with their
-respective roles. Both use password `LocalDemo123!`. The seed always targets local D1 and preserves
-existing fixtures when rerun. These credentials are for local development only.
+For test data you run `pnpm db:seed` after migrations. Seed adds a month of traffic from seven people plus `admin@demo.test` and `member@demo.test` with password `LocalDemo123!`. Seed targets local D1 and preserves fixtures on rerun. Use these credentials for local work alone.
 
-The seed also publishes six recommended guardrails (device trust, prompt screening, tool call safety,
-tool result screening, model output, agent messages), switches the Default one off, uploads the
-datasets and trains the two models the guardrails use. Every block in them runs in the gateway
-without a network call. On the held-out Mixed check · 500 they block 213 of 250 attacks and 4 of 250
-normal requests, at p50 0.03 ms and p99 0.6 ms per request. `pnpm db:seed --reset-guardrails`
-publishes the current recommended graphs as a new version; `--skip-datasets` leaves the bucket alone.
-
-Each Attack analysis run shows a Performance panel: p50, p95, p99 and requests per second, overall
-and per stage. `pnpm test:controls` prints the same percentiles for the control suite.
+Seed publishes six guardrails (device trust, prompt screening, tool call safety, tool result screening, model output, agent messages), switches Default off, uploads datasets, trains two models. Each block runs with no network call. On Mixed 500 seed blocks 213 of 250 attacks and 4 of 250 normal rows at p50 0.03 ms and p99 0.6 ms. Use `pnpm db:seed --reset-guardrails` to publish current graphs as a new version and `--skip-datasets` to leave the bucket alone.
 
 Checks: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
 
-After changing `packages/db/src/schema.ts`, run `pnpm db:generate` and commit the new file in `packages/db/drizzle`.
-D1 allows at most 100 bound parameters per statement, so split multi-row inserts with `chunkRows` from `@acl/db`.
+After you change `packages/db/src/schema.ts` you run `pnpm db:generate` and commit the file in `packages/db/drizzle`. D1 caps bound parameters at 100 per statement. You split multi-row inserts with `chunkRows` from `@acl/db`.
 
-## Administrator dashboard
+## Dashboard and SSO
 
-The dashboard is restricted to admins, including its server functions and live
-stream. Members use Claude Code rather than the admin console. **Logs** is the central place for request
-decisions, session/device context, and legacy approval records. The former Approvals, Sessions, and
-Devices URLs redirect to Logs. Legacy `/device` sign-in remains a standalone authenticated page.
-Migration `0002_admin_role.sql` converts existing owners and pending owner invitations to admin; apply
-it before deploying this version. Migration `0003_single_tenant.sql` enforces one internal scope and
-bootstraps the first admin. Existing scope IDs stay intact to preserve logs and policy links. Installations
-with multiple existing scopes fail migration instead of silently merging data. Organization creation,
-switching, and settings are removed.
+Logs holds request decisions, session and device context, approval records. Former Approvals, Sessions, Devices URLs redirect to Logs. In dev builds Fill admin credentials fills the login form with the seeded admin account.
 
-In development, **Fill admin credentials** fills the login form with the seeded admin account.
-It is excluded from production builds.
+`pnpm dev` starts a dev OIDC provider at `http://localhost:9400` (`pnpm mock:idp` runs it alone). You run `pnpm db:seed` to register it for `sso.test` with `admin@sso.test` (admin) and `member@sso.test` (member). You click Sign in with mock SSO and pick an account. Other addresses join as members and wait for promotion in Members. Use mock SSO for local work alone.
 
-### Testing single sign-on locally
+## Claude Code plugin status
 
-`pnpm dev` also starts a development-only OIDC identity provider at `http://localhost:9400`
-(`pnpm mock:idp` runs it alone). It accepts any client ID and secret and signs in whoever you pick,
-without a password. If the port is taken, it assumes another copy is running and stays idle.
+Target client `hy-guard` lives in [`claude-plugin`](claude-plugin/README.md) and runs against its own mock. It does not yet work with the gateway in `apps/web`. Read [backend guide](claude-plugin/docs/BACKEND_GUIDE.md) and [wire contract](claude-plugin/docs/BACKEND_CONTRACT.md) before you integrate. Open gaps:
 
-1. Run `pnpm db:seed`. It registers the mock as the instance's provider for `sso.test` and creates
-   `admin@sso.test` (admin) and `member@sso.test` (member), already linked to it.
-2. Click **Sign in with mock SSO** on the login page and pick an account. Development builds trust
-   `http://localhost:9400` automatically, so no `.dev.vars` entry is needed.
+- Discovery, request-bound proofs, shared nonce and replay state, signed responses.
+- OAuth code plus PKCE and device-key-bound tokens (gateway uses device codes).
+- Versioned `/v1/policy`, batched `/v1/events`, server-side tool-policy enforcement.
+- Plugin confirmation, Touch ID presence proofs, fresh-sign-in browser challenges.
+- Compatible `/llm/*` streaming gateway (model endpoint serves `/v1/messages`).
 
-Other emails on the mock's page (`alice@sso.test`, `bob@sso.test`, or any you type) join as new members,
-so they land on the admin-required page until promoted in Members. If Settings already has a provider,
-the seed leaves it alone; turn it off and rerun the seed to use the mock. Restarting the mock rotates its
-signing key, which is fine. Only development builds accept an `http://` issuer, and both the button and
-the seeded provider are for local development only.
-
-## Connecting Claude Code
-
-The target client is **hy-guard**, now included in [`claude-plugin`](claude-plugin/README.md). It currently
-runs against its own mock platform; it is **not yet compatible** with the gateway in `apps/web`.
-The dashboard's Claude Code plugin page reflects this status instead of advertising the old `acl` CLI.
-
-Read the [backend guide](claude-plugin/docs/BACKEND_GUIDE.md) and
-[wire contract](claude-plugin/docs/BACKEND_CONTRACT.md) before integrating. The main gaps are:
-
-- Discovery, request-bound DPoP proofs, shared nonce/replay state, and signed responses.
-- OAuth authorization code + PKCE and device-key-bound tokens (the current gateway uses device codes).
-- Versioned `/v1/policy` and batched `/v1/events`, plus server-side tool-policy enforcement.
-- Plugin confirmation, Touch ID presence proofs, and fresh-sign-in browser challenges. These differ from
-  the current guardrail's administrator approval queue; that queue remains available in Logs until migrated.
-- A compatible `/llm/*` streaming gateway; the existing model endpoint is `/v1/messages`.
-
-Keep device/session identity and revocation in the backend: these are security inputs, even though there
-are no standalone device or session dashboard screens. Do not copy the mock's auto-approval shortcuts.
-Use the plugin's isolated test profile as documented there; do not change a user's main Claude profile.
+You keep device and session identity and revocation in the backend. You test with the isolated profile in `claude-plugin` docs. You leave the main Claude profile alone.
 
 ## Deploying
 
@@ -243,90 +111,43 @@ cd apps/web
 npx wrangler d1 create acl                      # put the database_id in wrangler.jsonc
 npx wrangler r2 bucket create acl-payloads
 npx wrangler queues create acl-events && npx wrangler queues create acl-events-dlq
-npx wrangler secret put OPENROUTER_API_KEY      # also JWT_SECRET, BETTER_AUTH_SECRET, ENCRYPTION_KEY, JUDGE_API_KEY (optional)
+npx wrangler secret put OPENROUTER_API_KEY      # plus JWT_SECRET, BETTER_AUTH_SECRET, ENCRYPTION_KEY, JUDGE_API_KEY (optional)
 ```
 
-Set `PUBLIC_URL` in `apps/web/wrangler.jsonc` to the production URL, then:
+You set `PUBLIC_URL` in `apps/web/wrangler.jsonc` to the production URL, then:
 
 ```sh
 pnpm db:migrate:remote
 pnpm --filter @acl/web run deploy
 ```
 
-CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests and the build on every PR, and on `main` applies the
-D1 migrations and deploys. It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests, build on each PR and migrates plus deploys on `main`. CI needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
-## Not here yet
+## Mock investigation data
 
-- Integration of the included hy-guard plugin with the real backend (see the contract above).
-- Email invitations. Members are added by email once they have signed up.
-- Proof-of-possession tokens (DPoP-style key binding) on top of the fingerprint binding.
-- Device-bound dashboard sessions (DBSC, `@dbsc-toolkit/better-auth`).
-- SSO domain verification (DNS TXT). Until then, the first organization to claim an email domain owns it.
+You run `pnpm db:setup` once, then `pnpm dev`. Setup writes `.dev.vars` with dev secrets when missing, migrates, seeds. It preserves secrets, accounts, guardrails, connections, mock issues. You need no model key for fixtures. Seed needs Node 22.18+.
 
-## Local MCP investigation environment
-
-Run `pnpm db:setup` once, then `pnpm dev`. Setup creates `.dev.vars` with random development
-secrets only if it is missing, applies local migrations, and seeds the database. Existing secrets,
-accounts, guardrails, connections and user-created mock issues are preserved. A model API key is
-not needed for the MCP fixtures. The seed imports TypeScript fixture modules and requires Node
-22.18+ (or a newer supported Node release).
-
-The **Integrations** screen contains three explicitly labeled mock connections, using the normal
-shared-credential, discovery, group-permission and gateway policy paths:
+Integrations holds three mock connections on normal credential, discovery, permission, policy paths:
 
 | Connection | Local endpoint | Tools |
 | --- | --- | --- |
 | Datadog (mock) | `/mock-mcp/datadog` | Environment, log search, trace detail, service health, monitors, deployments |
 | Confluence (mock) | `/mock-mcp/confluence` | Environment, page search, full pages |
-| Jira (mock) | `/mock-mcp/jira` | Environment, issue search/detail, create issue, add comment |
+| Jira (mock) | `/mock-mcp/jira` | Environment, issue search and detail, create issue, add comment |
 
-These are real stateless MCP Streamable HTTP endpoints with JSON responses, backed by local D1.
-Their tools and response shapes are mock-specific, not exact replicas of vendor APIs. They are
-unavailable in production builds, including with valid mock credentials; the migration creates an
-empty storage table but never installs demo records in a remote database.
+Endpoints serve stateless MCP Streamable HTTP with JSON from local D1. Shapes suit mocks. Production builds expose no mock data. Dataset Aurelius Securities is a fictional bank with synthetic identities, amounts, telemetry, URLs, incidents. Seed holds 415 records: 337 logs, 36 traces, 8 service profiles, 6 monitors, 5 deployments, 10 Confluence pages, 10 Jira issues, 3 environment manifests.
 
-**Dataset:** Aurelius Securities is a fictional investment bank. All identities, amounts, telemetry,
-URLs and incidents are synthetic. The seed contains 415 records: 337 logs, 36 linked traces, 8 service
-profiles, 6 monitors, 5 deployments, 10 substantive Confluence pages, 10 Jira issues with discussions,
-and 3 environment manifests. Trace spans and logs share identifiers. Healthy baselines, staging
-traffic, a recovered market-data alert and an explicitly superseded runbook exercise false leads.
+Main story PAY-1847 covers settlement timeouts after a retry change. RISK-932 covers a separate sanctions feed incident. You find evidence of delay and no evidence of lost funds or duplicate journals.
 
-The primary story is **PAY-1847**, settlement timeouts following a retry change. A separate sanctions
-feed incident (**RISK-932**) must not be confused with ledger lock contention. There is evidence of
-payment delay, but no evidence of lost funds or duplicate journals. Recovery is incomplete.
+Try through the gateway:
 
-Try these investigations through the gateway/plugin once connected:
+- Investigate PAY-1847. Compare failing and healthy traces, find the deployment trigger, cite current runbook, rule on RISK-932 blame.
+- Judge the old bulk-retry procedure. Compare CONF-103 with current runbook.
+- Check the market-data warning. Name evidence for settlement link.
+- As admin: create a follow-up Jira issue for missing replay canary coverage with a stable idempotency key.
 
-- “Investigate PAY-1847. Compare failing and healthy traces, find the deployment trigger and cite the
-  current runbook. Explain whether RISK-932 caused the payment failures.”
-- “Should we follow the old bulk-retry procedure? Compare CONF-103 with the current runbook.”
-- “Is the market-data warning still active? What evidence connects it to settlement?”
-- As admin: “Create a follow-up Jira issue for missing replay canary coverage, referencing PAY-1847.
-  Use a stable idempotency key so retries do not create duplicates.”
+`seed-member` and seeded SSO member sit in Demo investigators with read grants for the three mocks. You grant Jira write tickets resource to test write policies. Created tickets persist in D1 with bot attribution upstream and employee attribution in gateway logs.
 
-`seed-member` and the seeded SSO member belong to **Demo investigators**, which is granted the three
-read-only resources (one per mock integration). Grant the **Jira · write tickets** resource to a group
-to exercise employee write policies. Created issues/comments persist in D1, are
-attributed upstream to the mock integration bot, and retain employee attribution in gateway logs.
-Creating a ticket is not a simulation of a successful write: it can be retrieved and searched afterward.
+For dataset clock you call `get_environment` before timestamp filters. `pnpm db:seed` preserves timeline. `pnpm --filter @acl/web db:seed --refresh-mocks` replays fixtures at current time and preserves user mock issues, credentials, grants, guardrail config.
 
-**Time and reseeding:** call `get_environment` for the frozen dataset clock before using timestamp
-filters. Ordinary `pnpm db:seed` preserves the timeline and avoids duplicates. To replay the canned
-scenario at the current time, run `pnpm --filter @acl/web db:seed --refresh-mocks`. This replaces only
-the fixed fixture records; it preserves user-created mock issues/comments, credentials, grants and
-guardrail configuration. `MOCK_MCP_ORIGIN` can set a different loopback origin during initial setup.
-
-For direct transport testing, use bearer token `local-demo-<provider>-token` (for example,
-`local-demo-datadog-token`), `Content-Type: application/json`, and
-`Accept: application/json, text/event-stream`. Initialize with protocol `2025-06-18` and send
-`MCP-Protocol-Version: 2025-06-18` on subsequent requests. Cross-origin requests are rejected.
-The optional `x-mock-fault` header supports `unauthorized`, `rate-limit`, `unavailable`, `slow`
-(750ms), or `tool-error`. These controls require a valid mock token. GET/SSE is deliberately unsupported
-(405); notifications receive an empty 202 response.
-
-Search supports ordinary ANDed text; Datadog additionally accepts `service:`, `status:`, `env:` and
-`trace_id:` facets. Jira uses explicit project/status/priority filters, not JQL. Lists use `limit` and
-`cursor`; missing records, invalid arguments, and conflicting idempotency keys return explicit errors.
-The existing hy-guard plugin backend-integration gap still applies: these endpoints are ready for the
-current gateway, but this work does not claim to complete that separate plugin protocol migration.
+For transport tests you use bearer `local-demo-<provider>-token`, `Content-Type: application/json`, `Accept: application/json, text/event-stream`, protocol `2025-06-18` with `MCP-Protocol-Version: 2025-06-18` on later requests. You send `x-mock-fault` with `unauthorized`, `rate-limit`, `unavailable`, `slow`, `tool-error` to trigger faults. GET and SSE return 405. Search uses AND text plus `service:`, `status:`, `env:`, `trace_id:` facets for Datadog. Jira uses project, status, priority filters. Lists use `limit` and `cursor`.
