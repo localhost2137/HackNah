@@ -2,6 +2,7 @@
 
 import { config } from './config.mjs';
 import { error, info } from './log.mjs';
+import { watchSelection } from './mcp-selection.mjs';
 import { McpServer } from './mcp-server.mjs';
 import { PolicyEngine } from './policy.mjs';
 import { Telemetry } from './telemetry.mjs';
@@ -66,6 +67,8 @@ export async function serve(keys, platform) {
 
   writeDataDirPointer();
   publishIdentity();
+  // /mcps changed which servers this session uses: have Claude Code list the tools again.
+  watchSelection(() => server.notifyToolsChanged());
   server.start();
   telemetry.start();
   await refreshPolicy();

@@ -21,12 +21,14 @@ export type UiState = {
   device_code?: string;
   key_storage?: string;
   posture?: { zta: number | null; os: { fv: boolean | null; sip: boolean | null; gk: boolean | null; fw: boolean | null } | null };
+  /** Company MCP servers behind the gateway, for /mcps. */
+  servers?: { name: string; tools: number }[];
   calls?: Record<string, UiCall>;
   last_event?: { id: string; kind: string; text: string; at: string };
 };
 
 declare module 'claude-code' {
   interface PluginState {
-    'hy-guard': { ui: UiState | null };
+    'hy-guard': { ui: UiState | null; mcpsOff: string[] };
   }
 }

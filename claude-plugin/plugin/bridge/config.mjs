@@ -71,6 +71,7 @@ export const config = {
     log: join(dataDir, 'bridge.log'),
     llmSecret: join(dataDir, 'llm-local-secret.json'),
     uiState: join(dataDir, 'ui-state.json'),
+    mcpSelection: join(dataDir, 'mcp-selection.json'),
     userRules: join(homedir(), '.config', 'hy-guard', 'rules.json'),
   },
 };

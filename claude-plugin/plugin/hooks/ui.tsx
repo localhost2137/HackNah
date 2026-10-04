@@ -7,13 +7,16 @@
 // ui_band (off). Env overrides for dev: HY_UI_CARDS, HY_UI_STATUS, HY_UI_BAND.
 
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
 import type { UiCall, UiState } from '../types'
 
 const PREFIX = 'mcp__plugin_hy-guard_gateway__'
 const ui = atom({ plugin: 'hy-guard', key: 'ui' } as const, null as UiState | null)
 const WAITING = new Set(['waiting_confirm', 'waiting_touchid', 'waiting_browser'])
+/** Servers switched off for this session with /mcps. The bridge reads the same list from a file. */
+const mcpsOff = atom({ plugin: 'hy-guard', key: 'mcpsOff' } as const, [] as string[])
+const MCPS_PANE = 'hy-mcps'
 
 const COLOR: Record<string, string> = {
   running: 'cyan',
@@ -73,6 +76,15 @@ const asBool = (v: string | undefined) => (v === undefined || v === '' ? undefin
 const interesting = (c: UiCall | undefined) =>
   Boolean(c && ((c.approval && c.approval !== 'none') || c.state === 'blocked' || WAITING.has(c.state)))
 
+/** Where the bridge reads the switched-off servers from; set once the session starts. */
+let selectionPath: string | undefined
+
+async function setOff($: EngineInterface, off: string[]) {
+  await update($, mcpsOff, () => off)
+  if (selectionPath) await $.fs.write(selectionPath, JSON.stringify({ off }))
+  $.ui.invalidate('ui.render')
+}
+
 export const register: Register = (on, options) => {
   // Plugin options (/config); HY_UI_* environment variables override them (dev).
   const cfg = {
@@ -95,6 +107,13 @@ export const register: Register = (on, options) => {
         return result
       }
     }
+    selectionPath = `${dataDir}/mcp-selection.json`
+    // A new session starts with every server on.
+    await setOff($, [])
+    await $.command.register({
+      name: 'mcps',
+      description: 'Choose which company MCP servers this session uses',
+    })
     const path = `${dataDir}/ui-state.json`
     let lastText = ''
     let lastEventId: string | null = null
@@ -120,6 +139,47 @@ export const register: Register = (on, options) => {
       lastEventId = ev?.id ?? ''
     })
     return result
+  })
+
+  on('command.run', { command: 'mcps' }, async $ => {
+    if (!selectionPath) return { text: 'hy-guard is not running in this session.' }
+    await $.ui.open({ id: MCPS_PANE, title: 'Company MCP servers', focus: true })
+    return { text: 'Pick the servers to use in this session.' }
+  })
+
+  // /mcps: one row per server; Enter or its number switches it on or off.
+  on('ui.render', { component: 'Pane', requestId: MCPS_PANE }, async ($, e) => {
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const servers = (await read($, ui))?.servers ?? []
+    const off = await read($, mcpsOff)
+    if (servers.length === 0)
+      return (
+        <Box flexDirection="column">
+          <Text dimColor>No company servers yet. Sign in with /hy-guard:login first.</Text>
+        </Box>
+      )
+    const toggle = (name: string) =>
+      setOff($, off.includes(name) ? off.filter(s => s !== name) : [...off, name])
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>
+          {servers.length - off.length} of {servers.length} on. Applies to this session only.
+        </Text>
+        {servers.map((s, i) => (
+          <Button
+            key={`server-${s.name}`}
+            hotkey={i < 9 ? String(i + 1) : undefined}
+            label={`${off.includes(s.name) ? '[ ]' : '[x]'} ${s.name} (${s.tools} ${s.tools === 1 ? 'tool' : 'tools'})`}
+            onPress={() => toggle(s.name)}
+          />
+        ))}
+        <Box>
+          <Button key="all" hotkey="a" label="All on" onPress={() => setOff($, [])} />
+          <Text> </Text>
+          <Button key="close" hotkey="q" label="Close" onPress={() => $.ui.close({ id: MCPS_PANE })} />
+        </Box>
+      </Box>
+    )
   })
 
   // Claude Code folds runs of tool calls into one group line; unfold groups made only of

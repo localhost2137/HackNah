@@ -224,6 +224,13 @@ Options are plugin settings in `/config`. `HY_UI_*` environment variables overri
 
 The mod finds the bridge's data folder through `HY_DATA_DIR`, or a pointer the bridge writes to `plugin/.runtime/data-dir`. It only draws what the bridge reports; the enforcement stays in the bridge and the platform.
 
+### Choosing servers for a session (`/mcps`)
+
+`/mcps` opens a pane that lists the company MCP servers behind the gateway. Enter, or the number
+next to a server, switches it on or off; `a` turns everything on, `q` closes. A server that is off
+has its tools removed from the session, and the bridge refuses calls to it. The choice lasts for
+the session: a new one starts with every server on. `hy_status` lists what is off.
+
 ### 5. What decides whether the model sees a tool
 
 ```mermaid

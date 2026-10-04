@@ -32,6 +32,9 @@ export function uiCall(toolUseId, patch) {
   });
 }
 
+/** The company MCP servers the person can switch on and off with /mcps. */
+export const uiServers = (servers) => change((s) => (s.servers = servers));
+
 /** A one-off toast ("✓ Approved with Touch ID", "⛔ blocked: EDR alert"). */
 export const uiToast = (kind, text) => change((s) => (s.last_event = { id: uuid(), kind, text, at: new Date().toISOString() }));
 

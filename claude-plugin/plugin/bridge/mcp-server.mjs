@@ -13,7 +13,8 @@ import { openBrowser } from './platform.mjs';
 import { describeArgs } from './telemetry.mjs';
 import { GatewayError } from './upstream.mjs';
 import { readJson, shortCode, sleep } from './util.mjs';
-import { uiCall, uiToast } from './ui-state.mjs';
+import { serverOf, serversOf, switchedOff } from './mcp-selection.mjs';
+import { uiCall, uiToast, uiServers } from './ui-state.mjs';
 
 /** Per tool call: { requestId, progressToken, toolUseId } (parallel calls stay apart). */
 const callCtx = new AsyncLocalStorage();
@@ -186,7 +187,10 @@ export class McpServer {
         hidden: tools.filter((t) => this.policy.decision(t.name).action === 'hide').map((t) => t.name),
       });
       this.tamperError = null;
-      return [...visible, LOCAL_TOOLS.hy_status];
+      // Servers the person switched off for this session (/mcps) are left out.
+      uiServers(serversOf(visible));
+      const off = switchedOff();
+      return [...visible.filter((t) => !off.has(serverOf(t.name))), LOCAL_TOOLS.hy_status];
     } catch (e) {
       warn('tools/list failed', { error: e.message });
       if (e.code === 'response_tampered') {
@@ -236,6 +240,8 @@ export class McpServer {
     if (name === 'hy_login') return this.#login();
     if (name === 'hy_status') return text(this.#status());
     if (!this.platform.isSignedIn()) return text('Not signed in. Call hy_login first.', true);
+    if (switchedOff().has(serverOf(name)))
+      return text(`The ${serverOf(name)} server is switched off for this session. The user can turn it on with /mcps.`, true);
 
     const d = this.policy.decision(name);
     if (this.tamperError && !this.policy.decisions.has(name)) return text(`Blocked: ${this.tamperError}.`, true);
@@ -402,6 +408,8 @@ export class McpServer {
       `Policy: ${this.policy.policy.version}`,
     ];
     if (this.tamperError) lines.push(`⚠ ${this.tamperError}`);
+    const off = [...switchedOff()];
+    if (off.length) lines.push(`Servers switched off for this session (/mcps): ${off.join(', ')}`);
     const restricted = [...this.policy.decisions].filter(([, d]) => d.action !== 'allow' || d.tier !== 'read');
     if (restricted.length) {
       lines.push('Tools with restrictions:');
