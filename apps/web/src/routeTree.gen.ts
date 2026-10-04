@@ -26,6 +26,7 @@ import { Route as ApiLiveRouteImport } from './routes/api/live'
 import { Route as AppAccessGroupsRouteImport } from './routes/_app/access/groups'
 import { Route as AppAccessMembersRouteImport } from './routes/_app/access/members'
 import { Route as AppAccessResourcesRouteImport } from './routes/_app/access/resources'
+import { Route as AppIntegrationsServerIdRouteImport } from './routes/_app/integrations_.$serverId'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsConnectRouteImport } from './routes/_app/settings/connect'
 import { Route as AppWorkflowsIndexRouteImport } from './routes/_app/workflows/index'
@@ -118,6 +119,11 @@ const AppAccessResourcesRoute = AppAccessResourcesRouteImport.update({
   path: '/access/resources',
   getParentRoute: () => AppRoute,
 } as any)
+const AppIntegrationsServerIdRoute = AppIntegrationsServerIdRouteImport.update({
+  id: '/integrations_/$serverId',
+  path: '/integrations/$serverId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
@@ -171,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/access/groups': typeof AppAccessGroupsRoute
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
+  '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
   '/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -196,6 +203,7 @@ export interface FileRoutesByTo {
   '/access/groups': typeof AppAccessGroupsRoute
   '/access/members': typeof AppAccessMembersRoute
   '/access/resources': typeof AppAccessResourcesRoute
+  '/integrations/$serverId': typeof AppIntegrationsServerIdRoute
   '/settings/connect': typeof AppSettingsConnectRoute
   '/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -223,6 +231,7 @@ export interface FileRoutesById {
   '/_app/access/groups': typeof AppAccessGroupsRoute
   '/_app/access/members': typeof AppAccessMembersRoute
   '/_app/access/resources': typeof AppAccessResourcesRoute
+  '/_app/integrations_/$serverId': typeof AppIntegrationsServerIdRoute
   '/_app/settings/connect': typeof AppSettingsConnectRoute
   '/_app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -250,6 +259,7 @@ export interface FileRouteTypes {
     | '/access/groups'
     | '/access/members'
     | '/access/resources'
+    | '/integrations/$serverId'
     | '/settings/connect'
     | '/workflows/$workflowId'
     | '/api/auth/$'
@@ -275,6 +285,7 @@ export interface FileRouteTypes {
     | '/access/groups'
     | '/access/members'
     | '/access/resources'
+    | '/integrations/$serverId'
     | '/settings/connect'
     | '/workflows/$workflowId'
     | '/api/auth/$'
@@ -301,6 +312,7 @@ export interface FileRouteTypes {
     | '/_app/access/groups'
     | '/_app/access/members'
     | '/_app/access/resources'
+    | '/_app/integrations_/$serverId'
     | '/_app/settings/connect'
     | '/_app/workflows/$workflowId'
     | '/api/auth/$'
@@ -444,6 +456,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessResourcesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/integrations_/$serverId': {
+      id: '/_app/integrations_/$serverId'
+      path: '/integrations/$serverId'
+      fullPath: '/integrations/$serverId'
+      preLoaderRoute: typeof AppIntegrationsServerIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/': {
       id: '/_app/settings/'
       path: '/settings'
@@ -507,6 +526,7 @@ interface AppRouteChildren {
   AppAccessGroupsRoute: typeof AppAccessGroupsRoute
   AppAccessMembersRoute: typeof AppAccessMembersRoute
   AppAccessResourcesRoute: typeof AppAccessResourcesRoute
+  AppIntegrationsServerIdRoute: typeof AppIntegrationsServerIdRoute
   AppSettingsConnectRoute: typeof AppSettingsConnectRoute
   AppWorkflowsWorkflowIdRoute: typeof AppWorkflowsWorkflowIdRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
@@ -524,6 +544,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessGroupsRoute: AppAccessGroupsRoute,
   AppAccessMembersRoute: AppAccessMembersRoute,
   AppAccessResourcesRoute: AppAccessResourcesRoute,
+  AppIntegrationsServerIdRoute: AppIntegrationsServerIdRoute,
   AppSettingsConnectRoute: AppSettingsConnectRoute,
   AppWorkflowsWorkflowIdRoute: AppWorkflowsWorkflowIdRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
@@ -547,12 +568,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

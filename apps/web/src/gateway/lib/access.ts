@@ -6,6 +6,8 @@ import {
   type GroupPermissions,
   globMatch,
   isBuiltinTool,
+  mcpServerAllowed,
+  mcpToolAllowed,
   mergePermissions,
   modelAllowed,
   NO_PERMISSIONS,
@@ -86,7 +88,7 @@ export async function userGroupIds(db: Db, p: Principal): Promise<string[]> {
   return (await userGroups(db, p)).map((g) => g.id)
 }
 
-/** Models and built-in tools the user may use. Admins may use everything. */
+/** Models, built-in tools and MCP tools the user may use. Admins may use everything. */
 export async function effectivePermissions(db: Db, p: Principal): Promise<GroupPermissions> {
   const role = await memberRole(db, p)
   if (!role) return NO_PERMISSIONS
@@ -152,4 +154,43 @@ export function resourcesForTool(
         (r.toolPatterns.length === 0 || r.toolPatterns.some((p) => globMatch(p, toolName))),
     )
     .map((r) => r.id)
+}
+
+/**
+ * Everything that can grant a user MCP tools: resource grants and their groups' MCP permissions.
+ * A session narrowed with `/acl resources` only keeps the selected resources.
+ */
+export type McpAccess = { resources: ResourceRow[]; permissions: GroupPermissions }
+
+export function mcpAccess(
+  resources: ResourceRow[],
+  permissions: GroupPermissions,
+  scope: string[] | undefined,
+): McpAccess {
+  const scoped = Boolean(scope?.length)
+  return {
+    resources: applySessionScope(resources, scope),
+    permissions: scoped ? NO_PERMISSIONS : permissions,
+  }
+}
+
+/** Whether any tool of the server may be granted, so it is worth listing at all. */
+export function mcpServerVisible(access: McpAccess, serverId: string): boolean {
+  return (
+    mcpServerAllowed(access.permissions, serverId) ||
+    access.resources.some((r) => r.mcpServerId === serverId)
+  )
+}
+
+/** Whether the user may call the tool, and the resources that grant it (may be empty). */
+export function mcpToolAccess(
+  access: McpAccess,
+  serverId: string,
+  toolName: string,
+): { allowed: boolean; resourceIds: string[] } {
+  const resourceIds = resourcesForTool(access.resources, serverId, toolName)
+  return {
+    allowed: resourceIds.length > 0 || mcpToolAllowed(access.permissions, serverId, toolName),
+    resourceIds,
+  }
 }

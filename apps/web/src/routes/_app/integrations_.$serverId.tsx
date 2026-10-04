@@ -1,0 +1,313 @@
+import { globMatch, type ToolTier, withMcpTool } from '@acl/shared'
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  Input,
+  PageHeader,
+  Stat,
+  Table,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+} from '@acl/ui'
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+import { FormError } from '#/components/auth-shell.tsx'
+import { DecisionBadge } from '#/components/event-bits.tsx'
+import { num, timeAgo } from '#/lib/format.ts'
+import { setGroupMcpTools } from '#/server/fns/access.ts'
+import { getMcpServerDetail, refreshMcpTools } from '#/server/fns/integrations.ts'
+
+const detailQuery = (serverId: string) =>
+  queryOptions({
+    queryKey: ['mcp-servers', serverId],
+    queryFn: () => getMcpServerDetail({ data: { serverId } }),
+  })
+
+export const Route = createFileRoute('/_app/integrations_/$serverId')({
+  loader: ({ context: { queryClient }, params }) =>
+    queryClient.ensureQueryData(detailQuery(params.serverId)),
+  component: ServerPage,
+})
+
+type Detail = Awaited<ReturnType<typeof getMcpServerDetail>>
+type Group = Detail['groups'][number]
+
+const tierTone: Record<ToolTier, 'neutral' | 'warn' | 'bad'> = {
+  read: 'neutral',
+  write: 'warn',
+  destructive: 'bad',
+}
+
+function ServerPage() {
+  const { serverId } = Route.useParams()
+  const navigate = Route.useNavigate()
+  const qc = useQueryClient()
+  const { data } = useQuery(detailQuery(serverId))
+  const [filter, setFilter] = useState('')
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['mcp-servers'] })
+  const setTools = useMutation({
+    mutationFn: (args: { groupId: string; tools: string[] }) =>
+      setGroupMcpTools({ data: { ...args, serverId } }),
+    onSuccess: async () => {
+      await invalidate()
+      await qc.invalidateQueries({ queryKey: ['groups'] })
+    },
+  })
+  const refresh = useMutation({
+    mutationFn: () => refreshMcpTools({ data: { serverId } }),
+    onSuccess: invalidate,
+  })
+
+  if (!data) return null
+  const { server, tools, groups, resources } = data
+  const toolNames = tools.map((t) => t.name)
+  const shown = tools.filter((t) => t.name.toLowerCase().includes(filter.toLowerCase()))
+  const totalCalls = tools.reduce((n, t) => n + t.usage.calls, 0)
+  const blocked = tools.reduce((n, t) => n + t.usage.blocked, 0)
+  const groupsWithAccess = groups.filter((g) => g.patterns.length || g.everyServer.length).length
+
+  const toggle = (g: Group, tool: string, allowed: boolean) =>
+    setTools.mutate({ groupId: g.id, tools: withMcpTool(g.patterns, tool, allowed, toolNames) })
+  const coveringResources = (tool: string) =>
+    resources.filter(
+      (r) => r.toolPatterns.length === 0 || r.toolPatterns.some((p) => globMatch(p, tool)),
+    )
+  const grantLabel = (grants: { type: string; id: string }[]) =>
+    grants.length === 0
+      ? 'Not granted to anyone'
+      : `Granted to ${grants
+          .map((s) =>
+            s.type === 'group' ? (groups.find((g) => g.id === s.id)?.name ?? s.id) : 'a user',
+          )
+          .join(', ')}`
+
+  return (
+    <>
+      <Link
+        to="/integrations"
+        className="mb-3 inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
+      >
+        <ArrowLeft className="size-3.5" /> Integrations
+      </Link>
+      <PageHeader
+        title={server.name}
+        description={
+          <>
+            <span className="font-mono">{server.slug}__*</span> · {server.url}
+            {server.enabled ? '' : ' · disabled'}
+          </>
+        }
+        actions={
+          <Button size="sm" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+            <RefreshCw className={refresh.isPending ? 'animate-spin' : ''} /> Refresh tools
+          </Button>
+        }
+      />
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat
+          label="Tools"
+          value={tools.length}
+          delta={
+            server.toolsRefreshedAt
+              ? `refreshed ${timeAgo(server.toolsRefreshedAt)}`
+              : 'never refreshed'
+          }
+        />
+        <Stat label={`Calls · ${data.statsDays}d`} value={num(totalCalls)} />
+        <Stat
+          label={`Blocked · ${data.statsDays}d`}
+          value={num(blocked)}
+          tone={blocked ? 'warn' : 'neutral'}
+        />
+        <Stat
+          label="Groups with access"
+          value={`${groupsWithAccess} / ${groups.length}`}
+          delta="Admins can call every tool"
+        />
+      </div>
+
+      <Card className="mb-4">
+        <CardHeader
+          title="Tools and who can call them"
+          description="Tick a box to let a group call that tool. A group with no ticked tools does not see this server at all. Resources add access on top of this."
+          actions={
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter tools"
+              className="h-8 w-48"
+            />
+          }
+        />
+        {tools.length === 0 ? (
+          <EmptyState
+            title="No tools loaded"
+            description="Refresh tools to load what this server offers."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <THead>
+                <tr>
+                  <TH>Tool</TH>
+                  <TH className="text-right">Calls</TH>
+                  <TH>Resources</TH>
+                  {groups.map((g) => {
+                    const all = g.patterns.includes('*') || g.everyServer.length > 0
+                    const count = toolNames.filter((t) =>
+                      [...g.patterns, ...g.everyServer].some((p) => globMatch(p, t)),
+                    ).length
+                    return (
+                      <TH key={g.id} className="text-center">
+                        <label
+                          className="flex cursor-pointer flex-col items-center gap-1"
+                          title={
+                            g.everyServer.length
+                              ? 'This group may use every MCP server; change it on the Groups page'
+                              : 'Every tool, including ones the server adds later'
+                          }
+                        >
+                          <span className="whitespace-nowrap">{g.name}</span>
+                          <span className="flex items-center gap-1 text-[10px] font-normal text-subtle normal-case">
+                            <input
+                              type="checkbox"
+                              checked={all}
+                              disabled={g.everyServer.length > 0 || setTools.isPending}
+                              onChange={(e) =>
+                                setTools.mutate({
+                                  groupId: g.id,
+                                  tools: e.target.checked ? ['*'] : [],
+                                })
+                              }
+                              className="accent-[var(--color-accent)]"
+                            />
+                            all · {count}/{toolNames.length}
+                          </span>
+                        </label>
+                      </TH>
+                    )
+                  })}
+                </tr>
+              </THead>
+              <TBody>
+                {shown.map((t) => (
+                  <TR key={t.name}>
+                    <TD className="max-w-96">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs">{t.name}</span>
+                        <Badge tone={tierTone[t.tier]}>{t.tier}</Badge>
+                      </div>
+                      {t.description ? (
+                        <div className="truncate text-[11px] text-subtle" title={t.description}>
+                          {t.description}
+                        </div>
+                      ) : null}
+                    </TD>
+                    <TD className="text-right text-xs whitespace-nowrap tabular-nums">
+                      {t.usage.calls ? (
+                        <span title={t.usage.last ? `last ${timeAgo(t.usage.last)}` : undefined}>
+                          {num(t.usage.calls)}
+                          {t.usage.blocked ? (
+                            <span className="text-bad"> · {num(t.usage.blocked)} blocked</span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="text-subtle">—</span>
+                      )}
+                    </TD>
+                    <TD>
+                      <div className="flex max-w-56 flex-wrap gap-1">
+                        {coveringResources(t.name).map((r) => (
+                          <Badge key={r.id} tone="info" title={grantLabel(r.grants)}>
+                            {r.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TD>
+                    {groups.map((g) => {
+                      const inherited = g.everyServer.some((p) => globMatch(p, t.name))
+                      const allowed = inherited || g.patterns.some((p) => globMatch(p, t.name))
+                      return (
+                        <TD key={g.id} className="text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`${g.name} may call ${t.name}`}
+                            checked={allowed}
+                            disabled={inherited || setTools.isPending}
+                            title={
+                              inherited ? 'Allowed on every MCP server for this group' : undefined
+                            }
+                            onChange={(e) => toggle(g, t.name, e.target.checked)}
+                            className="accent-[var(--color-accent)]"
+                          />
+                        </TD>
+                      )
+                    })}
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </div>
+        )}
+        <div className="px-4 pb-3">
+          <FormError message={setTools.error?.message ?? refresh.error?.message ?? null} />
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Recent calls"
+          description={
+            data.unlistedCalls
+              ? `Includes calls to ${data.unlistedCalls} tools the server no longer lists.`
+              : 'Every call made to this server through the gateway.'
+          }
+        />
+        {data.recent.length === 0 ? (
+          <EmptyState title="No calls yet" />
+        ) : (
+          <Table>
+            <THead>
+              <tr>
+                <TH>When</TH>
+                <TH>User</TH>
+                <TH>Tool</TH>
+                <TH>Decision</TH>
+                <TH className="text-right">Latency</TH>
+              </tr>
+            </THead>
+            <TBody>
+              {data.recent.map((e) => (
+                <TR
+                  key={e.id}
+                  className="cursor-pointer"
+                  onClick={() =>
+                    navigate({ to: '/events', search: { selected: e.id, range: '30d' } })
+                  }
+                >
+                  <TD className="text-xs whitespace-nowrap text-muted">{timeAgo(e.createdAt)}</TD>
+                  <TD className="text-xs">{e.userName ?? e.userEmail ?? '—'}</TD>
+                  <TD className="font-mono text-xs">{e.toolName}</TD>
+                  <TD>
+                    <DecisionBadge decision={e.decision} />
+                  </TD>
+                  <TD className="text-right text-xs text-muted tabular-nums">{e.latencyMs} ms</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </Card>
+    </>
+  )
+}

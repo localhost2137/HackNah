@@ -4,6 +4,9 @@ import {
   applySessionScope,
   filterToolDefinitions,
   globMatch,
+  mcpAccess,
+  mcpServerVisible,
+  mcpToolAccess,
   permissionDenial,
   resourcesForTool,
 } from './access.ts'
@@ -39,7 +42,7 @@ describe('resource matching', () => {
 })
 
 describe('group permissions', () => {
-  const perms = { models: ['claude-sonnet-*'], builtinTools: ['Read', 'Grep'] }
+  const perms = { models: ['claude-sonnet-*'], builtinTools: ['Read', 'Grep'], mcp: {} }
 
   it('blocks models and built-in tools the groups do not allow', () => {
     const model = (m: string) =>
@@ -72,6 +75,40 @@ describe('group permissions', () => {
       { name: 'mcp__acl__gh__list' },
       {},
     ])
+  })
+})
+
+describe('MCP access', () => {
+  const resources = [row('res_gh', 'gh', ['list_*'])]
+  const permissions = {
+    models: [],
+    builtinTools: [],
+    mcp: { gh: ['get_issue'], linear: ['create_issue'] },
+  }
+  const access = mcpAccess(resources, permissions, undefined)
+
+  it('combines resource grants and group MCP permissions', () => {
+    expect(mcpToolAccess(access, 'gh', 'list_repos')).toEqual({
+      allowed: true,
+      resourceIds: ['res_gh'],
+    })
+    expect(mcpToolAccess(access, 'gh', 'get_issue')).toEqual({ allowed: true, resourceIds: [] })
+    expect(mcpToolAccess(access, 'gh', 'delete_repo').allowed).toBe(false)
+    expect(mcpToolAccess(access, 'linear', 'create_issue').allowed).toBe(true)
+    expect(mcpToolAccess(access, 'linear', 'delete_issue').allowed).toBe(false)
+  })
+
+  it('hides servers nothing grants', () => {
+    expect(mcpServerVisible(access, 'gh')).toBe(true)
+    expect(mcpServerVisible(access, 'linear')).toBe(true)
+    expect(mcpServerVisible(access, 'slack')).toBe(false)
+  })
+
+  it('keeps only the selected resources in a narrowed session', () => {
+    const scoped = mcpAccess(resources, permissions, ['res_gh'])
+    expect(mcpToolAccess(scoped, 'gh', 'list_repos').allowed).toBe(true)
+    expect(mcpToolAccess(scoped, 'gh', 'get_issue').allowed).toBe(false)
+    expect(mcpServerVisible(scoped, 'linear')).toBe(false)
   })
 })
 

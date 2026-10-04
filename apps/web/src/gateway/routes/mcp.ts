@@ -12,9 +12,11 @@ import { type AppContext, type AppEnv, clientInfo } from '../context.ts'
 import { sessionStub } from '../do/session.ts'
 import {
   accessibleResources,
-  applySessionScope,
-  type ResourceRow,
-  resourcesForTool,
+  effectivePermissions,
+  type McpAccess,
+  mcpAccess,
+  mcpServerVisible,
+  mcpToolAccess,
 } from '../lib/access.ts'
 import { requireGatewayToken } from '../lib/auth.ts'
 import { recordEvent } from '../lib/events.ts'
@@ -97,9 +99,12 @@ async function handle(
   }
 }
 
-async function scopedResources(c: AppContext, session: ResolvedSession): Promise<ResourceRow[]> {
-  const all = await accessibleResources(c.get('db'), c.get('principal'))
-  return applySessionScope(all, session.state?.resourceIds)
+async function userMcpAccess(c: AppContext, session: ResolvedSession): Promise<McpAccess> {
+  const [resources, permissions] = await Promise.all([
+    accessibleResources(c.get('db'), c.get('principal')),
+    effectivePermissions(c.get('db'), c.get('principal')),
+  ])
+  return mcpAccess(resources, permissions, session.state?.resourceIds)
 }
 
 async function orgServers(db: Db, orgId: string): Promise<Server[]> {
@@ -136,13 +141,13 @@ export async function refreshServerTools(
 }
 
 async function listTools(c: AppContext, session: ResolvedSession) {
-  const resources = await scopedResources(c, session)
+  const access = await userMcpAccess(c, session)
   const servers = await orgServers(c.get('db'), c.get('principal').orgId)
   const out: McpTool[] = []
   for (const server of servers) {
-    if (!resources.some((r) => r.mcpServerId === server.id)) continue
+    if (!mcpServerVisible(access, server.id)) continue
     for (const tool of await serverTools(c, server)) {
-      if (resourcesForTool(resources, server.id, tool.name).length === 0) continue
+      if (!mcpToolAccess(access, server.id, tool.name).allowed) continue
       out.push({
         ...tool,
         name: `${server.slug}${TOOL_SEPARATOR}${tool.name}`,
@@ -211,8 +216,9 @@ async function callTool(c: AppContext, session: ResolvedSession, fullName: strin
     )
   }
 
-  event.resourceIds = resourcesForTool(await scopedResources(c, session), server.id, toolName)
-  if (event.resourceIds.length === 0) {
+  const granted = mcpToolAccess(await userMcpAccess(c, session), server.id, toolName)
+  event.resourceIds = granted.resourceIds
+  if (!granted.allowed) {
     finish('block')
     return toolError(`You don't have access to ${fullName} in this session.`)
   }

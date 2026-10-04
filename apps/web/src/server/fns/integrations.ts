@@ -1,7 +1,23 @@
-import { mcpCredential, mcpServer, rateLimit } from '@acl/db'
-import { credentialAad, encryptString, randomId } from '@acl/shared'
+import {
+  event,
+  group,
+  mcpCredential,
+  mcpServer,
+  rateLimit,
+  resource,
+  resourceGrant,
+  user,
+} from '@acl/db'
+import {
+  credentialAad,
+  type Decision,
+  encryptString,
+  normalizePermissions,
+  randomId,
+  toolTierFromAnnotations,
+} from '@acl/shared'
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, eq, isNull, or } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, isNull, max, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { refreshServerTools } from '#/gateway/control.ts'
 import { audit } from '../audit.ts'
@@ -247,3 +263,128 @@ export const refreshMcpTools = createServerFn({ method: 'POST' })
     const tools = await refreshServerTools(env, db, server, me.id)
     return { count: tools.length }
   })
+
+const STATS_DAYS = 7
+
+/**
+ * One MCP server with everything needed to control it tool by tool: its tools, which groups may
+ * call each of them, the resources covering them, and the calls made through the gateway.
+ */
+export const getMcpServerDetail = createServerFn({ method: 'GET' })
+  .middleware([adminMiddleware])
+  .validator(z.object({ serverId: z.string() }))
+  .handler(async ({ data, context: { db, orgId } }) => {
+    const server = await db.query.mcpServer.findFirst({
+      where: and(eq(mcpServer.id, data.serverId), eq(mcpServer.orgId, orgId)),
+    })
+    if (!server) throw new Error('Server not found')
+    const since = new Date(Date.now() - STATS_DAYS * 86_400_000)
+    const calls = and(
+      eq(event.orgId, orgId),
+      eq(event.mcpServerId, server.id),
+      eq(event.kind, 'tool_call'),
+    )
+
+    const [groups, resources, grants, stats, recent] = await Promise.all([
+      db.query.group.findMany({
+        where: eq(group.orgId, orgId),
+        orderBy: [desc(group.isDefault), asc(group.name)],
+      }),
+      db.query.resource.findMany({
+        where: and(eq(resource.orgId, orgId), eq(resource.mcpServerId, server.id)),
+        orderBy: asc(resource.name),
+      }),
+      db
+        .select({
+          resourceId: resourceGrant.resourceId,
+          type: resourceGrant.subjectType,
+          id: resourceGrant.subjectId,
+        })
+        .from(resourceGrant)
+        .innerJoin(resource, eq(resource.id, resourceGrant.resourceId))
+        .where(and(eq(resource.orgId, orgId), eq(resource.mcpServerId, server.id))),
+      db
+        .select({
+          toolName: event.toolName,
+          decision: event.decision,
+          calls: count(),
+          last: max(event.createdAt),
+        })
+        .from(event)
+        .where(and(calls, gte(event.createdAt, since)))
+        .groupBy(event.toolName, event.decision),
+      db
+        .select({
+          id: event.id,
+          toolName: event.toolName,
+          decision: event.decision,
+          latencyMs: event.latencyMs,
+          createdAt: event.createdAt,
+          userName: user.name,
+          userEmail: user.email,
+        })
+        .from(event)
+        .leftJoin(user, eq(user.id, event.userId))
+        .where(calls)
+        .orderBy(desc(event.seq))
+        .limit(30),
+    ])
+
+    // Events store the name Claude Code saw, `<slug>__<tool>`.
+    const bare = (name: string | null) => {
+      const sep = name?.indexOf('__') ?? -1
+      return name && sep > 0 ? name.slice(sep + 2) : (name ?? '')
+    }
+    const usage = new Map<string, { calls: number; blocked: number; last: Date | null }>()
+    for (const row of stats) {
+      const name = bare(row.toolName)
+      const u = usage.get(name) ?? { calls: 0, blocked: 0, last: null }
+      u.calls += row.calls
+      if (!isAllowed(row.decision)) u.blocked += row.calls
+      const last = row.last ? new Date(row.last) : null
+      if (last && (!u.last || last > u.last)) u.last = last
+      usage.set(name, u)
+    }
+
+    const tools = server.tools as { name: string; description?: string; annotations?: unknown }[]
+    return {
+      server: {
+        id: server.id,
+        name: server.name,
+        slug: server.slug,
+        url: server.url,
+        enabled: server.enabled,
+        toolsRefreshedAt: server.toolsRefreshedAt,
+      },
+      statsDays: STATS_DAYS,
+      tools: tools.map((t) => ({
+        name: t.name,
+        description: t.description ?? '',
+        tier: toolTierFromAnnotations(t.annotations),
+        usage: usage.get(t.name) ?? { calls: 0, blocked: 0, last: null },
+      })),
+      // Tools that were called but are no longer listed by the server.
+      unlistedCalls: [...usage].filter(([name]) => !tools.some((t) => t.name === name)).length,
+      groups: groups.map((g) => {
+        const { mcp } = normalizePermissions(g.permissions)
+        return {
+          id: g.id,
+          name: g.name,
+          isDefault: g.isDefault,
+          patterns: mcp[server.id] ?? [],
+          everyServer: mcp['*'] ?? [],
+        }
+      }),
+      resources: resources.map((r) => ({
+        id: r.id,
+        name: r.name,
+        toolPatterns: r.toolPatterns,
+        grants: grants.filter((g) => g.resourceId === r.id).map(({ type, id }) => ({ type, id })),
+      })),
+      recent: recent.map((r) => ({ ...r, toolName: bare(r.toolName) })),
+    }
+  })
+
+function isAllowed(decision: Decision) {
+  return decision === 'allow' || decision === 'approved'
+}

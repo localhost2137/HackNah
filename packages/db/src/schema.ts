@@ -458,7 +458,7 @@ export const group = sqliteTable(
     isDefault: bool().notNull().default(false),
     permissions: json<GroupPermissions>()
       .notNull()
-      .$defaultFn(() => ({ models: [], builtinTools: [] })),
+      .$defaultFn(() => ({ models: [], builtinTools: [], mcp: {} })),
     createdAt: createdAt(),
   },
   (t) => [

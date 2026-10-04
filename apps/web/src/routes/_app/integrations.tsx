@@ -12,8 +12,8 @@ import {
   Switch,
 } from '@acl/ui'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
-import { KeyRound, Link2, Plug, Plus, RefreshCw } from 'lucide-react'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { KeyRound, Link2, Plug, Plus, RefreshCw, Wrench } from 'lucide-react'
 import { useState } from 'react'
 import { z } from 'zod'
 import { FormError } from '#/components/auth-shell.tsx'
@@ -198,7 +198,17 @@ function IntegrationsPage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold">{s.name}</span>
+                      {isAdmin ? (
+                        <Link
+                          to="/integrations/$serverId"
+                          params={{ serverId: s.id }}
+                          className="text-[13px] font-semibold hover:underline"
+                        >
+                          {s.name}
+                        </Link>
+                      ) : (
+                        <span className="text-[13px] font-semibold">{s.name}</span>
+                      )}
                       <Badge className="font-mono">{s.slug}__*</Badge>
                       {connected ? (
                         <Badge tone="ok" dot>
@@ -283,6 +293,11 @@ function IntegrationsPage() {
                   </Button>
                   {isAdmin ? (
                     <div className="ml-auto flex gap-1">
+                      <Link to="/integrations/$serverId" params={{ serverId: s.id }}>
+                        <Button size="sm">
+                          <Wrench /> Tools &amp; access
+                        </Button>
+                      </Link>
                       <Button size="sm" variant="ghost" onClick={() => setDraft(fromServer(s))}>
                         Edit
                       </Button>
