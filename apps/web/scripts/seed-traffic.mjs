@@ -1,7 +1,7 @@
 import { evaluateGuardrails, policyGraph, trainModel } from '../../../packages/shared/src/index.ts'
 import { starterModels, trainingExamples } from '../../../scripts/lib/dataset-files.mjs'
 
-// A week of traffic that reads like a team at work: people on their own laptops, in sessions of
+// A month of traffic that reads like a team at work: people on their own laptops, in sessions of
 // prompts, tool calls and tool results, with the odd attack in between. Every event is decided by
 // the seeded guardrails, so what the logs show is what the gateway would have done.
 
@@ -296,7 +296,7 @@ const NETWORKS = [
   { ip: '203.0.113.41', country: 'DE' },
 ]
 
-/** The seeded users, their devices and a week of events, as rows for the seed's `insert`. */
+/** The seeded users, their devices and a month of events, as rows for the seed's `insert`. */
 export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, data }) {
   const models = []
   for (const [key, { name, slugs }] of Object.entries(starterModels)) {
@@ -343,13 +343,13 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
       first_seen_ip: NETWORKS[0].ip,
       first_seen_country: 'PL',
       approved_by: 'seed-admin',
-      approved_at: now - 8 * 86_400_000,
+      approved_at: now - 31 * 86_400_000,
       last_seen_at: now - 5 * 60_000,
-      created_at: now - 8 * 86_400_000,
+      created_at: now - 31 * 86_400_000,
     })
   }
 
-  // Seeded events are replaced on every run, so the week always ends today.
+  // Seeded events are replaced on every run, so the month always ends today.
   sql.push(`DELETE FROM event WHERE id LIKE 'seed-event-%';`)
   const random = rng(20261004)
   const pick = (list) => list[Math.floor(random() * list.length)]
@@ -467,16 +467,23 @@ export async function seedTraffic({ insert, sql, now, guardrails, modelRefs, dat
   }
 
   const day = 86_400_000
+  const DAYS = 30
   const midnight = new Date(now).setHours(0, 0, 0, 0)
-  for (let back = 6; back >= 0; back--) {
+  // Most work happens in office hours; a few people start early or finish late.
+  const HOURS = [
+    7, 8, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 13, 13, 14, 14, 14, 15, 15, 15, 16, 16, 17, 18, 20,
+    22,
+  ]
+  for (let back = DAYS - 1; back >= 0; back--) {
     const date = new Date(midnight - back * day)
-    const weekend = date.getDay() === 0 || date.getDay() === 6
+    // Yesterday and today always count as working days, so the last 24 hours are never empty.
+    const weekend = back > 1 && (date.getDay() === 0 || date.getDay() === 6)
+    // Adoption grows over the month.
+    const adoption = 0.55 + (0.45 * (DAYS - 1 - back)) / (DAYS - 1)
     for (const person of people) {
-      const sessions = weekend ? (random() < 0.15 ? 1 : 0) : between(2, 5)
+      const sessions = weekend ? (random() < 0.2 ? 1 : 0) : Math.round(between(2, 5) * adoption)
       for (let s = 0; s < sessions; s++) {
-        // Mornings and early afternoons are busiest; nobody works through lunch.
-        const hour = pick([9, 9, 10, 10, 10, 11, 11, 13, 14, 14, 15, 15, 16, 17])
-        const start = date.getTime() + hour * 3_600_000 + between(0, 3_500_000)
+        const start = date.getTime() + pick(HOURS) * 3_600_000 + between(0, 3_500_000)
         if (start > now) continue
         await play(person, random() < 0.12 ? pick(incidents) : pick(work), start)
       }

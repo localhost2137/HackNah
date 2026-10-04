@@ -71,7 +71,8 @@ export const config = {
     log: join(dataDir, 'bridge.log'),
     llmSecret: join(dataDir, 'llm-local-secret.json'),
     uiState: join(dataDir, 'ui-state.json'),
-    mcpSelection: join(dataDir, 'mcp-selection.json'),
+    // One file per Claude Code session, so two open sessions choose their servers separately.
+    mcpSelection: join(dataDir, 'mcp-selection', `${env('CLAUDE_CODE_SESSION_ID', 'default').replace(/[^\w-]/g, '')}.json`),
     userRules: join(homedir(), '.config', 'hy-guard', 'rules.json'),
   },
 };

@@ -156,7 +156,7 @@ guardrails.forEach(({ id, name, description, graph }, i) => {
   )
 })
 
-// A week of sessions, decided by the guardrails above.
+// A month of sessions, decided by the guardrails above.
 const traffic = data
   ? await seedTraffic({ insert, sql, now, guardrails, modelRefs, data })
   : { events: 0, blocked: 0, sessions: 0 }
@@ -175,7 +175,7 @@ try {
   if (!process.argv.includes('--skip-datasets'))
     execFileSync('node', ['scripts/datasets-upload.mjs'], { cwd: root, stdio: 'inherit' })
   console.log(
-    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nMock SSO accounts (pnpm mock:idp): ${seededSsoUsers.map((u) => u.email).join(', ')}\nMock MCPs: Datadog, Confluence, Jira (${mockSummary.records} records, dataset clock ${mockSummary.asOf}).${traffic.events ? `\nTraffic: ${traffic.events} events in ${traffic.sessions} sessions over the last week, ${traffic.blocked} blocked.` : ''}${guardrails.length ? `\nGuardrails: ${guardrails.map((g) => g.name).join(', ')}.` : ''}\nExisting fixtures are preserved on subsequent runs.`,
+    `Local demo accounts: admin@demo.test, member@demo.test\nPassword: ${password}\nMock SSO accounts (pnpm mock:idp): ${seededSsoUsers.map((u) => u.email).join(', ')}\nMock MCPs: Datadog, Confluence, Jira (${mockSummary.records} records, dataset clock ${mockSummary.asOf}).${traffic.events ? `\nTraffic: ${traffic.events} events in ${traffic.sessions} sessions over the last 30 days, ${traffic.blocked} blocked.` : ''}${guardrails.length ? `\nGuardrails: ${guardrails.map((g) => g.name).join(', ')}.` : ''}\nExisting fixtures are preserved on subsequent runs.`,
   )
 } finally {
   rmSync(temporary, { recursive: true, force: true })

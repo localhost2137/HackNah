@@ -228,8 +228,8 @@ The mod finds the bridge's data folder through `HY_DATA_DIR`, or a pointer the b
 
 `/mcps` opens a pane that lists the company MCP servers behind the gateway. Enter, or the number
 next to a server, switches it on or off; `a` turns everything on, `q` closes. A server that is off
-has its tools removed from the session, and the bridge refuses calls to it. The choice lasts for
-the session: a new one starts with every server on. `hy_status` lists what is off.
+has its tools removed from the session, and the bridge refuses calls to it. The choice belongs to
+that one session: other open sessions keep their own, and a new one starts with every server on. `hy_status` lists what is off.
 
 ### 5. What decides whether the model sees a tool
 

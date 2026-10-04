@@ -2,7 +2,8 @@
 // (hooks/ui.tsx), which writes the servers that are switched off to a file; the bridge hides
 // their tools and refuses calls to them. Everything is on when a session starts.
 
-import { unwatchFile, watchFile } from 'node:fs';
+import { mkdirSync, unwatchFile, watchFile } from 'node:fs';
+import { dirname } from 'node:path';
 import { config } from './config.mjs';
 import { readJson } from './util.mjs';
 
@@ -26,6 +27,7 @@ export function serversOf(tools) {
 
 /** Calls `onChange` when the selection file changes. Returns a function that stops watching. */
 export function watchSelection(onChange) {
+  mkdirSync(dirname(config.paths.mcpSelection), { recursive: true });
   watchFile(config.paths.mcpSelection, { interval: 500 }, onChange);
   return () => unwatchFile(config.paths.mcpSelection, onChange);
 }

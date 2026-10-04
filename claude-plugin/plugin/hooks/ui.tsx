@@ -81,7 +81,8 @@ let selectionPath: string | undefined
 
 async function setOff($: EngineInterface, off: string[]) {
   await update($, mcpsOff, () => off)
-  if (selectionPath) await $.fs.write(selectionPath, JSON.stringify({ off }))
+  // The bridge treats a missing file as "nothing off", so a failed write only loses the choice.
+  if (selectionPath) await $.fs.write(selectionPath, JSON.stringify({ off })).catch(() => {})
   $.ui.invalidate('ui.render')
 }
 
@@ -107,7 +108,7 @@ export const register: Register = (on, options) => {
         return result
       }
     }
-    selectionPath = `${dataDir}/mcp-selection.json`
+    selectionPath = `${dataDir}/mcp-selection/${(await $.session.id()).replace(/[^\w-]/g, '')}.json`
     // A new session starts with every server on.
     await setOff($, [])
     await $.command.register({
