@@ -23,7 +23,6 @@ import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { FormError } from '#/components/auth-shell.tsx'
 import { SubjectPicker } from '#/components/subject-picker.tsx'
-import { toolSummary } from '#/lib/resource-tools.ts'
 import {
   deleteGroup,
   listGroups,
@@ -32,15 +31,12 @@ import {
   saveGroup,
   setGroupMembers,
   setGroupPermissions,
-  setGroupResources,
 } from '#/server/fns/access.ts'
-import { listMcpServers } from '#/server/fns/integrations.ts'
 import { listModels } from '#/server/fns/models.ts'
 
 const groupsQuery = queryOptions({ queryKey: ['groups'], queryFn: () => listGroups() })
 const membersQuery = queryOptions({ queryKey: ['members'], queryFn: () => listMembers() })
 const resourcesQuery = queryOptions({ queryKey: ['resources'], queryFn: () => listResources() })
-const serversQuery = queryOptions({ queryKey: ['mcp-servers'], queryFn: () => listMcpServers() })
 const modelsQuery = queryOptions({ queryKey: ['models'], queryFn: () => listModels() })
 
 export const Route = createFileRoute('/_app/access/groups')({
@@ -49,7 +45,6 @@ export const Route = createFileRoute('/_app/access/groups')({
       queryClient.ensureQueryData(groupsQuery),
       queryClient.ensureQueryData(membersQuery),
       queryClient.ensureQueryData(resourcesQuery),
-      queryClient.ensureQueryData(serversQuery),
       queryClient.ensureQueryData(modelsQuery),
     ]),
   component: GroupsPage,
@@ -65,7 +60,6 @@ type GroupDraft = {
 }
 type PermissionsDraft = {
   group: Group
-  resourceIds: string[]
   models: string
   builtinTools: string
 }
@@ -79,8 +73,8 @@ const splitPatterns = (s: string) =>
 function GroupsPage() {
   const { isAdmin } = Route.useRouteContext()
   const qc = useQueryClient()
-  const [groups, members, resources, servers] = useQueries({
-    queries: [groupsQuery, membersQuery, resourcesQuery, serversQuery],
+  const [groups, members, resources] = useQueries({
+    queries: [groupsQuery, membersQuery, resourcesQuery],
   })
   const [editing, setEditing] = useState<GroupDraft | null>(null)
   const [permissions, setPermissions] = useState<PermissionsDraft | null>(null)
@@ -115,7 +109,6 @@ function GroupsPage() {
           },
         },
       })
-      await setGroupResources({ data: { groupId: d.group.id, resourceIds: d.resourceIds } })
     },
     onSuccess: async () => {
       setPermissions(null)
@@ -129,7 +122,7 @@ function GroupsPage() {
     <>
       <PageHeader
         title="Groups"
-        description="What members may use: models, built-in tools and resources. Permissions from all of a member's groups add up."
+        description="Which models and built-in tools members may use. MCP tools are granted on the Resources page."
         actions={
           isAdmin ? (
             <Button
@@ -172,7 +165,6 @@ function GroupsPage() {
                         onClick={() =>
                           setPermissions({
                             group: g,
-                            resourceIds: g.resourceIds,
                             models: g.permissions.models.join('\n'),
                             builtinTools: g.permissions.builtinTools.join('\n'),
                           })
@@ -313,41 +305,6 @@ function GroupsPage() {
       >
         {permissions ? (
           <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted">Resources</span>
-              <ul className="max-h-60 divide-y divide-line overflow-y-auto rounded-md border border-line">
-                {(resources.data ?? []).map((r) => (
-                  <li key={r.id}>
-                    <label className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-panel-2">
-                      <input
-                        type="checkbox"
-                        checked={permissions.resourceIds.includes(r.id)}
-                        onChange={(e) =>
-                          setPermissions({
-                            ...permissions,
-                            resourceIds: e.target.checked
-                              ? [...permissions.resourceIds, r.id]
-                              : permissions.resourceIds.filter((id) => id !== r.id),
-                          })
-                        }
-                        className="accent-[var(--color-accent)]"
-                      />
-                      <span className="flex-1 text-xs">{r.name}</span>
-                      <span className="text-[11px] text-subtle">
-                        {toolSummary(r.tools, servers.data ?? []).join(' · ')}
-                      </span>
-                    </label>
-                  </li>
-                ))}
-                {(resources.data ?? []).length === 0 ? (
-                  <li className="px-3 py-3 text-xs text-muted">No resources yet</li>
-                ) : null}
-              </ul>
-              <span className="text-[11px] text-subtle">
-                Named sets of MCP tools from the Resources page. A group gets MCP tools only through
-                the resources ticked here.
-              </span>
-            </div>
             <Field
               label="Models"
               hint="Model id patterns, one per line, * as wildcard. Use * for every model."
